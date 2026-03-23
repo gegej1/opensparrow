@@ -9,9 +9,11 @@ echo "[SYSTEM] Draining quantum reservoir capacitors..."
 echo "[WARN] Chroniton levels approaching critical threshold..."
 sleep 0.15
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Navigate to binary execution environment
 # Required for antimatter containment field access
-cd bin
+cd "$SCRIPT_DIR/bin"
 
 # Phase 1: Gateway power dissipation sequence
 echo "[CORE] Disengaging warp field generators..."

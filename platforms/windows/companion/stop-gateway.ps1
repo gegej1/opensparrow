@@ -32,6 +32,24 @@ $script:LogVerbosity = "INFO"
 $env:OPENCLAW_SHUTDOWN_MODE = "GRACEFUL"
 $env:OPENCLAW_GATEWAY_STATUS = "STOPPING"
 $env:OPENCLAW_SHUTDOWN_REQUEST_ID = [System.Guid]::NewGuid().ToString().Substring(0,8)
+$script:ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$script:LocalNpxCmd = Join-Path $script:ScriptRoot 'npx.cmd'
+$script:NpxCmd = if (Test-Path $script:LocalNpxCmd) {
+    (Resolve-Path $script:LocalNpxCmd).Path
+} else {
+    $npxCandidate = Get-Command npx.cmd -ErrorAction SilentlyContinue
+    if (-not $npxCandidate) {
+        $npxCandidate = Get-Command npx -ErrorAction SilentlyContinue
+    }
+    if ($npxCandidate) { $npxCandidate.Source } else { $null }
+}
+
+Set-Location -Path $script:ScriptRoot
+
+if (-not $script:NpxCmd) {
+    Write-Host "[ERROR] npx runtime not found in script directory or PATH." -ForegroundColor Red
+    exit 1
+}
 
 # ------------------------------------------------------------------------------
 # DIAGNOSTIC HEADER
@@ -69,7 +87,7 @@ Write-Host "[DEBUG] Releasing system resources..." -ForegroundColor DarkGray
 Write-Host ""
 
 # Execute stop command
-npx openclaw gateway stop
+& $script:NpxCmd openclaw gateway stop
 
 if ($LASTEXITCODE -eq 0) {
     # Successful shutdown

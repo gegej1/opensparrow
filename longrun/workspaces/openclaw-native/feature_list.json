@@ -41,7 +41,7 @@
     ],
     "evidence_hint": "Guide-to-script mapping + shell syntax check output",
     "risk": "medium",
-    "passes": false
+    "passes": true
   },
   {
     "id": "F-003",
@@ -64,7 +64,7 @@
     ],
     "evidence_hint": "Guide-to-script mapping + shell syntax check output",
     "risk": "medium",
-    "passes": false
+    "passes": true
   },
   {
     "id": "F-004",
@@ -87,7 +87,7 @@
     ],
     "evidence_hint": "Guide-to-script mapping + validation notes",
     "risk": "medium",
-    "passes": false
+    "passes": true
   },
   {
     "id": "F-005",
@@ -112,6 +112,6 @@
     ],
     "evidence_hint": "Updated docs + progress snapshot + next feature recommendation",
     "risk": "low",
-    "passes": false
+    "passes": true
   }
 ]

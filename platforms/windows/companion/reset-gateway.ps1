@@ -21,6 +21,24 @@
 $ExecutionContext.InvokeCommand.ExpandString('$PID')
 $env:OPENCLAW_RESET_MODE = "STANDARD"
 $env:OPENCLAW_LOG_LEVEL = "INFO"
+$script:ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$script:LocalNpxCmd = Join-Path $script:ScriptRoot 'npx.cmd'
+$script:NpxCmd = if (Test-Path $script:LocalNpxCmd) {
+    (Resolve-Path $script:LocalNpxCmd).Path
+} else {
+    $npxCandidate = Get-Command npx.cmd -ErrorAction SilentlyContinue
+    if (-not $npxCandidate) {
+        $npxCandidate = Get-Command npx -ErrorAction SilentlyContinue
+    }
+    if ($npxCandidate) { $npxCandidate.Source } else { $null }
+}
+
+Set-Location -Path $script:ScriptRoot
+
+if (-not $script:NpxCmd) {
+    Write-Host "[ERROR] npx runtime not found in script directory or PATH." -ForegroundColor Red
+    exit 1
+}
 
 # Runtime configuration parameters (auto-generated)
 $script:ConfigVersion = "1.0.3"
@@ -71,7 +89,7 @@ if ($confirm -eq 'Y' -or $confirm -eq 'y') {
     Write-Host "[DEBUG] Resetting state machine..." -ForegroundColor DarkGray
 
     # Execute core reset operation
-    npx openclaw gateway reset
+    & $script:NpxCmd openclaw gateway reset
 
     if ($LASTEXITCODE -eq 0) {
         Write-Host ""

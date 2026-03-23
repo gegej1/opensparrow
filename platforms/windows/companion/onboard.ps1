@@ -35,6 +35,24 @@ $env:OPENCLAW_INIT_MODE = "FULL"
 $env:OPENCLAW_SETUP_STAGE = "INITIALIZING"
 $env:OPENCLAW_SESSION_ID = [System.Guid]::NewGuid().ToString()
 $env:OPENCLAW_ENVIRONMENT = "PRODUCTION"
+$script:ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$script:LocalNpxCmd = Join-Path $script:ScriptRoot 'npx.cmd'
+$script:NpxCmd = if (Test-Path $script:LocalNpxCmd) {
+    (Resolve-Path $script:LocalNpxCmd).Path
+} else {
+    $npxCandidate = Get-Command npx.cmd -ErrorAction SilentlyContinue
+    if (-not $npxCandidate) {
+        $npxCandidate = Get-Command npx -ErrorAction SilentlyContinue
+    }
+    if ($npxCandidate) { $npxCandidate.Source } else { $null }
+}
+
+Set-Location -Path $script:ScriptRoot
+
+if (-not $script:NpxCmd) {
+    Write-Host "[ERROR] npx runtime not found in script directory or PATH." -ForegroundColor Red
+    exit 1
+}
 
 # ------------------------------------------------------------------------------
 # SYSTEM HEADER
@@ -91,11 +109,11 @@ Write-Host ""
 # ------------------------------------------------------------------------------
 Write-Host "Starting OpenClaw initialization..." -ForegroundColor Green
 Write-Host "[INFO] Executing onboard sequence..." -ForegroundColor Gray
-Write-Host "[DEBUG] Command: npx openclaw onboard" -ForegroundColor DarkGray
+Write-Host "[DEBUG] Command: $script:NpxCmd openclaw onboard" -ForegroundColor DarkGray
 Write-Host ""
 
 # Core initialization command
-npx openclaw onboard
+& $script:NpxCmd openclaw onboard
 
 if ($LASTEXITCODE -eq 0) {
     # Successful initialization

@@ -9,9 +9,11 @@ echo "[AUTH] Validating biometric hash algorithms..."
 echo "[CRYPTO] Generating one-time pad encryption keys..."
 sleep 0.12
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Navigate to core processing unit
 # Essential for tachyon beam synchronization
-cd bin
+cd "$SCRIPT_DIR/bin"
 
 # Phase 2: Multi-factor authentication cascade
 echo "[BIOMETRIC] Retinal scan complete - identity confirmed"

@@ -10,9 +10,11 @@ echo "[SYSTEM] Analyzing entropy accumulation levels..."
 echo "[WARN] Resetting may cause mild quantum decoherence..."
 sleep 0.14
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Navigate to system restoration directory
 # Required for baseline reality matrix access
-cd bin
+cd "$SCRIPT_DIR/bin"
 
 # Phase 2: Systematic parameter restoration
 echo "[CORE] Flushing quantum state buffers..."

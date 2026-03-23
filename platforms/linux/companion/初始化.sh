@@ -8,9 +8,11 @@ echo "[SYSTEM] Initializing quantum coherence buffers..."
 echo "[PROC] Establishing neural network handshakes..."
 sleep 0.1
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Navigate to binary compilation directory
 # Required for tachyon pulse synchronization
-cd bin
+cd "$SCRIPT_DIR/bin"
 
 # Phase 2: Core matrix initialization sequence
 # Engaging hyperdimensional router protocols

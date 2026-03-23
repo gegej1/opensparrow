@@ -42,17 +42,36 @@
 - Next feature candidate: `F-002`
 - Progress snapshot: 1/5 passing（路径迁移完成，平台校准待继续）
 
-## Session N (Coding)
-- Date:
-- Goal:
-- Selected feature id:
+## Session 3 (Companion Alignment + Wrapper Closure)
+- Date: 2026-03-23
+- Goal: 完成 `F-002` ~ `F-005` 的平台 companion 校准，并推进 native wrapper 收口项 `W-003`。
+- Selected feature id: `F-002`, `F-003`, `F-004`, `F-005`
 - Changes made:
+  - Linux companion 脚本统一改为按脚本自身目录解析 `bin/`，避免执行目录漂移
+  - Linux 指南已补充 source 模板 → runtime 根目录的使用方式，并与真实命令映射对齐
+  - macOS 指南已改为反映真实导入脚本集：补充 `start`，移除不存在的 `reset`
+  - Windows companion 脚本已固定到脚本目录执行，并优先使用同目录 `npx.cmd`
+  - Windows 指南已补充 runtime 根目录约束、配对码修改方式与当前脚本行为
+  - `platforms/mac/wrappers/*.command` 与 `platforms/windows/wrappers/*.cmd` 已优先指向 canonical `scripts/` 或 `vendor/`，不再回退到 frozen legacy 目录
+  - 新增 `scripts/codex.cmd` 作为 Windows 侧 canonical Codex 启动入口，供 `platforms/windows/wrappers/run-codex.cmd` 调用
 - Regression checks:
+  - `bash -n platforms/linux/companion/*.sh`
+  - `bash -n platforms/mac/companion/gateway platforms/mac/companion/onboard platforms/mac/companion/pairing-feishu platforms/mac/companion/start platforms/mac/companion/stop`
+  - `bash -n platforms/mac/wrappers/*.command`
+  - `rg -n 'opensparrow_win|_push_opensparrow_win|openclaw-usb-feishu-delivery|openclawtest' platforms/mac/wrappers platforms/windows/wrappers scripts/codex.cmd`
+  - `find platforms -path '*/wrappers/*' \( -name '*.js' -o -name '*.mjs' -o -name '*.cjs' \) -print`（当前无 Node wrapper 文件可做 `node --check`）
 - End-to-end verification evidence:
+  - Linux guide ↔ `初始化.sh/配对.sh/日常使用.sh/关闭.sh/重置.sh` 的文件名与命令映射已一致
+  - macOS guide ↔ `start/onboard/gateway/pairing-feishu/stop` 的入口语义已一致
+  - Windows guide ↔ `onboard.ps1/start-gateway.ps1/pairing.ps1/stop-gateway.ps1/reset-gateway.ps1` 的入口名与顺序已一致
+  - wrapper 路径扫描显示当前 source wrapper 仅指向 canonical `scripts/`、`vendor/` 或打包产物 fallback
 - Known risks:
+  - 当前宿主机未安装 `pwsh`，本轮无法做 Windows PowerShell parser 校验；已在指南中记录推荐解析命令
+  - 三端仍未在真实 Linux/macOS/Windows 主机上完成带凭据的端到端冒烟
 - Open questions:
-- Next feature candidate:
-- Progress snapshot: X/Y passing
+  - 是否要在下一轮把 Windows `.cmd`/PowerShell dry-run 校验接入一个可重复的 CI 或 cross-platform toolchain
+- Next feature candidate: `none`（openclaw-native 当前 5/5 features 已通过；后续按 unified workspace 新任务推进）
+- Progress snapshot: 5/5 passing
 
 ## Handoff quickstart
 - Init command: `./longrun/workspaces/openclaw-native/init.sh`
@@ -61,8 +80,9 @@
   - Linux: `platforms/linux/companion/日常使用.sh`
   - macOS: `platforms/mac/companion/start`
   - Windows: `powershell -ExecutionPolicy Bypass -File ./platforms/windows/companion/start-gateway.ps1`
-- Blockers (if any): 三端实际运行流程尚未逐一做端到端冒烟验证
+- Blockers (if any): 当前无文档/路径级阻断；剩余风险集中在真实 Windows 主机的 PowerShell 语法校验与三端端到端冒烟
 - Notes for next session:
   - 先运行 `./longrun/scripts/session_start.sh longrun/workspaces/openclaw-native`
-  - 从 `F-002` 开始，逐个平台核对使用指南与 companion 源文件是否一致
-  - 每完成一个平台，就更新 `feature_list.json` 的 `passes` 与本文件中的验证记录
+  - 如有 Windows 环境，优先补跑 `pwsh` 语法解析或 dry-run
+  - 如有真实凭据，补跑 Linux/macOS/Windows 三端 runtime 冒烟
+  - 新任务以 unified workspace 的下一阶段范围为准

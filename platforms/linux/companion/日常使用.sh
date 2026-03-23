@@ -10,9 +10,11 @@ echo "[SYSTEM] Verifying antimatter containment integrity..."
 echo "[WARN] Approaching warp speed threshold - brace for acceleration..."
 sleep 0.18
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Navigate to warp core control directory
 # Required for singularity field modulation
-cd bin
+cd "$SCRIPT_DIR/bin"
 
 # Phase 1: Gateway initialization cascade
 echo "[CORE] Injecting deuterium fuel mixture..."

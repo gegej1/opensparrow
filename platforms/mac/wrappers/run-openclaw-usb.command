@@ -7,10 +7,17 @@ repo_root="$(cd "$script_dir/../../.." && pwd)"
 export OPENCLAW_PROFILE_NAME="${OPENCLAW_PROFILE_NAME:-usb-portable}"
 export OPENCLAW_GATEWAY_PORT="${OPENCLAW_GATEWAY_PORT:-18889}"
 
-if [[ -f "$pack_root/scripts/openclaw-usb/install-local-feishu.sh" ]]; then
-  install_script="$pack_root/scripts/openclaw-usb/install-local-feishu.sh"
-elif [[ -f "$repo_root/scripts/openclaw-usb/install-local-feishu.sh" ]]; then
-  install_script="$repo_root/scripts/openclaw-usb/install-local-feishu.sh"
+canonical_script="$repo_root/scripts/openclaw-usb/install-local-feishu.sh"
+canonical_runtime="$repo_root/vendor/mac-openclaw"
+packaged_script="$pack_root/scripts/openclaw-usb/install-local-feishu.sh"
+packaged_runtime="$pack_root/runtime"
+
+if [[ -f "$canonical_script" && -d "$canonical_runtime" ]]; then
+  install_script="$canonical_script"
+  export USB_RUNTIME_ROOT="${USB_RUNTIME_ROOT:-$canonical_runtime}"
+elif [[ -f "$packaged_script" && -d "$packaged_runtime" ]]; then
+  install_script="$packaged_script"
+  export USB_RUNTIME_ROOT="${USB_RUNTIME_ROOT:-$packaged_runtime}"
 else
   echo "[ERROR] install-local-feishu.sh not found."
   exit 1

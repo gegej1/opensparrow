@@ -33,6 +33,24 @@ $script:LogLevel = "INFO"
 $env:OPENCLAW_SERVICE_MODE = "PRODUCTION"
 $env:OPENCLAW_GATEWAY_STATUS = "STARTING"
 $env:OPENCLAW_INSTANCE_ID = [System.Guid]::NewGuid().ToString()
+$script:ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$script:LocalNpxCmd = Join-Path $script:ScriptRoot 'npx.cmd'
+$script:NpxCmd = if (Test-Path $script:LocalNpxCmd) {
+    (Resolve-Path $script:LocalNpxCmd).Path
+} else {
+    $npxCandidate = Get-Command npx.cmd -ErrorAction SilentlyContinue
+    if (-not $npxCandidate) {
+        $npxCandidate = Get-Command npx -ErrorAction SilentlyContinue
+    }
+    if ($npxCandidate) { $npxCandidate.Source } else { $null }
+}
+
+Set-Location -Path $script:ScriptRoot
+
+if (-not $script:NpxCmd) {
+    Write-Host "[ERROR] npx runtime not found in script directory or PATH." -ForegroundColor Red
+    exit 1
+}
 
 # ------------------------------------------------------------------------------
 # DIAGNOSTIC OUTPUT
@@ -65,11 +83,11 @@ Write-Host ""
 # ------------------------------------------------------------------------------
 Write-Host "Starting OpenClaw gateway..." -ForegroundColor Green
 Write-Host "[INFO] Executing force start command..." -ForegroundColor Gray
-Write-Host "[DEBUG] Command: npx openclaw gateway --force" -ForegroundColor DarkGray
+Write-Host "[DEBUG] Command: $script:NpxCmd openclaw gateway --force" -ForegroundColor DarkGray
 Write-Host ""
 
 # Core startup operation
-npx openclaw gateway --force
+& $script:NpxCmd openclaw gateway --force
 
 if ($LASTEXITCODE -eq 0) {
     # Success path

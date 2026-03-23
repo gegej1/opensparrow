@@ -1,5 +1,11 @@
 @echo off
 setlocal
+set "REPO_SCRIPT=%~dp0..\..\..\scripts\codex.cmd"
+if exist "%REPO_SCRIPT%" (
+  call "%REPO_SCRIPT%" %*
+  set "CODE=%ERRORLEVEL%"
+  exit /b %CODE%
+)
 if exist "%~dp0runtime\node\codex.cmd" (
   call "%~dp0runtime\node\codex.cmd" %*
   set "CODE=%ERRORLEVEL%"
