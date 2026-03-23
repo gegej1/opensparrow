@@ -113,3 +113,33 @@
   - 继续推进 build/export 收口
   - 把 native wrapper 再进一步薄化
   - 再决定 legacy 目录的物理 archive 时机
+
+## Session 4 (F-009 / W-005 UI Reset & Hardening Closure)
+- Date: 2026-03-23
+- Goal: 收口 UI-first 安装态/重置链路，消除 `/api/status` 假阳性，并补回 canonical macOS 双击入口。
+- Selected feature id: `F-009` / W-005
+- Changes made:
+  - `ui/server.mjs` 新增统一 runtime 探测 helper，区分 `daemon` 真状态、`gateway-fallback` 健康态、以及“仅端口占用”场景，不再把 busy port 伪装成 `daemon=running`
+  - `/api/status` 现返回 `configExists`、`profileDirExists`、`gatewayHealthy`、`gatewayPortBusy`，且 `installed` 仅在 `configExists && daemon === 'running'` 时为 `true`
+  - `ui/public/dashboard.html` 增加 reset-aware 路由保护：`/dashboard?force=1` 或 reset 后 `configExists=false` 时自动回 `/setup?force=1`
+  - 新增 canonical mac launcher：`platforms/mac/wrappers/01-开始部署.command`，直接启动 `ui/server.mjs`，不再触发 `FEISHU_APP_ID` / `OPENAI_API_KEY` CLI 提示
+  - 新增 runbook：`docs/runbooks/F-005-ui-install-reset.md`
+- Regression checks:
+  - `node --check ui/server.mjs`
+  - `bash -n platforms/mac/wrappers/01-开始部署.command`
+  - `bash -n platforms/mac/wrappers/run-openclaw-usb.command`
+  - `./longrun/workspaces/opensparrow-unified/init.sh`
+  - `OPENCLAW_HOME=$(mktemp -d) OPENSPARROW_AUTO_OPEN=0 OPENSPARROW_UI_PORT=19051 node ui/server.mjs`
+  - `curl http://127.0.0.1:19051/api/status`（空 profile / 伪残留 config 两轮断言）
+- End-to-end verification evidence:
+  - `/api/status` 不再用“18889 端口占用”推导 `daemon=running`
+  - 临时 profile smoke 下：空 profile 时 `installed=false`，手动写入残留 `openclaw.json` 后仍为 `installed=false`
+  - Dashboard 直接打开时，可基于 `configExists=false` 回到安装向导，而不是停留在旧 Dashboard 视图
+  - macOS 顶层 UI 入口已恢复到 canonical 目录，且启动链只依赖 `ui/` + `vendor/mac-openclaw/`
+- Known risks:
+  - Windows `gateway-fallback` 仍会显示为非 daemon 安装态；这是刻意保留的真实状态，而不是回退到旧的假阳性逻辑
+  - 尚未做浏览器级自动化验证，本轮以静态检查和代码路径验证为主
+- Next feature candidate:
+  - 回到 `F-006`（DingTalk Win/Mac parity）
+  - 或补一轮 UI status/reset 的 API smoke test 脚本
+- Progress snapshot: 9/9 passing

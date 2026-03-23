@@ -677,6 +677,13 @@
           configPath: '',
           port: '',
         },
+        statusSnapshot: {
+          installed: false,
+          daemon: 'unknown',
+          runtimeMode: 'unknown',
+          configExists: true,
+          profileDirExists: true,
+        },
 
         // Channels Tab
         channelCards: [
@@ -734,7 +741,9 @@
         // ─── Lifecycle ───────────────────────────────────────────────
 
         async init() {
-          await Promise.all([this.loadStatus(), this.loadConfig()]);
+          const keepOnDashboard = await this.loadStatus({ redirectOnReset: true });
+          if (!keepOnDashboard) return;
+          await this.loadConfig();
           this.$nextTick(() => this._animateCards());
         },
 
@@ -756,19 +765,37 @@
           }
         },
 
-        async loadStatus() {
+        shouldRedirectToSetup(status) {
+          const params = new URLSearchParams(window.location.search);
+          if (params.has('force')) return true;
+          return status.installed !== true && status.configExists === false;
+        },
+
+        async loadStatus(options = {}) {
           try {
             const res = await this.fetchWithTimeout('/api/status', {}, this.requestTimeout.status);
-            if (!res.ok) return;
+            if (!res.ok) return true;
             const data = await res.json();
+            this.statusSnapshot.installed = data.installed === true;
+            this.statusSnapshot.daemon = data.daemon || 'unknown';
+            this.statusSnapshot.runtimeMode = data.runtimeMode || 'unknown';
+            this.statusSnapshot.configExists = data.configExists !== false;
+            this.statusSnapshot.profileDirExists = data.profileDirExists !== false;
             this.serviceStatus = data.daemon === 'running' ? 'running' : 'stopped';
             this.version = data.version || '1.0.0';
-            this.serviceInfo.profile    = data.profile    || 'usb-portable';
+            this.serviceInfo.profile = data.profile || 'usb-portable';
             this.serviceInfo.configPath = data.configPath || '';
-            this.serviceInfo.port       = '18889';
+            this.serviceInfo.port = '18889';
+
+            if (options.redirectOnReset === true && this.shouldRedirectToSetup(this.statusSnapshot)) {
+              window.location.replace('/setup?force=1');
+              return false;
+            }
+            return true;
           } catch (_) {
             // Gracefully degrade when backend unavailable
             this.version = '1.0.0';
+            return true;
           }
         },
 

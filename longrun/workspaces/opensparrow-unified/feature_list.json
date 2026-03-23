@@ -187,5 +187,31 @@
     "evidence_hint": "Spec-008 + dist tree + bash -n output + synced handoff logs",
     "risk": "medium",
     "passes": true
+  },
+  {
+    "id": "F-009",
+    "priority": 2,
+    "category": "reliability",
+    "component": "ui-install-reset-hardening",
+    "description": "The UI-first deploy flow correctly distinguishes daemon state from stale config, returns to the setup wizard after factory reset, and provides a canonical macOS UI launcher.",
+    "depends_on": [
+      "F-003",
+      "F-006",
+      "F-008"
+    ],
+    "acceptance_criteria": [
+      "`/api/status` reports `installed=true` only when the profile config exists and daemon is actually running.",
+      "Direct visits to `/dashboard` return to `/setup?force=1` after a full reset removes the profile config.",
+      "`platforms/mac/wrappers/01-开始部署.command` launches the UI service directly without prompting for CLI credentials.",
+      "Runbook and unified progress log capture the status/reset/entrypoint contracts."
+    ],
+    "steps": [
+      "Refactor runtime status probing to separate daemon state, fallback health, and raw port occupancy.",
+      "Guard dashboard routing with reset-aware status checks and force-setup handling.",
+      "Add a canonical macOS UI-first launcher and sync runbook/progress evidence."
+    ],
+    "evidence_hint": "Spec-003 + runbook F-005 + status/reset syntax checks + unified progress entry",
+    "risk": "medium",
+    "passes": true
   }
 ]
