@@ -4,25 +4,21 @@ set -euo pipefail
 
 workspace_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 project_root="$(cd "${workspace_dir}/../../../.." && pwd)"
-stage_dir="${workspace_dir}/delivery-pack/staged/openclaw-usb-pack"
+stage_dir="${project_root}/dist/usb-pack/openclaw-usb-pack"
 
 rm -rf "$stage_dir"
 mkdir -p "$stage_dir/docs" "$stage_dir/mac" "$stage_dir/windows" "$stage_dir/runbooks" "$stage_dir/scripts/openclaw-usb" "$stage_dir/skills/openclaw-local-feishu-usb"
 
-cp "${project_root}/scripts/openclaw-usb/install-local-feishu.sh" "$stage_dir/scripts/openclaw-usb/"
-cp "${project_root}/scripts/openclaw-usb/harden-local-feishu.sh" "$stage_dir/scripts/openclaw-usb/"
-cp "${project_root}/scripts/openclaw-usb/install-local-feishu.ps1" "$stage_dir/scripts/openclaw-usb/"
-cp "${project_root}/scripts/openclaw-usb/harden-local-feishu.ps1" "$stage_dir/scripts/openclaw-usb/"
-cp "${project_root}/skills/openclaw-local-feishu-usb/SKILL.md" "$stage_dir/skills/openclaw-local-feishu-usb/"
-cp "${project_root}/research/openclaw-usb-installer/SOP.md" "$stage_dir/docs/"
-cp "${project_root}/research/openclaw-usb-installer/SOURCES.md" "$stage_dir/docs/"
-cp "${workspace_dir}/docs/isolation-boundary.md" "$stage_dir/docs/"
-cp "${workspace_dir}/docs/solution-architecture.md" "$stage_dir/docs/"
-cp "${workspace_dir}/docs/package-boundary.md" "$stage_dir/docs/"
-cp "${workspace_dir}/docs/windows-native-delivery.md" "$stage_dir/docs/"
-cp "${workspace_dir}/runbooks/"*.md "$stage_dir/runbooks/"
-cp "${workspace_dir}/delivery-pack/mac/"* "$stage_dir/mac/"
-cp "${workspace_dir}/delivery-pack/windows/"* "$stage_dir/windows/"
+rsync -a --delete "${project_root}/scripts/openclaw-usb/" "$stage_dir/scripts/openclaw-usb/"
+rsync -a --delete "${project_root}/skills/openclaw-local-feishu-usb/" "$stage_dir/skills/openclaw-local-feishu-usb/"
+rsync -a --delete "${project_root}/docs/usb-pack/" "$stage_dir/docs/"
+rsync -a --delete "${project_root}/docs/runbooks/" "$stage_dir/runbooks/"
+cp "${project_root}/platforms/mac/wrappers/run-openclaw-usb.command" "$stage_dir/mac/"
+cp "${project_root}/platforms/mac/wrappers/harden-openclaw-usb.command" "$stage_dir/mac/"
+cp "${project_root}/platforms/windows/wrappers/run-openclaw-usb.cmd" "$stage_dir/windows/"
+cp "${project_root}/platforms/windows/wrappers/harden-openclaw-usb.cmd" "$stage_dir/windows/"
+cp "${project_root}/platforms/windows/wrappers/install-local-feishu.ps1" "$stage_dir/windows/"
+cp "${project_root}/platforms/windows/wrappers/harden-local-feishu.ps1" "$stage_dir/windows/"
 chmod +x "$stage_dir/mac/"*.command "$stage_dir/scripts/openclaw-usb/"*.sh
 
 cat > "$stage_dir/README.txt" <<'README'

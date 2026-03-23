@@ -69,6 +69,39 @@
   - build/export 与 native wrapper 收口
 - Progress snapshot: 7/7 passing
 
+## Session 3 (F-008 / W-002 Build-Export Dist Closure)
+- Date: 2026-03-23
+- Goal: 把 USB build/export 导出链从历史 workspace 落点收口到根级 `dist/`，并确保组包与 runtime 只从 canonical 根路径取源。
+- Selected feature id: `F-008` / W-002
+- Changes made:
+  - 新增 `specs/008-build-export-dist-closure/`（spec / plan / tasks）
+  - `build-delivery-pack.sh` 已改为从 `docs/usb-pack/`、`docs/runbooks/`、`platforms/*/wrappers/`、`scripts/openclaw-usb/` 组包，并输出到 `dist/usb-pack/openclaw-usb-pack/`
+  - `create-mac-handoff-copy.sh` 与 `create-windows-handoff-copy.sh` 已改为输出到 `dist/handoff/`
+  - `execution/scripts/lib/export-common.sh` 已改为使用 `vendor/mac-openclaw/` 与 `vendor/windows-openclaw/` 作为 bundled runtime 来源，不再依赖 `npm-global snapshot` 或在线下载 Node
+  - 新增 canonical Windows 包内桥接 wrapper：`platforms/windows/wrappers/install-local-feishu.ps1`、`platforms/windows/wrappers/harden-local-feishu.ps1`
+  - USB pack / Windows delivery / F-003 runbook / portable execution README 均已同步到新路径和 canonical 取源约束
+- Regression checks:
+  - `bash -n longrun/workspaces/openclaw-usb-portable/execution/scripts/*.sh`
+  - `bash -n longrun/workspaces/openclaw-usb-portable/execution/scripts/lib/*.sh`
+  - `bash longrun/workspaces/openclaw-usb-portable/execution/scripts/build-delivery-pack.sh`
+  - `bash longrun/workspaces/openclaw-usb-portable/execution/scripts/create-mac-handoff-copy.sh`
+  - `bash longrun/workspaces/openclaw-usb-portable/execution/scripts/create-windows-handoff-copy.sh`
+  - `./longrun/workspaces/opensparrow-unified/init.sh`
+  - `./longrun/workspaces/openclaw-usb-portable/init.sh`
+- End-to-end verification evidence:
+  - staging 包已生成在 `dist/usb-pack/openclaw-usb-pack/`
+  - build/export 脚本不再引用不存在的 `execution/delivery-pack/` 模板目录
+  - Mac handoff 已生成在 `dist/handoff/mac-feishu-usb-copy-20260323-130547/`，归档为同名 `.tar.gz`
+  - Windows handoff 已生成在 `dist/handoff/windows-feishu-usb-copy-20260323-130642/`，归档为同名 `.zip`
+  - bundled runtime 来源说明已收口为 `vendor snapshot`
+- Known risks:
+  - Windows handoff copy 仍建议补一次真实 Windows 主机验证
+  - `F-006`（DingTalk Win/Mac parity）仍未执行完成
+- Next feature candidate:
+  - 回到 `F-006`
+  - 或继续做 native wrapper 的进一步薄化与 release/archive 策略
+- Progress snapshot: 8/8 passing
+
 ## Handoff quickstart
 - Init command: `./longrun/workspaces/opensparrow-unified/init.sh`
 - Session start: `./longrun/scripts/session_start.sh longrun/workspaces/opensparrow-unified`
@@ -76,6 +109,7 @@
 - USB install (Windows): `powershell -ExecutionPolicy Bypass -File scripts/openclaw-usb/install-local-feishu.ps1 -Profile usb-portable -Port 18889`
 - Blockers (if any): 当前无根级结构阻断；剩余工作集中在 build/export 与 native wrapper 收口
 - Notes for next session:
+  - 如需导出交付件，优先查看 `dist/usb-pack/` 与 `dist/handoff/`
   - 继续推进 build/export 收口
   - 把 native wrapper 再进一步薄化
   - 再决定 legacy 目录的物理 archive 时机

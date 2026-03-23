@@ -5,11 +5,11 @@
 ## 分层
 
 - `build-delivery-pack.sh`
-  - 负责把 docs / entrypoints / runbooks / 核心脚本组装成 staging 包。
+  - 负责从根级 canonical 路径组装 staging 包，并输出到 `dist/usb-pack/`。
 - `create-mac-handoff-copy.sh`
-  - 负责生成 Mac 专属 handoff copy。
+  - 负责生成 Mac 专属 handoff copy，并输出到 `dist/handoff/`。
 - `create-windows-handoff-copy.sh`
-  - 负责生成 Windows 专属 handoff copy。
+  - 负责生成 Windows 专属 handoff copy，并输出到 `dist/handoff/`。
 - `run-f001-from-local-defaults.sh`
   - 负责本机执行验证辅助。
 - `lib/export-common.sh`
@@ -29,3 +29,11 @@
 - 交付包组装
 - 平台专属导出
 - 执行期辅助编排
+
+## 真源约束
+
+- 平台入口从 `platforms/mac/wrappers/` 与 `platforms/windows/wrappers/` 取源。
+- 共享安装逻辑从 `scripts/openclaw-usb/` 取源。
+- bundled runtime 从 `vendor/` 取源。
+- 交付说明与 runbook 从 `docs/usb-pack/` 与 `docs/runbooks/` 取源。
+- 本目录不再维护 `delivery-pack/` 模板副本，也不再把生成物写回 `execution/`。

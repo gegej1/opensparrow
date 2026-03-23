@@ -10,6 +10,10 @@
 bash longrun/workspaces/openclaw-usb-portable/execution/scripts/build-delivery-pack.sh
 ```
 
+默认输出：`dist/usb-pack/openclaw-usb-pack/`
+
+组包来源：`docs/usb-pack/`、`docs/runbooks/`、`platforms/*/wrappers/`、`scripts/openclaw-usb/`
+
 ## 验收点
 
 - staging 包目录完整

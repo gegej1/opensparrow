@@ -11,7 +11,7 @@
 1. 功能隔离：本目录只处理本地与 U 盘交付，不触碰 Notion 联动流程。
 2. 运行隔离：所有执行统一使用 `openclaw --profile usb-portable`。
 3. 状态隔离：配置、state、agent auth、workspace、service、gateway port 全部隔离。
-4. 证据隔离：日志、probe、smoke test、交付包 staging 全部写到本目录。
+4. 证据隔离：日志、probe、smoke test 仍写到执行 workspace；生成物统一写到根级 `dist/`。
 5. 导出边界隔离：对外导出副本只保留 Feishu 本地/U 盘部署资产，不混入 Notion/VPS 内容。
 
 ## 我们隔离的是什么
@@ -25,7 +25,7 @@
 - Gateway port：默认请求 `18889`，若占用则自动回退到下一个空闲端口
 - 执行日志：`longrun/workspaces/openclaw-usb-portable/execution/logs/`
 - 验证证据：`longrun/workspaces/openclaw-usb-portable/execution/evidence/`
-- U 盘 staging 包：`longrun/workspaces/openclaw-usb-portable/execution/delivery-pack/staged/openclaw-usb-pack/`
+- U 盘 staging 包：`dist/usb-pack/openclaw-usb-pack/`
 
 ## 仍然共享的东西
 
@@ -48,7 +48,7 @@
 - 方案文档：`longrun/workspaces/openclaw-usb-portable/execution/docs/`
 - Runbook：`longrun/workspaces/openclaw-usb-portable/execution/runbooks/`
 - 本机联调辅助脚本：`longrun/workspaces/openclaw-usb-portable/execution/scripts/`
-- 交付包模板：`longrun/workspaces/openclaw-usb-portable/execution/delivery-pack/`
+- canonical 组包源：`docs/usb-pack/`、`docs/runbooks/`、`platforms/*/wrappers/`、`scripts/openclaw-usb/`
 
 ### 3. 最终 U 盘包
 
@@ -90,6 +90,7 @@ openclaw-usb-pack/
 - Notion 相关 specs / scripts / research 不进入导出副本。
 - 如果需要源码参考，只附带 002 USB/Feishu 本地部署相关文件，不附带 003 Notion 集成资产。
 - 导出公共逻辑统一收敛到 `execution/scripts/lib/export-common.sh`，平台脚本只保留平台差异。
+- bundled runtime 统一从根级 `vendor/` 复制，不再依赖本机全局安装或在线下载。
 
 ## 平台策略
 

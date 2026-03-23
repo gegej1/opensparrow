@@ -163,5 +163,29 @@
     "evidence_hint": "Archive docs + verify script + Docker assets + status validation",
     "risk": "high",
     "passes": true
+  },
+  {
+    "id": "F-008",
+    "priority": 2,
+    "category": "build-export",
+    "component": "dist-export-closure",
+    "description": "The USB build/export pipeline writes generated outputs under `dist/` and packages only canonical root assets from `platforms/`, `vendor/`, `scripts/`, `ui/`, and root docs.",
+    "depends_on": [
+      "F-007"
+    ],
+    "acceptance_criteria": [
+      "`build-delivery-pack.sh` writes the staging pack to `dist/usb-pack/openclaw-usb-pack/`.",
+      "Mac and Windows handoff scripts write outputs to `dist/handoff/`.",
+      "Packaged wrappers, docs, and runtime come from canonical root paths rather than frozen directories, missing workspace templates, or host-global runtime state.",
+      "Affected docs, spec, feature list, and progress logs are synchronized."
+    ],
+    "steps": [
+      "Redirect staging and handoff outputs to root `dist/`.",
+      "Switch packaging sources to canonical root wrappers/docs/scripts and vendor runtime bundles.",
+      "Validate shell syntax and rebuild the staging pack before syncing handoff records."
+    ],
+    "evidence_hint": "Spec-008 + dist tree + bash -n output + synced handoff logs",
+    "risk": "medium",
+    "passes": true
   }
 ]

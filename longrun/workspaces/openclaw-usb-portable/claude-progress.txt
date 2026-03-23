@@ -268,3 +268,32 @@
   - 回到 F-006 或继续 build/export / native wrapper 收口
 - Progress snapshot: 6/7 passing（F-006 pending, F-007 complete）
 
+## Session 14 (F-008 / W-002 Build-Export Dist Closure)
+- Date: 2026-03-23
+- Goal: 把 USB build/export 导出链从旧 `execution/*` 生成物路径收口到根级 `dist/`，并把 runtime / wrapper / docs 的取源全部切回 canonical 根路径。
+- Selected feature id: `F-008` / W-002
+- Changes made:
+  - 新增 `specs/008-build-export-dist-closure/`（spec / plan / tasks）
+  - `execution/scripts/build-delivery-pack.sh` 已改为从 `docs/usb-pack/`、`docs/runbooks/`、`platforms/*/wrappers/`、`scripts/openclaw-usb/` 组包，并输出到 `dist/usb-pack/openclaw-usb-pack/`
+  - `execution/scripts/create-mac-handoff-copy.sh` 与 `create-windows-handoff-copy.sh` 已改为输出到 `dist/handoff/`
+  - `execution/scripts/lib/export-common.sh` 已改为从 `vendor/` 复制 bundled runtime 与 canonical source snapshot，不再依赖 `$HOME/.npm-global` 或在线下载 Node
+  - 新增 `platforms/windows/wrappers/install-local-feishu.ps1` 与 `platforms/windows/wrappers/harden-local-feishu.ps1` 作为包内桥接入口真源
+  - `docs/usb-pack/*`、`execution/docs/*`、`docs/runbooks/F-003-usb-delivery-pack.md` 与 `execution/README.md` 已同步到 `dist/` 路径与 canonical 取源说明
+- Validation highlights:
+  - `bash -n longrun/workspaces/openclaw-usb-portable/execution/scripts/*.sh`
+  - `bash -n longrun/workspaces/openclaw-usb-portable/execution/scripts/lib/*.sh`
+  - `bash longrun/workspaces/openclaw-usb-portable/execution/scripts/build-delivery-pack.sh`
+  - `bash longrun/workspaces/openclaw-usb-portable/execution/scripts/create-mac-handoff-copy.sh`
+  - `bash longrun/workspaces/openclaw-usb-portable/execution/scripts/create-windows-handoff-copy.sh`
+  - `./longrun/workspaces/opensparrow-unified/init.sh`
+  - `./longrun/workspaces/openclaw-usb-portable/init.sh`
+- End-to-end verification evidence:
+  - staging 包已落在 `dist/usb-pack/openclaw-usb-pack/`
+  - Mac handoff 已生成在 `dist/handoff/mac-feishu-usb-copy-20260323-130547/`，归档为同名 `.tar.gz`
+  - Windows handoff 已生成在 `dist/handoff/windows-feishu-usb-copy-20260323-130642/`，归档为同名 `.zip`
+  - 当前脚本已不再引用不存在的 `execution/delivery-pack/` 模板目录
+  - 当前版本文件来源说明已切为 `vendor snapshot`
+- Next feature candidate:
+  - 回到 F-006
+  - 或继续 native wrapper / release archive 的下一轮收口
+- Progress snapshot: 7/8 passing（F-006 pending, F-008 complete）

@@ -37,7 +37,7 @@ bash longrun/workspaces/openclaw-usb-portable/execution/scripts/create-windows-h
 
 默认导出：
 
-- 目录：`longrun/workspaces/openclaw-usb-portable/execution/export/windows-feishu-usb-copy-*/`
+- 目录：`dist/handoff/windows-feishu-usb-copy-*/`
 - 压缩包：同名 `.zip`
 
 ## 目标机使用方式

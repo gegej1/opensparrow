@@ -160,5 +160,30 @@
     "evidence_hint": "root archive doc + verify script + docker baseline + synced legacy handoff",
     "risk": "high",
     "passes": true
+  },
+  {
+    "id": "F-008",
+    "priority": 1,
+    "category": "build-export",
+    "component": "dist-export-closure",
+    "description": "把 USB build/export 导出链收口到根级 `dist/`，并确保导出只从 canonical 根路径（`platforms/`、`vendor/`、`scripts/`、`ui/`、根级 docs）取源。",
+    "depends_on": [
+      "F-003",
+      "F-007"
+    ],
+    "acceptance_criteria": [
+      "`build-delivery-pack.sh` 输出到 `dist/usb-pack/openclaw-usb-pack/`。",
+      "`create-mac-handoff-copy.sh` 与 `create-windows-handoff-copy.sh` 输出到 `dist/handoff/`。",
+      "交付包入口、文档、runbook 与 runtime 分别来自 canonical `platforms/`、`docs/`、`scripts/`、`vendor/`，不再依赖 frozen 目录或本机全局 runtime。",
+      "相关说明文档、spec 与 handoff 已同步。"
+    ],
+    "steps": [
+      "把 staging / handoff 输出目录收口到根级 `dist/`。",
+      "把组包源切到 canonical wrappers/docs/scripts，并补齐 Windows 包内桥接 wrapper。",
+      "把 bundled runtime 切到 `vendor/` 并完成 shell 验证与 staging build。"
+    ],
+    "evidence_hint": "spec-008 + dist 输出树 + bash -n + unified/portable handoff",
+    "risk": "medium",
+    "passes": true
   }
 ]
