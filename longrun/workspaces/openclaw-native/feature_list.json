@@ -1,0 +1,117 @@
+[
+  {
+    "id": "F-001",
+    "priority": 1,
+    "category": "infrastructure",
+    "component": "persistent-workflow",
+    "description": "The imported openclaw-native workspace remains usable inside the opensparrow root repo.",
+    "depends_on": [],
+    "acceptance_criteria": [
+      "`longrun/workspaces/openclaw-native/` exists in the repo root.",
+      "Its `app_spec.md`, `feature_list.json`, `init.sh`, and `claude-progress.txt` point to the new root structure.",
+      "Imported vendor and companion boundaries are documented."
+    ],
+    "steps": [
+      "Preserve the workspace after moving into the new root.",
+      "Update metadata and init paths to the canonical structure.",
+      "Keep handoff instructions usable for future sessions."
+    ],
+    "evidence_hint": "Workspace files updated to opensparrow root",
+    "risk": "low",
+    "passes": true
+  },
+  {
+    "id": "F-002",
+    "priority": 1,
+    "category": "functional",
+    "component": "linux-companion",
+    "description": "Linux users can follow the imported guide and use companion source files under `platforms/linux/companion/` consistently.",
+    "depends_on": [
+      "F-001"
+    ],
+    "acceptance_criteria": [
+      "`platforms/linux/companion/使用说明.md` matches the actual source files.",
+      "Touched Linux shell scripts pass `bash -n`.",
+      "Linux-side path changes are reflected in docs and progress notes."
+    ],
+    "steps": [
+      "Read `platforms/linux/companion/使用说明.md` and the current script set.",
+      "Compare documented commands with actual file names and intended copy-into-runtime flow.",
+      "Validate touched shell scripts and record evidence."
+    ],
+    "evidence_hint": "Guide-to-script mapping + shell syntax check output",
+    "risk": "medium",
+    "passes": false
+  },
+  {
+    "id": "F-003",
+    "priority": 1,
+    "category": "functional",
+    "component": "mac-companion",
+    "description": "macOS users can follow the imported guide and use companion source files under `platforms/mac/companion/` without command drift.",
+    "depends_on": [
+      "F-001"
+    ],
+    "acceptance_criteria": [
+      "`platforms/mac/companion/使用指南-mac版.md` matches the actual script entry points.",
+      "Touched macOS shell scripts pass `bash -n`.",
+      "Workflow adjustments are reflected in docs and progress notes."
+    ],
+    "steps": [
+      "Read the macOS guide and current entrypoint scripts.",
+      "Check whether guide text, file names, and execution order remain aligned.",
+      "Validate touched shell scripts and capture evidence."
+    ],
+    "evidence_hint": "Guide-to-script mapping + shell syntax check output",
+    "risk": "medium",
+    "passes": false
+  },
+  {
+    "id": "F-004",
+    "priority": 1,
+    "category": "functional",
+    "component": "windows-companion",
+    "description": "Windows users can use the imported PowerShell companion files under `platforms/windows/companion/` consistently.",
+    "depends_on": [
+      "F-001"
+    ],
+    "acceptance_criteria": [
+      "`platforms/windows/companion/使用指南.md` matches the actual PowerShell script names.",
+      "Touched PowerShell scripts have a recorded validation approach or dry-run evidence.",
+      "Windows workflow changes are documented in progress notes."
+    ],
+    "steps": [
+      "Read the Windows guide and current PowerShell script set.",
+      "Compare documented commands with actual file names and expected sequencing.",
+      "Record validation evidence for any touched PowerShell script."
+    ],
+    "evidence_hint": "Guide-to-script mapping + validation notes",
+    "risk": "medium",
+    "passes": false
+  },
+  {
+    "id": "F-005",
+    "priority": 2,
+    "category": "documentation",
+    "component": "repo-docs",
+    "description": "Imported openclaw-native docs and handoff records stay synchronized with the opensparrow root layout.",
+    "depends_on": [
+      "F-002",
+      "F-003",
+      "F-004"
+    ],
+    "acceptance_criteria": [
+      "The workspace docs mention the current root path and canonical structure.",
+      "Platform guides remain accurate after any source path changes.",
+      "`claude-progress.txt` clearly points to the next highest-value task."
+    ],
+    "steps": [
+      "Audit root docs and platform guides after path adaptation.",
+      "Update any mismatched references.",
+      "Refresh handoff notes with the next feature candidate and evidence."
+    ],
+    "evidence_hint": "Updated docs + progress snapshot + next feature recommendation",
+    "risk": "low",
+    "passes": false
+  }
+]

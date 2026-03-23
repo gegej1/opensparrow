@@ -1,0 +1,31 @@
+# Progress Log (Longrun Standard v2)
+
+## Session 1 (Initializer)
+- Date:
+- Goal:
+- Workspace path:
+- Project root:
+- What was created:
+- Feature list scope summary:
+- Verification evidence:
+- Progress snapshot: 0/0 passing
+- Next feature candidate:
+
+## Session N (Coding)
+- Date:
+- Goal:
+- Selected feature id:
+- Changes made:
+- Regression checks:
+- End-to-end verification evidence:
+- Known risks:
+- Open questions:
+- Next feature candidate:
+- Progress snapshot: X/Y passing
+
+## Handoff quickstart
+- Init command:
+- Smoke test command:
+- App start command:
+- Blockers (if any):
+- Notes for next session:

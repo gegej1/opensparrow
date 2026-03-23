@@ -1,0 +1,58 @@
+# Progress Log (opensparrow-unified)
+
+## Session 1 (Root Unification Bootstrap)
+- Date: 2026-03-23
+- Goal: 把统一真源工作根正式切换到 `opensparrow/`，并完成第一阶段上下文迁移、规则合并与结构收口。
+- Workspace path: `longrun/workspaces/opensparrow-unified`
+- Project root: `/Users/eduardogan/Desktop/GHJProject/opensparrow`
+- Imported contexts:
+  - `openclawNative` → `vendor/`、`platforms/*/companion/`、`.codex/`、`.specify/`、`longrun/`、`docs/`
+  - `opensparrow_win/feishu-source` → `specs/`、`scripts/openclaw-usb/`、`skills/`、`research/`、`longrun/workspaces/openclaw-usb-portable/`
+  - `opensparrow_win/usb-pack` → `ui/`、`docs/usb-pack/`、`docs/runbooks/`、`platforms/*/wrappers/`
+- What was created or updated:
+  - 根级 `AGENTS.md`
+  - 根级 `.gitattributes`
+  - 根级 `.gitignore`
+  - 根级 `README.md`
+  - 根级 `docs/项目持久化说明.md`
+  - 根级 `docs/多平台统一仓方案-20260323.md`
+  - 根级 `.specify/memory/constitution.md`
+  - `specs/006-opensparrow-root-unification/`
+  - `longrun/workspaces/opensparrow-unified/`
+  - legacy workspace 路径适配完成，并已通过 init 验证
+- Confirmed planning conclusions:
+  1) 统一真源仓继续成立，但工作根改为 `opensparrow/`；
+  2) 统一仓不要求统一入口脚本；
+  3) 应冻结 legacy 目录，而不是继续在其上手改；
+  4) 容器化仍是后续 Phase，不在本次抢跑实现。
+- Verification evidence:
+  - `git init -b main` 已在根目录执行
+  - `./longrun/workspaces/opensparrow-unified/init.sh` 通过
+  - `./longrun/workspaces/openclaw-native/init.sh` 通过
+  - `./longrun/workspaces/openclaw-usb-portable/init.sh` 通过
+  - `bash -n scripts/openclaw-usb/*.sh`、`bash -n platforms/linux/companion/*.sh`、`bash -n platforms/mac/companion/*`、`bash -n platforms/mac/wrappers/*.command` 通过
+- Progress snapshot: 6/7 passing（legacy 归档与 Docker baseline pending）
+- Next feature candidate: `F-007`
+
+## Session N (Coding)
+- Date:
+- Goal:
+- Selected feature id:
+- Changes made:
+- Regression checks:
+- End-to-end verification evidence:
+- Known risks:
+- Open questions:
+- Next feature candidate:
+- Progress snapshot: X/Y passing
+
+## Handoff quickstart
+- Init command: `./longrun/workspaces/opensparrow-unified/init.sh`
+- Session start: `./longrun/scripts/session_start.sh longrun/workspaces/opensparrow-unified`
+- USB install (macOS/Linux): `bash scripts/openclaw-usb/install-local-feishu.sh --profile usb-portable --port 18889`
+- USB install (Windows): `powershell -ExecutionPolicy Bypass -File scripts/openclaw-usb/install-local-feishu.ps1 -Profile usb-portable -Port 18889`
+- Blockers (if any): 下一阶段主要是 legacy 归档与 Docker baseline，不再是根级收口阻断
+- Notes for next session:
+  - 继续冻结并归档 legacy 目录
+  - 规划并实现 `deploy/docker/` 容器基线
+  - 把 build/export 与 native wrapper 再进一步收口

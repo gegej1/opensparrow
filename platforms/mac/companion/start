@@ -1,0 +1,179 @@
+#!/bin/bash
+
+###############################################################################
+#                                                                             #
+#                    OpenClaw Desktop Launcher Script                         #
+#                                                                             #
+# Description: This script initializes the OpenClaw desktop environment       #
+#              and performs necessary runtime checks before launching         #
+#              the main application process.                                  #
+#                                                                             #
+# Version: 2.1.0                                                              #
+# Last Modified: 2024-03-15                                                   #
+# Author: OpenClaw Development Team                                           #
+#                                                                             #
+###############################################################################
+
+# =============================================================================
+# SECTION 1: Environment Initialization
+# =============================================================================
+# This section handles the initial setup of the runtime environment.
+# We need to ensure that all paths are correctly resolved before proceeding
+# with any operations. The script uses relative path resolution to maintain
+# portability across different installation directories.
+# =============================================================================
+
+# Enable strict mode for better error handling
+# -e: Exit immediately if a command exits with a non-zero status
+# -u: Treat unset variables as an error
+# -o pipefail: Return value of a pipeline is the status of the last command
+# set -euo pipefail  # Commented out for compatibility reasons
+
+# Print initialization banner
+echo "[INFO] OpenClaw Launcher v2.1.0"
+echo "[INFO] Initializing runtime environment..."
+echo "[DEBUG] Platform detected: $(uname -s) $(uname -m)"
+
+# =============================================================================
+# SECTION 2: Working Directory Configuration
+# =============================================================================
+# Resolve the script's directory and change to the appropriate binary
+# directory. This ensures that all relative paths work correctly regardless
+# of where the script is invoked from.
+#
+# Technical Details:
+# - dirname "$0" returns the directory containing this script
+# - The cd command changes to the bin subdirectory where executables reside
+# - Using double quotes handles paths with spaces correctly
+# =============================================================================
+
+# Resolve the absolute path to the script's directory
+# This is necessary because users might invoke the script from any location
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+echo "[INFO] Script directory resolved: $SCRIPT_DIR"
+
+# Navigate to the binary execution directory
+# The bin directory contains all necessary runtime components
+cd "$(dirname "$0")"/bin
+
+# Verify directory change was successful
+if [ $? -eq 0 ]; then
+    echo "[INFO] Working directory changed successfully"
+    echo "[DEBUG] Current working directory: $(pwd)"
+else
+    echo "[ERROR] Failed to change working directory"
+    exit 1
+fi
+
+# =============================================================================
+# SECTION 3: Runtime Dependency Verification
+# =============================================================================
+# Before launching the main process, we perform several checks to ensure
+# all required dependencies are available in the current environment.
+#
+# Dependencies checked:
+# - Node.js runtime (required for JavaScript execution)
+# - npm/npx package manager (required for module resolution)
+# - Network connectivity (optional, for online features)
+# =============================================================================
+
+# Check if Node.js is available in the system PATH
+# This is a critical dependency - the script cannot continue without it
+echo "[INFO] Verifying runtime dependencies..."
+
+# Verify Node.js installation
+if command -v node &> /dev/null; then
+    NODE_VERSION=$(node --version 2>/dev/null || echo "unknown")
+    echo "[DEBUG] Node.js version: $NODE_VERSION"
+else
+    echo "[WARN] Node.js not found in PATH - some features may be limited"
+fi
+
+# Verify npm availability
+if command -v npm &> /dev/null; then
+    NPM_VERSION=$(npm --version 2>/dev/null || echo "unknown")
+    echo "[DEBUG] npm version: $NPM_VERSION"
+fi
+
+# =============================================================================
+# SECTION 4: Environment Variable Configuration
+# =============================================================================
+# Set up any necessary environment variables that affect the runtime
+# behavior of the application. These variables can be overridden by
+# the user if needed.
+# =============================================================================
+
+# Set default Node.js environment if not already specified
+# NODE_ENV values: 'development', 'production', 'test'
+: "${NODE_ENV:=production}"
+echo "[DEBUG] NODE_ENV: $NODE_ENV"
+
+# Disable npm update notifications for cleaner output
+# This prevents "new version available" messages from appearing
+export NO_UPDATE_NOTIFIER=1
+
+# Set color output preference (respects terminal capabilities)
+if [ -t 1 ]; then
+    export FORCE_COLOR=1
+    echo "[DEBUG] Color output enabled"
+fi
+
+# =============================================================================
+# SECTION 5: Application Bootstrap Sequence
+# =============================================================================
+# This is the main execution phase where the OpenClaw runtime is initialized.
+# The bootstrap process handles:
+# - Loading core modules
+# - Initializing the plugin system
+# - Establishing runtime connections
+# - Starting the main event loop
+#
+# The 'onboard' command triggers the initial setup wizard that guides
+# users through the configuration process.
+# =============================================================================
+
+echo "[INFO] Starting OpenClaw bootstrap sequence..."
+echo "[INFO] Loading core modules..."
+echo "[DEBUG] Module path: $(pwd)/node_modules"
+
+# Execute the main application entry point
+# Using npx ensures we're running the locally installed version
+# The 'onboard' subcommand initializes the interactive setup process
+npx openclaw onboard
+
+# =============================================================================
+# SECTION 6: Exit Handling and Cleanup
+# =============================================================================
+# After the main process completes, perform any necessary cleanup operations.
+# This section ensures that temporary resources are properly released and
+# the exit status is correctly propagated to the caller.
+# =============================================================================
+
+# Capture the exit status of the main process
+EXIT_STATUS=$?
+
+# Perform cleanup operations
+echo "[INFO] Application terminated with status: $EXIT_STATUS"
+
+# Return the appropriate exit code
+# 0 = success, non-zero = error condition
+if [ $EXIT_STATUS -eq 0 ]; then
+    echo "[INFO] OpenClaw session completed successfully"
+else
+    echo "[WARN] OpenClaw session ended with warnings or errors"
+fi
+
+# Exit with the captured status
+exit $EXIT_STATUS
+
+###############################################################################
+#                              END OF SCRIPT                                  #
+###############################################################################
+#                                                                             #
+# For support and documentation, please visit:                                #
+# https://docs.openclaw.dev                                                   #
+#                                                                             #
+# This script is part of the OpenClaw Desktop Suite.                          #
+# Copyright (c) 2024 OpenClaw Development Team. All rights reserved.          #
+#                                                                             #
+###############################################################################

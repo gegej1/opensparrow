@@ -1,0 +1,50 @@
+[
+  {
+    "id": "F-001",
+    "priority": 1,
+    "category": "functional",
+    "description": "User can open the application and see the main page without errors.",
+    "steps": [
+      "Start the app with init.sh.",
+      "Open the app URL in browser.",
+      "Verify main page renders and no crash occurs."
+    ],
+    "passes": false
+  },
+  {
+    "id": "F-002",
+    "priority": 1,
+    "category": "functional",
+    "description": "User can complete the primary happy-path action.",
+    "steps": [
+      "Navigate to the main interaction screen.",
+      "Perform the primary action.",
+      "Verify expected system response appears."
+    ],
+    "passes": false
+  },
+  {
+    "id": "F-003",
+    "priority": 2,
+    "category": "quality",
+    "description": "Validation and user-visible error handling work for invalid input.",
+    "steps": [
+      "Submit invalid input.",
+      "Verify validation message is shown.",
+      "Verify app remains usable after error."
+    ],
+    "passes": false
+  },
+  {
+    "id": "F-004",
+    "priority": 3,
+    "category": "style",
+    "description": "Core UI remains readable and usable on mobile width.",
+    "steps": [
+      "Open app with mobile viewport.",
+      "Verify no text overlap or overflow.",
+      "Verify primary buttons are reachable and readable."
+    ],
+    "passes": false
+  }
+]

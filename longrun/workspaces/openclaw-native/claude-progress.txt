@@ -1,0 +1,68 @@
+# Progress Log (openclawNative)
+
+## Session 1 (Initializer)
+- Date: 2026-03-22
+- Goal: 将外部代码框架模板落到当前仓库，并建立可持续开发与交接的持久化工作区。
+- Workspace path: `longrun/workspaces/openclaw-native`
+- Project root: `/Users/eduardogan/Desktop/GHJProject/openclawNative`
+- What was created:
+  - 导入 `longrun/`、`.specify/`、`.codex/`、`scripts/codex`、`docs/`
+  - 创建根目录 `AGENTS.md`、`.gitignore`、`docs/项目持久化说明.md`
+  - 为当前项目初始化 `openclaw-native` 工作区
+  - 为 vendor 运行时目录补充约束说明
+- Feature list scope summary:
+  - `F-001`：持久化骨架已落地
+  - `F-002`：Linux 配套脚本与文档校准
+  - `F-003`：macOS 配套脚本与文档校准
+  - `F-004`：Windows 配套脚本与文档校准
+  - `F-005`：仓库级文档与交接记录同步
+- Verification evidence:
+  - `./longrun/scripts/bootstrap.sh openclaw-native` 执行成功
+  - 工作区文件已创建
+  - 项目规则与持久化说明已落盘
+- Progress snapshot: 1/5 passing
+- Next feature candidate: `F-002`
+
+## Session 2 (Imported Into OpenSparrow Root)
+- Date: 2026-03-23
+- Goal: 把 openclaw-native 的 long-term 上下文迁入 `opensparrow/` 根目录，并适配新的 canonical 结构。
+- Workspace path: `longrun/workspaces/openclaw-native`
+- Project root: `/Users/eduardogan/Desktop/GHJProject/opensparrow`
+- Changes made:
+  - `vendor/` 与 `platforms/*/companion/` 已从原 openclawNative 目录迁入根目录
+  - 本 workspace 的 `app_spec.md`、`feature_list.json`、`init.sh` 已改为新的根路径与结构
+  - handoff 快速入口已改为 root canonical 路径
+- Regression checks:
+  - 待执行 `./longrun/workspaces/openclaw-native/init.sh`
+  - 待执行 `bash -n platforms/linux/companion/*.sh`
+  - 待执行 `bash -n platforms/mac/companion/*`
+- Known risks:
+  - companion 文件是 source 模板，仍需按平台指南复制进 runtime 后运行
+  - 三端端到端实际流程尚未逐一做新路径下的冒烟验证
+- Next feature candidate: `F-002`
+- Progress snapshot: 1/5 passing（路径迁移完成，平台校准待继续）
+
+## Session N (Coding)
+- Date:
+- Goal:
+- Selected feature id:
+- Changes made:
+- Regression checks:
+- End-to-end verification evidence:
+- Known risks:
+- Open questions:
+- Next feature candidate:
+- Progress snapshot: X/Y passing
+
+## Handoff quickstart
+- Init command: `./longrun/workspaces/openclaw-native/init.sh`
+- Smoke test command: `./longrun/workspaces/openclaw-native/init.sh`
+- Source locations:
+  - Linux: `platforms/linux/companion/日常使用.sh`
+  - macOS: `platforms/mac/companion/start`
+  - Windows: `powershell -ExecutionPolicy Bypass -File ./platforms/windows/companion/start-gateway.ps1`
+- Blockers (if any): 三端实际运行流程尚未逐一做端到端冒烟验证
+- Notes for next session:
+  - 先运行 `./longrun/scripts/session_start.sh longrun/workspaces/openclaw-native`
+  - 从 `F-002` 开始，逐个平台核对使用指南与 companion 源文件是否一致
+  - 每完成一个平台，就更新 `feature_list.json` 的 `passes` 与本文件中的验证记录

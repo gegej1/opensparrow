@@ -1,0 +1,166 @@
+[
+  {
+    "id": "F-001",
+    "priority": 1,
+    "category": "infrastructure",
+    "component": "root-persistence",
+    "description": "The opensparrow root contains a usable Longrun + Spec-Kit persistence workflow and a dedicated unified workspace.",
+    "depends_on": [],
+    "acceptance_criteria": [
+      "`AGENTS.md`, `.specify/`, `.codex/`, `docs/`, `longrun/`, and `scripts/codex` exist in the repo root.",
+      "`longrun/workspaces/opensparrow-unified/` exists with app spec, feature list, progress log, and init script.",
+      "`docs/项目持久化说明.md` points future sessions to the unified workspace."
+    ],
+    "steps": [
+      "Import the persistence skeleton into the root.",
+      "Create a unified workspace for continued execution.",
+      "Update persistence docs to point at the new workspace."
+    ],
+    "evidence_hint": "Root tree + unified workspace files + docs updated",
+    "risk": "low",
+    "passes": true
+  },
+  {
+    "id": "F-002",
+    "priority": 1,
+    "category": "migration",
+    "component": "openclaw-native-import",
+    "description": "openclawNative source-of-truth assets are imported into canonical `vendor/` and `platforms/*/companion/` directories and its legacy workspace is adapted.",
+    "depends_on": [
+      "F-001"
+    ],
+    "acceptance_criteria": [
+      "`vendor/{linux-openclaw,mac-openclaw,windows-openclaw}/` exist in the root.",
+      "`platforms/{linux,mac,windows}/companion/` contain the migrated source files.",
+      "`longrun/workspaces/openclaw-native/` points to the new root paths."
+    ],
+    "steps": [
+      "Copy vendor bundles into `vendor/`.",
+      "Copy companion source files into `platforms/*/companion/`.",
+      "Adapt the imported openclaw-native workspace metadata and init script."
+    ],
+    "evidence_hint": "Canonical structure + workspace diff",
+    "risk": "medium",
+    "passes": true
+  },
+  {
+    "id": "F-003",
+    "priority": 1,
+    "category": "migration",
+    "component": "portable-source-import",
+    "description": "The OpenSparrow USB/Feishu source-of-truth assets are imported into the root and the portable legacy workspace remains usable.",
+    "depends_on": [
+      "F-001"
+    ],
+    "acceptance_criteria": [
+      "`specs/002-*` through `specs/005-*`, `scripts/openclaw-usb/`, `skills/`, `research/`, `ui/`, and `docs/runbooks/` exist in the root.",
+      "`longrun/workspaces/openclaw-usb-portable/` exists in the root with its execution docs preserved.",
+      "The portable workspace metadata no longer points to the old root as the active repo root."
+    ],
+    "steps": [
+      "Copy portable source-of-truth assets from `feishu-source/`.",
+      "Copy UI, runbooks, and docs from `usb-pack/` source directories.",
+      "Update portable workspace metadata to the new root."
+    ],
+    "evidence_hint": "Root specs/scripts/ui/docs + portable workspace updated",
+    "risk": "medium",
+    "passes": true
+  },
+  {
+    "id": "F-004",
+    "priority": 1,
+    "category": "planning",
+    "component": "multi-platform-scheme",
+    "description": "A merged multi-platform unification scheme based on the latest Claude/Codex research is recorded in docs, spec, and longrun.",
+    "depends_on": [
+      "F-001",
+      "F-002",
+      "F-003"
+    ],
+    "acceptance_criteria": [
+      "A root-level solution document exists under `docs/`.",
+      "`specs/006-opensparrow-root-unification/` contains `spec.md`, `plan.md`, and `tasks.md`.",
+      "The unified workspace progress log references the chosen approach and next steps."
+    ],
+    "steps": [
+      "Summarize the merged risk conclusions and execution method.",
+      "Write the new feature spec, plan, and tasks.",
+      "Record the current execution status in longrun."
+    ],
+    "evidence_hint": "Docs/specs/longrun all updated",
+    "risk": "low",
+    "passes": true
+  },
+  {
+    "id": "F-005",
+    "priority": 1,
+    "category": "infrastructure",
+    "component": "git-bootstrap",
+    "description": "The root repo is bootstrapped with `.gitattributes`, `.gitignore`, and root guidance to support a clean first Git history.",
+    "depends_on": [
+      "F-001",
+      "F-004"
+    ],
+    "acceptance_criteria": [
+      "`.gitattributes` exists in the root with LF/CRLF/binary rules.",
+      "`.gitignore` exists in the root and freezes legacy directories and generated outputs.",
+      "`AGENTS.md` and `.specify/memory/constitution.md` reflect the new root structure."
+    ],
+    "steps": [
+      "Write root line-ending and ignore policies.",
+      "Write merged agent and constitution guidance.",
+      "Initialize git in the root."
+    ],
+    "evidence_hint": "Root config files + git init",
+    "risk": "medium",
+    "passes": true
+  },
+  {
+    "id": "F-006",
+    "priority": 1,
+    "category": "validation",
+    "component": "workspace-validation",
+    "description": "The unified workspace, imported legacy workspaces, and shell entrypoints all validate under the new root layout.",
+    "depends_on": [
+      "F-002",
+      "F-003",
+      "F-005"
+    ],
+    "acceptance_criteria": [
+      "`./longrun/workspaces/opensparrow-unified/init.sh` succeeds.",
+      "Imported legacy workspace init scripts succeed or clearly report only expected optional warnings.",
+      "Touched shell and `.command` scripts pass `bash -n`."
+    ],
+    "steps": [
+      "Run unified workspace init.",
+      "Run legacy workspace init scripts.",
+      "Run shell syntax checks and record evidence."
+    ],
+    "evidence_hint": "Init output + syntax check output",
+    "risk": "medium",
+    "passes": true
+  },
+  {
+    "id": "F-007",
+    "priority": 2,
+    "category": "next-phase",
+    "component": "container-baseline",
+    "description": "After the root unification stabilizes, the repo proceeds into Docker baseline implementation under `deploy/docker/`.",
+    "depends_on": [
+      "F-006"
+    ],
+    "acceptance_criteria": [
+      "`deploy/docker/` contains Docker baseline assets.",
+      "Compose/health/probe/smoke flow is documented and runnable.",
+      "Legacy native delivery paths remain explicitly preserved."
+    ],
+    "steps": [
+      "Design container runtime assets.",
+      "Implement compose/env/entrypoints.",
+      "Validate native + container dual-path behavior."
+    ],
+    "evidence_hint": "Docker assets + validation docs",
+    "risk": "high",
+    "passes": false
+  }
+]

@@ -1,0 +1,89 @@
+[
+  {
+    "id": "F-001",
+    "priority": 1,
+    "category": "functional",
+    "component": "app-shell",
+    "description": "User can open the application and reach the primary page without runtime errors.",
+    "depends_on": [],
+    "acceptance_criteria": [
+      "Main route renders successfully.",
+      "No unhandled error appears in UI or console.",
+      "Primary entry CTA is visible."
+    ],
+    "steps": [
+      "Start the app with init.sh.",
+      "Open the app URL in browser.",
+      "Verify main page renders and no crash occurs."
+    ],
+    "evidence_hint": "Screenshot of loaded page + startup log",
+    "risk": "low",
+    "passes": false
+  },
+  {
+    "id": "F-002",
+    "priority": 1,
+    "category": "functional",
+    "component": "primary-flow",
+    "description": "User can complete the primary happy-path action.",
+    "depends_on": [
+      "F-001"
+    ],
+    "acceptance_criteria": [
+      "Primary action can be executed end-to-end.",
+      "Success state is shown to user."
+    ],
+    "steps": [
+      "Navigate to the main interaction screen.",
+      "Perform the primary action.",
+      "Verify expected system response appears."
+    ],
+    "evidence_hint": "Step-by-step result notes or video clip",
+    "risk": "medium",
+    "passes": false
+  },
+  {
+    "id": "F-003",
+    "priority": 2,
+    "category": "quality",
+    "component": "validation",
+    "description": "Validation and user-visible error handling work for invalid input.",
+    "depends_on": [
+      "F-002"
+    ],
+    "acceptance_criteria": [
+      "Invalid input triggers clear, user-facing feedback.",
+      "App remains usable after validation failure."
+    ],
+    "steps": [
+      "Submit invalid input.",
+      "Verify validation message is shown.",
+      "Verify app remains usable after error."
+    ],
+    "evidence_hint": "Screenshot of validation message and recovery path",
+    "risk": "medium",
+    "passes": false
+  },
+  {
+    "id": "F-004",
+    "priority": 3,
+    "category": "style",
+    "component": "responsive-ui",
+    "description": "Core UI remains readable and usable on mobile width.",
+    "depends_on": [
+      "F-001"
+    ],
+    "acceptance_criteria": [
+      "No clipping/overlap in key screens at mobile viewport.",
+      "Primary controls remain reachable."
+    ],
+    "steps": [
+      "Open app with mobile viewport.",
+      "Verify no text overlap or overflow.",
+      "Verify primary buttons are reachable and readable."
+    ],
+    "evidence_hint": "Mobile viewport screenshot set",
+    "risk": "low",
+    "passes": false
+  }
+]

@@ -1,0 +1,73 @@
+# =============================================
+# OS artifacts
+# =============================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# =============================================
+# Credentials and secrets
+# =============================================
+.codex/auth.json
+.codex/config.toml
+*.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+
+# =============================================
+# Generated outputs - never commit these
+# =============================================
+dist/
+longrun/workspaces/*/execution/export/
+
+# =============================================
+# Legacy snapshots / nested old repos
+# =============================================
+opensparrow_win/
+_push_opensparrow_win/
+openclaw-usb-feishu-delivery/
+openclawtest/
+
+# =============================================
+# Python
+# =============================================
+__pycache__/
+*.pyc
+
+# =============================================
+# Node.js
+# =============================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# =============================================
+# Temporary and editor files
+# =============================================
+*.tmp
+*.log
+*.swp
+*.swo
+*~
+.vscode/settings.json
+.idea/
+
+# =============================================
+# Local runtime leftovers
+# =============================================
+openclaw-*.log
+
+# =============================================
+# Vendor runtime binaries (too large for git; consider Git LFS later)
+# =============================================
+vendor/
