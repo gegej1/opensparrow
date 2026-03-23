@@ -66,6 +66,7 @@ yarn-error.log*
 # Local runtime leftovers
 # =============================================
 openclaw-*.log
+.tmp-*
 
 # =============================================
 # Vendor runtime binaries (too large for git; consider Git LFS later)

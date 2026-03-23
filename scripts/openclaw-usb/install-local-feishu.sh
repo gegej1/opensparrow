@@ -5,6 +5,7 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 project_root="$(cd "${script_dir}/../.." && pwd)"
 runtime_root="${USB_RUNTIME_ROOT:-${project_root}/runtime}"
+openclaw_home="${OPENCLAW_HOME:-${HOME}}"
 if [[ -d "${project_root}/longrun/workspaces/openclaw-usb-portable/execution" ]]; then
   default_execution_root="${project_root}/longrun/workspaces/openclaw-usb-portable/execution"
 else
@@ -16,6 +17,7 @@ default_evidence_root="${default_execution_root}/evidence"
 OPENCLAW_PROFILE_NAME="${OPENCLAW_PROFILE_NAME:-usb-portable}"
 OPENCLAW_AGENT_ID="${OPENCLAW_AGENT_ID:-main}"
 OPENCLAW_GATEWAY_PORT="${OPENCLAW_GATEWAY_PORT:-18889}"
+OPENCLAW_GATEWAY_BIND="${OPENCLAW_GATEWAY_BIND:-loopback}"
 OPENCLAW_MODEL="${OPENCLAW_MODEL:-openai/gpt-4o-mini}"
 OPENCLAW_DM_POLICY="${OPENCLAW_DM_POLICY:-open}"
 OPENCLAW_ALLOW_FROM_JSON="${OPENCLAW_ALLOW_FROM_JSON:-[\"*\"]}"
@@ -26,6 +28,7 @@ LOG_DIR="${LOG_DIR:-${default_logs_dir}}"
 EVIDENCE_DIR="${EVIDENCE_DIR:-${default_evidence_root}/$(date +%Y%m%d-%H%M%S)-install}"
 NON_INTERACTIVE="${NON_INTERACTIVE:-0}"
 PORT_SCAN_LIMIT="${OPENCLAW_PORT_SCAN_LIMIT:-50}"
+OPENCLAW_RUNTIME_MODE="${OPENCLAW_RUNTIME_MODE:-daemon}"
 
 FEISHU_APP_ID="${FEISHU_APP_ID:-}"
 FEISHU_APP_SECRET="${FEISHU_APP_SECRET:-}"
@@ -45,6 +48,7 @@ Options:
   --profile <name>            OpenClaw isolated profile name. Default: usb-portable
   --agent <id>                Agent id to configure. Default: main
   --port <port>               Dedicated gateway port for this isolated profile. Default: 18889
+  --prepare-only              Only write/validate config; skip daemon install, health, probe, and smoke
   --model <provider/model>    Default model. Default: openai/gpt-4o-mini
   --dm-policy <mode>          Feishu DM policy. Default: open
   --allow-from-json <json>    Feishu allowFrom JSON. Default: ["*"]
@@ -61,6 +65,10 @@ Options:
 Port behavior:
   - Preferred port defaults to 18889
   - If the requested port is occupied, the installer automatically scans the next free port
+
+Runtime behavior:
+  - default mode is daemon: install/restart service, then run health/probe/smoke
+  - prepare-only mode writes config/auth/evidence only, suitable for container baselines
 
 Runtime resolution order:
   1) bundled Node/OpenClaw under ./runtime/
@@ -82,6 +90,10 @@ while [[ $# -gt 0 ]]; do
     --port)
       OPENCLAW_GATEWAY_PORT="$2"
       shift 2
+      ;;
+    --prepare-only)
+      OPENCLAW_RUNTIME_MODE="prepare-only"
+      shift
       ;;
     --model)
       OPENCLAW_MODEL="$2"
@@ -139,7 +151,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-profile_state_dir="${HOME}/.openclaw-${OPENCLAW_PROFILE_NAME}"
+profile_state_dir="${openclaw_home}/.openclaw-${OPENCLAW_PROFILE_NAME}"
 profile_workspace_dir="${profile_state_dir}/workspace"
 profile_agent_dir="${profile_state_dir}/agents/${OPENCLAW_AGENT_ID}/agent"
 auth_profiles_file="${profile_agent_dir}/auth-profiles.json"
@@ -366,6 +378,10 @@ validate_bool "$OPENCLAW_REQUIRE_MENTION"
 [[ "$OPENCLAW_GATEWAY_PORT" =~ ^[0-9]+$ ]] || fail "Gateway port must be numeric."
 [[ "$PORT_SCAN_LIMIT" =~ ^[0-9]+$ ]] || fail "Port scan limit must be numeric."
 (( PORT_SCAN_LIMIT > 0 )) || fail "Port scan limit must be positive."
+case "$OPENCLAW_RUNTIME_MODE" in
+  daemon|prepare-only) ;;
+  *) fail "OPENCLAW_RUNTIME_MODE must be daemon or prepare-only, got: ${OPENCLAW_RUNTIME_MODE}" ;;
+esac
 requested_gateway_port="$OPENCLAW_GATEWAY_PORT"
 
 prompt_secret FEISHU_APP_ID "FEISHU_APP_ID" plain
@@ -375,13 +391,18 @@ prompt_secret OPENAI_API_KEY "OPENAI_API_KEY" secret
 mkdir -p "$LOG_DIR" "$EVIDENCE_DIR" "$profile_workspace_dir" "$profile_agent_dir"
 exec > >(tee -a "$install_log_file") 2>&1
 
-resolve_gateway_port "$requested_gateway_port"
+if [[ "$OPENCLAW_RUNTIME_MODE" == "daemon" ]]; then
+  resolve_gateway_port "$requested_gateway_port"
+else
+  log INFO "Prepare-only mode: keeping requested gateway port ${requested_gateway_port}."
+fi
 
 log INFO "Installing into isolated profile: ${OPENCLAW_PROFILE_NAME}"
 log INFO "Isolated state dir: ${profile_state_dir}"
 log INFO "Isolated workspace dir: ${profile_workspace_dir}"
 log INFO "Requested gateway port: ${requested_gateway_port}"
 log INFO "Dedicated gateway port: ${OPENCLAW_GATEWAY_PORT}"
+log INFO "Gateway bind: ${OPENCLAW_GATEWAY_BIND}"
 log INFO "Evidence dir: ${EVIDENCE_DIR}"
 log INFO "Log file: ${install_log_file}"
 log INFO "Runtime root candidate: ${runtime_root}"
@@ -391,7 +412,7 @@ ensure_openclaw_available
 
 log INFO "Writing isolated OpenClaw config"
 oc config set gateway.mode '"local"' --strict-json
-oc config set gateway.bind '"loopback"' --strict-json
+oc config set gateway.bind "\"${OPENCLAW_GATEWAY_BIND}\"" --strict-json
 oc config set gateway.port "$OPENCLAW_GATEWAY_PORT" --strict-json
 oc config set agents.defaults.workspace "\"${profile_workspace_dir}\"" --strict-json
 oc config set plugins.entries.feishu.enabled true --strict-json
@@ -414,24 +435,28 @@ oc models set "$OPENCLAW_MODEL"
 log INFO "Validating isolated config"
 capture_cmd "${EVIDENCE_DIR}/config-validate.json" oc config validate --json
 
-log INFO "Installing/reinstalling isolated daemon service"
-oc daemon install --force --port "$OPENCLAW_GATEWAY_PORT"
-log INFO "Restarting isolated daemon service"
-oc daemon restart
+if [[ "$OPENCLAW_RUNTIME_MODE" == "daemon" ]]; then
+  log INFO "Installing/reinstalling isolated daemon service"
+  oc daemon install --force --port "$OPENCLAW_GATEWAY_PORT"
+  log INFO "Restarting isolated daemon service"
+  oc daemon restart
 
-log INFO "Waiting for gateway health"
-if ! wait_for_gateway "${EVIDENCE_DIR}/health.json"; then
-  capture_cmd "${EVIDENCE_DIR}/daemon-status.txt" oc daemon status || true
-  capture_cmd "${EVIDENCE_DIR}/gateway-logs.txt" oc logs --plain --limit 200 --timeout 5000 || true
-  fail "Gateway did not become healthy. See ${EVIDENCE_DIR}/daemon-status.txt and ${EVIDENCE_DIR}/gateway-logs.txt"
+  log INFO "Waiting for gateway health"
+  if ! wait_for_gateway "${EVIDENCE_DIR}/health.json"; then
+    capture_cmd "${EVIDENCE_DIR}/daemon-status.txt" oc daemon status || true
+    capture_cmd "${EVIDENCE_DIR}/gateway-logs.txt" oc logs --plain --limit 200 --timeout 5000 || true
+    fail "Gateway did not become healthy. See ${EVIDENCE_DIR}/daemon-status.txt and ${EVIDENCE_DIR}/gateway-logs.txt"
+  fi
+
+  log INFO "Capturing daemon status"
+  capture_cmd "${EVIDENCE_DIR}/daemon-status.txt" oc daemon status
+  log INFO "Capturing channel probe"
+  capture_cmd "${EVIDENCE_DIR}/channels-probe.json" oc channels status --probe --json --timeout 10000
+  log INFO "Running agent smoke test"
+  capture_cmd "${EVIDENCE_DIR}/agent-smoke.json" oc agent --agent "$OPENCLAW_AGENT_ID" --message "请只回复OK" --json
+else
+  log INFO "Prepare-only mode enabled; skipping daemon install/restart and runtime smoke checks."
 fi
-
-log INFO "Capturing daemon status"
-capture_cmd "${EVIDENCE_DIR}/daemon-status.txt" oc daemon status
-log INFO "Capturing channel probe"
-capture_cmd "${EVIDENCE_DIR}/channels-probe.json" oc channels status --probe --json --timeout 10000
-log INFO "Running agent smoke test"
-capture_cmd "${EVIDENCE_DIR}/agent-smoke.json" oc agent --agent "$OPENCLAW_AGENT_ID" --message "请只回复OK" --json
 
 cat > "${EVIDENCE_DIR}/session-metadata.txt" <<META
 profile=${OPENCLAW_PROFILE_NAME}
@@ -441,6 +466,7 @@ config_file=${profile_state_dir}/openclaw.json
 agent_auth_file=${auth_profiles_file}
 requested_gateway_port=${requested_gateway_port}
 gateway_port=${OPENCLAW_GATEWAY_PORT}
+gateway_bind=${OPENCLAW_GATEWAY_BIND}
 model=${OPENCLAW_MODEL}
 dm_policy=${OPENCLAW_DM_POLICY}
 allow_from=${OPENCLAW_ALLOW_FROM_JSON}
@@ -449,9 +475,11 @@ log_file=${install_log_file}
 runtime_root=${runtime_root}
 node_cmd=${NODE_CMD}
 openclaw_mode=${OPENCLAW_MODE}
+runtime_mode=${OPENCLAW_RUNTIME_MODE}
 META
 
-cat <<EOF2
+if [[ "$OPENCLAW_RUNTIME_MODE" == "daemon" ]]; then
+  cat <<EOF2
 [DONE] OpenClaw local portable baseline is configured.
 
 Isolation summary:
@@ -462,6 +490,7 @@ Isolation summary:
 - dedicated port: ${OPENCLAW_GATEWAY_PORT}
 - evidence: ${EVIDENCE_DIR}
 - openclaw mode: ${OPENCLAW_MODE}
+- runtime mode: ${OPENCLAW_RUNTIME_MODE}
 
 Manual checks:
 1) openclaw --profile ${OPENCLAW_PROFILE_NAME} channels status --probe
@@ -469,3 +498,24 @@ Manual checks:
 3) 在飞书里给机器人发送 ok，确认能收到回复
 4) 完成联调后运行 harden 脚本收口权限
 EOF2
+else
+  cat <<EOF2
+[DONE] OpenClaw prepare-only baseline is configured.
+
+Isolation summary:
+- profile: ${OPENCLAW_PROFILE_NAME}
+- isolated state: ${profile_state_dir}
+- isolated workspace: ${profile_workspace_dir}
+- requested port: ${requested_gateway_port}
+- configured port: ${OPENCLAW_GATEWAY_PORT}
+- configured bind: ${OPENCLAW_GATEWAY_BIND}
+- evidence: ${EVIDENCE_DIR}
+- openclaw mode: ${OPENCLAW_MODE}
+- runtime mode: ${OPENCLAW_RUNTIME_MODE}
+
+Next checks:
+1) 启动容器/前台 gateway 进程，使其监听 ${OPENCLAW_GATEWAY_BIND}:${OPENCLAW_GATEWAY_PORT}
+2) openclaw --profile ${OPENCLAW_PROFILE_NAME} config validate --json
+3) gateway ready 后再做 channels probe / agent smoke
+EOF2
+fi

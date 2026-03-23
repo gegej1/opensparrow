@@ -1,0 +1,13 @@
+.git/
+.codex/
+.specify/
+dist/
+opensparrow_win/
+_push_opensparrow_win/
+openclaw-usb-feishu-delivery/
+openclawtest/
+vendor/windows-openclaw/
+vendor/mac-openclaw/
+docs/windows-delivery/
+longrun/workspaces/*/execution/export/
+

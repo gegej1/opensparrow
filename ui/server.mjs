@@ -1,7 +1,7 @@
 /**
  * ClawBot (openclaw) Local Management UI Backend
  * Node.js ESM HTTP server - no npm dependencies, uses only built-in modules.
- * Port default: 18899, auto-increments if busy.
+ * Port default: 19000, auto-increments if busy.
  */
 
 import http from 'node:http'
@@ -17,16 +17,29 @@ import os from 'node:os'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PACK_ROOT = path.resolve(__dirname, '..')          // usb-pack/
-const OC_ENTRY  = path.join(PACK_ROOT, 'runtime/openclaw/openclaw.mjs')
 const PROFILE   = process.env.OPENCLAW_PROFILE ?? 'usb-portable'
-function resolveOpenclawHome() {
-  const raw = String(process.env.OPENCLAW_HOME ?? '').trim()
-  if (!raw) return os.homedir()
+
+function resolvePathFromEnv(rawValue, fallbackPath) {
+  const raw = String(rawValue ?? '').trim()
+  if (!raw) return fallbackPath
   if (raw === '~') return os.homedir()
   if (raw.startsWith('~/') || raw.startsWith('~\\')) {
     return path.resolve(os.homedir(), raw.slice(2))
   }
   return path.resolve(raw)
+}
+
+function resolvePortFromEnv(name, fallback) {
+  const raw = Number.parseInt(String(process.env[name] ?? '').trim(), 10)
+  if (!Number.isFinite(raw) || raw <= 0) return fallback
+  return raw
+}
+
+const RUNTIME_ROOT = resolvePathFromEnv(process.env.USB_RUNTIME_ROOT, path.join(PACK_ROOT, 'runtime'))
+const OC_ENTRY  = path.join(RUNTIME_ROOT, 'openclaw', 'openclaw.mjs')
+
+function resolveOpenclawHome() {
+  return resolvePathFromEnv(process.env.OPENCLAW_HOME, os.homedir())
 }
 
 const OPENCLAW_HOME = resolveOpenclawHome()
@@ -42,8 +55,8 @@ const SKILL_TARGETS = [
   path.join(os.homedir(), '.codex', 'skills', 'superpowers'),
 ]
 
-const DEFAULT_PORT = 19000
-const GATEWAY_PORT = 18889
+const DEFAULT_PORT = resolvePortFromEnv('OPENSPARROW_UI_PORT', 19000)
+const GATEWAY_PORT = resolvePortFromEnv('OPENCLAW_GATEWAY_PORT', 18889)
 const AUTO_OPEN_BROWSER = !['0', 'false', 'no', 'off'].includes(
   String(process.env.OPENSPARROW_AUTO_OPEN ?? '').trim().toLowerCase()
 )
@@ -65,14 +78,14 @@ const OC_TIMEOUT = {
 function resolveBundledNodeBinary() {
   const candidates = process.platform === 'win32'
     ? [
-        path.join(PACK_ROOT, 'runtime/node/node.exe'),
-        path.join(PACK_ROOT, 'runtime/node/bin/node.exe'),
-        path.join(PACK_ROOT, 'runtime/node/bin/node'),
+        path.join(RUNTIME_ROOT, 'node', 'node.exe'),
+        path.join(RUNTIME_ROOT, 'node', 'bin', 'node.exe'),
+        path.join(RUNTIME_ROOT, 'node', 'bin', 'node'),
       ]
     : [
-        path.join(PACK_ROOT, 'runtime/node/bin/node'),
-        path.join(PACK_ROOT, 'runtime/node/node'),
-        path.join(PACK_ROOT, 'runtime/node/node.exe'),
+        path.join(RUNTIME_ROOT, 'node', 'bin', 'node'),
+        path.join(RUNTIME_ROOT, 'node', 'node'),
+        path.join(RUNTIME_ROOT, 'node', 'node.exe'),
       ]
 
   for (const candidate of candidates) {

@@ -39,5 +39,5 @@
 
 ## Phase 6: Next Phase Queue
 
-- [ ] T021 冻结并计划归档 legacy 目录
-- [ ] T022 进入 `deploy/docker/` 容器化基线实现
+- [x] T021 冻结并计划归档 legacy 目录
+- [x] T022 进入 `deploy/docker/` 容器化基线实现

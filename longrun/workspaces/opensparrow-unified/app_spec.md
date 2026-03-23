@@ -23,11 +23,12 @@
 2. 团队能沿 `specs/` → `plan.md` → `tasks.md` → `longrun/` 的流程继续推进仓库清理与容器化。
 3. 维护者能从 `platforms/`、`scripts/openclaw-usb/`、`ui/`、`docs/` 继续演进平台能力与导出逻辑。
 4. legacy workspace 上下文在新根目录中仍可用于交接和追踪。
+5. 维护者能验证 legacy frozen 目录的逻辑归档状态，并通过 `deploy/docker/` 运行统一容器基线。
 
 ## 3) Out of scope
-- 本工作区当前不直接完成 Docker baseline 实现。
 - 不在本阶段删除 legacy 目录或重写 OpenClaw runtime 内核。
 - 不强行统一 macOS / Windows 的原生入口脚本。
+- 不在本阶段完成 build/export 与 native wrapper 的最终收口。
 
 ## 4) Technical baseline
 - Runtime: vendor OpenClaw runtime bundles + Bash / PowerShell / `.command` wrapper
@@ -46,9 +47,13 @@
 ## 6) Commands contract
 - Init: `./longrun/workspaces/opensparrow-unified/init.sh`
 - Session start: `./longrun/scripts/session_start.sh longrun/workspaces/opensparrow-unified`
+- Verify legacy freeze: `bash scripts/verify-legacy-freeze.sh`
 - USB install (macOS/Linux): `bash scripts/openclaw-usb/install-local-feishu.sh --profile usb-portable --port 18889`
 - USB install (Windows): `powershell -ExecutionPolicy Bypass -File scripts/openclaw-usb/install-local-feishu.ps1 -Profile usb-portable -Port 18889`
 - Build delivery pack: `bash longrun/workspaces/openclaw-usb-portable/execution/scripts/build-delivery-pack.sh`
+- Docker config: `docker compose -f deploy/docker/docker-compose.yml config`
+- Docker up: `docker compose -f deploy/docker/docker-compose.yml up -d --build opensparrow-core`
+- Docker bootstrap: `docker compose --env-file deploy/docker/.env -f deploy/docker/docker-compose.yml run --rm opensparrow-bootstrap`
 - Lint shell: `bash -n scripts/openclaw-usb/*.sh && bash -n platforms/linux/companion/*.sh && bash -n platforms/mac/companion/* && bash -n platforms/mac/wrappers/*.command`
 
 ## 7) Quality and non-functional requirements
@@ -64,3 +69,4 @@
 - [ ] 根级规则文件与方案文档已到位
 - [ ] unified workspace 初始化可重复执行
 - [ ] legacy 冻结边界已清楚记录
+- [ ] `deploy/docker/` 基线已可渲染并能返回 `/api/status`

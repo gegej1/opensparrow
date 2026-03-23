@@ -1,5 +1,7 @@
 # F-007 Runbook - OpenSparrow 仓库清理、平台平衡与容器化部署基线
 
+> 2026-03-23 更新：规划产物已在根级 `opensparrow/` 真源仓进入第一轮执行。当前以根级 runbook 为准：`docs/runbooks/F-007-legacy-archive-docker-baseline.md`
+
 ## 目标
 
 为 OpenSparrow 建立下一阶段实施入口，完成四件事：
@@ -40,20 +42,19 @@
    - `platforms/windows`
    - `deploy/docker`
 
-## Phase C - 容器基线实施（目标命令）
-
-> 以下命令是本规划预期的实施目标，当前尚未落地。
+## Phase C - 容器基线实施（当前命令）
 
 ```bash
 docker compose -f deploy/docker/docker-compose.yml config
-docker compose -f deploy/docker/docker-compose.yml up -d --build
+docker compose -f deploy/docker/docker-compose.yml up -d --build opensparrow-core
+docker compose --env-file deploy/docker/.env -f deploy/docker/docker-compose.yml run --rm opensparrow-bootstrap
 curl http://127.0.0.1:19000/api/status
 ```
 
-如采用单容器主服务，容器内目标验证命令：
+容器内目标验证命令：
 
 ```bash
-docker compose -f deploy/docker/docker-compose.yml exec opensparrow-core openclaw --profile container-baseline health --json
+docker compose -f deploy/docker/docker-compose.yml exec opensparrow-core openclaw --profile container-baseline config validate --json
 docker compose -f deploy/docker/docker-compose.yml exec opensparrow-core openclaw --profile container-baseline channels status --probe
 docker compose -f deploy/docker/docker-compose.yml exec opensparrow-core openclaw --profile container-baseline agent --agent main --message "请只回复OK" --json
 ```
@@ -82,8 +83,11 @@ docker compose -f deploy/docker/docker-compose.yml exec opensparrow-core opencla
 - `specs/005-opensparrow-cleanup-containerization/tasks.md`
 - `execution/evidence/f007-*/repo-boundary-map.md`
 - `execution/evidence/f007-*/repo-strategy-decision.md`
-- `execution/evidence/f007-*/compose-config.txt`
-- `execution/evidence/f007-*/api-status.json`
+- 根级 `docs/legacy-archive-freeze-20260323.md`
+- 根级 `scripts/verify-legacy-freeze.sh`
+- 根级 `deploy/docker/Dockerfile`
+- 根级 `deploy/docker/docker-compose.yml`
+- 根级 `docs/runbooks/F-007-legacy-archive-docker-baseline.md`
 - `execution/evidence/f007-*/health.json`
 - `execution/evidence/f007-*/channels-probe.json`
 - `execution/evidence/f007-*/native-wrapper-regression.md`

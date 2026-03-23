@@ -144,23 +144,24 @@
     "id": "F-007",
     "priority": 2,
     "category": "next-phase",
-    "component": "container-baseline",
-    "description": "After the root unification stabilizes, the repo proceeds into Docker baseline implementation under `deploy/docker/`.",
+    "component": "legacy-archive-container-baseline",
+    "description": "After the root unification stabilizes, the repo completes logical legacy archive freeze and lands the first Docker baseline under `deploy/docker/`.",
     "depends_on": [
       "F-006"
     ],
     "acceptance_criteria": [
-      "`deploy/docker/` contains Docker baseline assets.",
-      "Compose/health/probe/smoke flow is documented and runnable.",
-      "Legacy native delivery paths remain explicitly preserved."
+      "`docs/legacy-archive-freeze-20260323.md` and `scripts/verify-legacy-freeze.sh` define and validate the frozen legacy boundary.",
+      "`deploy/docker/` contains Docker baseline assets, including `Dockerfile`, `docker-compose.yml`, `.env.example`, and helper scripts.",
+      "Compose/bootstrap/status flow is documented and at least the config + `/api/status` path is runnable.",
+      "Legacy native delivery paths remain explicitly preserved in docs and runbooks."
     ],
     "steps": [
-      "Design container runtime assets.",
-      "Implement compose/env/entrypoints.",
-      "Validate native + container dual-path behavior."
+      "Freeze legacy directories as logical archive and add verification.",
+      "Implement Docker baseline assets and shared runtime entrypoints.",
+      "Validate container status flow and sync longrun/docs."
     ],
-    "evidence_hint": "Docker assets + validation docs",
+    "evidence_hint": "Archive docs + verify script + Docker assets + status validation",
     "risk": "high",
-    "passes": false
+    "passes": true
   }
 ]

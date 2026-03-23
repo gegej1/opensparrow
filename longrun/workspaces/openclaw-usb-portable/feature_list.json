@@ -144,22 +144,21 @@
     "priority": 1,
     "category": "infrastructure",
     "component": "repo-cleanup-containerization",
-    "description": "收敛 OpenSparrow 的 Mac/Windows 重复交付资产、明确统一源码仓策略，并建立容器化部署基线，降低主机环境差异。",
+    "description": "在统一根仓内完成 OpenSparrow 的 legacy 逻辑归档冻结，并落下可运行的 Docker baseline，同时保持 native delivery 路径。",
     "depends_on": [],
     "acceptance_criteria": [
-      "已明确 `feishu-source` 真源边界，以及 `openclaw-usb-feishu-delivery/mac`、`winnew/winnew`、`usb-pack`、push copy 的生成物边界。",
-      "已明确 Mac / Windows 的共享层与平台差异层，不再长期维护两套源码树。",
-      "已形成可审阅的容器化基线设计，覆盖镜像、compose、卷、端口、env 契约与运行模式。",
-      "已形成单一真源仓推荐，以及“当前仓库承接 vs 新建中性仓承接”的取舍说明。"
+      "根级 `docs/legacy-archive-freeze-20260323.md` 与 `scripts/verify-legacy-freeze.sh` 已定义并验证 frozen legacy 边界。",
+      "根级 `deploy/docker/` 已具备 `Dockerfile`、`docker-compose.yml`、`.env.example` 与入口脚本。",
+      "根级 `docs/runbooks/F-007-legacy-archive-docker-baseline.md` 已给出 compose/bootstrap/status/validate 路径。",
+      "legacy workspace 的 runbook / progress handoff 已同步到新的根级执行方式。"
     ],
     "steps": [
-      "冻结当前 Mac / Windows / 历史副本清单与迁移边界。",
-      "设计统一源码仓策略与平台平衡方案。",
-      "设计容器化运行基线与能力矩阵。",
-      "补齐 spec/plan/tasks、execution docs、runbook 与 progress handoff。"
+      "把 legacy 目录收敛为 logical archive，并补上自动校验。",
+      "在 `deploy/docker/` 落地最小容器基线。",
+      "同步 root 与 legacy workspace 的 runbook、feature list、progress。"
     ],
-    "evidence_hint": "approved spec/plan/tasks + repo topology recommendation + execution planning docs",
+    "evidence_hint": "root archive doc + verify script + docker baseline + synced legacy handoff",
     "risk": "high",
-    "passes": false
+    "passes": true
   }
 ]

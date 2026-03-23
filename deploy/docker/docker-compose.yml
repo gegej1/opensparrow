@@ -1,0 +1,70 @@
+services:
+  opensparrow-core:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    image: opensparrow/core:baseline
+    environment:
+      HOME: ${OPENCLAW_HOME:-/var/opensparrow/home}
+      OPENCLAW_HOME: ${OPENCLAW_HOME:-/var/opensparrow/home}
+      OPENCLAW_PROFILE: ${OPENCLAW_PROFILE:-container-baseline}
+      OPENCLAW_GATEWAY_PORT: ${OPENCLAW_GATEWAY_PORT:-18889}
+      OPENCLAW_GATEWAY_BIND: ${OPENCLAW_GATEWAY_BIND:-lan}
+      OPENSPARROW_UI_PORT: ${OPENSPARROW_UI_PORT:-19000}
+      OPENCLAW_AGENT_ID: ${OPENCLAW_AGENT_ID:-main}
+      OPENCLAW_MODEL: ${OPENCLAW_MODEL:-openai/gpt-4o-mini}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      FEISHU_DOMAIN: ${FEISHU_DOMAIN:-feishu}
+      FEISHU_APP_ID: ${FEISHU_APP_ID:-}
+      FEISHU_APP_SECRET: ${FEISHU_APP_SECRET:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      USB_RUNTIME_ROOT: /opt/opensparrow/runtime
+      LOG_DIR: /var/opensparrow/logs
+      EVIDENCE_ROOT: /var/opensparrow/evidence
+      OPENSPARROW_AUTO_OPEN: "0"
+    ports:
+      - "${OPENSPARROW_UI_PORT:-19000}:${OPENSPARROW_UI_PORT:-19000}"
+      - "${OPENCLAW_GATEWAY_PORT:-18889}:${OPENCLAW_GATEWAY_PORT:-18889}"
+    volumes:
+      - opensparrow-home:/var/opensparrow/home
+      - opensparrow-logs:/var/opensparrow/logs
+      - opensparrow-evidence:/var/opensparrow/evidence
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:${OPENSPARROW_UI_PORT:-19000}/api/status >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
+  opensparrow-bootstrap:
+    image: opensparrow/core:baseline
+    profiles: ["bootstrap"]
+    environment:
+      HOME: ${OPENCLAW_HOME:-/var/opensparrow/home}
+      OPENCLAW_HOME: ${OPENCLAW_HOME:-/var/opensparrow/home}
+      OPENCLAW_PROFILE: ${OPENCLAW_PROFILE:-container-baseline}
+      OPENCLAW_GATEWAY_PORT: ${OPENCLAW_GATEWAY_PORT:-18889}
+      OPENCLAW_GATEWAY_BIND: ${OPENCLAW_GATEWAY_BIND:-lan}
+      OPENCLAW_AGENT_ID: ${OPENCLAW_AGENT_ID:-main}
+      OPENCLAW_MODEL: ${OPENCLAW_MODEL:-openai/gpt-4o-mini}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      FEISHU_DOMAIN: ${FEISHU_DOMAIN:-feishu}
+      FEISHU_APP_ID: ${FEISHU_APP_ID:-}
+      FEISHU_APP_SECRET: ${FEISHU_APP_SECRET:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      USB_RUNTIME_ROOT: /opt/opensparrow/runtime
+      LOG_DIR: /var/opensparrow/logs
+      EVIDENCE_ROOT: /var/opensparrow/evidence
+    volumes:
+      - opensparrow-home:/var/opensparrow/home
+      - opensparrow-logs:/var/opensparrow/logs
+      - opensparrow-evidence:/var/opensparrow/evidence
+    command: ["/opt/opensparrow/deploy/docker/bin/bootstrap-profile.sh"]
+    restart: "no"
+
+volumes:
+  opensparrow-home:
+  opensparrow-logs:
+  opensparrow-evidence:
+

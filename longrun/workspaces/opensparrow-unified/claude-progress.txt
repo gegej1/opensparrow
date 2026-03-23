@@ -34,25 +34,48 @@
 - Progress snapshot: 6/7 passing（legacy 归档与 Docker baseline pending）
 - Next feature candidate: `F-007`
 
-## Session N (Coding)
-- Date:
-- Goal:
-- Selected feature id:
+## Session 2 (F-007 Legacy Archive + Docker Baseline)
+- Date: 2026-03-23
+- Goal: 把 F-007 从“已规划”推进到“已执行第一轮”：完成 legacy 逻辑归档冻结，并在 `deploy/docker/` 落地最小可运行容器基线。
+- Selected feature id: `F-007`
 - Changes made:
+  - 新增 `specs/007-legacy-archive-docker-baseline/`（spec / plan / tasks）
+  - 新增 `docs/legacy-archive-freeze-20260323.md` 与 `scripts/verify-legacy-freeze.sh`
+  - 新增 `deploy/docker/Dockerfile`、`deploy/docker/docker-compose.yml`、`deploy/docker/.env.example` 与 `deploy/docker/bin/*.sh`
+  - `ui/server.mjs` 已支持 `USB_RUNTIME_ROOT`、`OPENSPARROW_UI_PORT`、`OPENCLAW_GATEWAY_PORT`
+  - `scripts/openclaw-usb/install-local-feishu.sh` 已支持 `prepare-only` 模式、`OPENCLAW_HOME` 与 `OPENCLAW_GATEWAY_BIND`
+  - unified / portable workspace 的 F-007 feature item、runbook 与 handoff 已同步
 - Regression checks:
+  - `./longrun/workspaces/opensparrow-unified/init.sh`
+  - `bash scripts/verify-legacy-freeze.sh`
+  - `bash -n deploy/docker/bin/*.sh`
+  - `bash -n scripts/openclaw-usb/*.sh`
+  - `node --check ui/server.mjs`
+  - `docker compose -f deploy/docker/docker-compose.yml config`
+  - `docker compose -f deploy/docker/docker-compose.yml up -d --build opensparrow-core`（已尝试，但本机 Docker daemon 未启动）
+  - `OPENSPARROW_APP_ROOT=$PWD ... bash deploy/docker/bin/run-core.sh`
+  - `OPENSPARROW_APP_ROOT=$PWD ... bash deploy/docker/bin/bootstrap-profile.sh`
+  - `curl http://127.0.0.1:19001/api/status`（bootstrap 前 `installed:false`，bootstrap 后 `installed:true`）
 - End-to-end verification evidence:
+  - legacy freeze contract 已由脚本校验
+  - compose 已可渲染
+  - 在本机 Docker daemon 不可用的情况下，已通过 `run-core.sh` + `bootstrap-profile.sh` 做等价验证，`/api/status` 在 bootstrap 前后分别返回 `installed:false` / `installed:true`
 - Known risks:
+  - bootstrap 之后的 `channels status --probe` 与 `agent smoke` 仍需要真实 Feishu/OpenAI 凭据
+  - native wrapper / build-export 收口仍在下一阶段
 - Open questions:
+  - 后续是先收口 build/export，还是先把 native wrapper 再进一步薄化
 - Next feature candidate:
-- Progress snapshot: X/Y passing
+  - build/export 与 native wrapper 收口
+- Progress snapshot: 7/7 passing
 
 ## Handoff quickstart
 - Init command: `./longrun/workspaces/opensparrow-unified/init.sh`
 - Session start: `./longrun/scripts/session_start.sh longrun/workspaces/opensparrow-unified`
 - USB install (macOS/Linux): `bash scripts/openclaw-usb/install-local-feishu.sh --profile usb-portable --port 18889`
 - USB install (Windows): `powershell -ExecutionPolicy Bypass -File scripts/openclaw-usb/install-local-feishu.ps1 -Profile usb-portable -Port 18889`
-- Blockers (if any): 下一阶段主要是 legacy 归档与 Docker baseline，不再是根级收口阻断
+- Blockers (if any): 当前无根级结构阻断；剩余工作集中在 build/export 与 native wrapper 收口
 - Notes for next session:
-  - 继续冻结并归档 legacy 目录
-  - 规划并实现 `deploy/docker/` 容器基线
-  - 把 build/export 与 native wrapper 再进一步收口
+  - 继续推进 build/export 收口
+  - 把 native wrapper 再进一步薄化
+  - 再决定 legacy 目录的物理 archive 时机

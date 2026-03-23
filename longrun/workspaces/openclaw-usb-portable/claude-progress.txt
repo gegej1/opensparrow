@@ -241,3 +241,30 @@
 - Next feature candidate:
   - 继续完成 F-007 的第一轮执行验证：git/bootstrap、wrapper fallback、workspace init、shell 语法检查
 - Progress snapshot: 5/7 passing（F-006 planned, F-007 execution bootstrap in progress）
+
+## Session 13 (F-007 Execution in Unified Root)
+- Date: 2026-03-23
+- Goal: 在统一根仓内把 F-007 从规划推进到第一轮执行：完成 legacy 逻辑归档冻结，并落下 `deploy/docker/` 容器基线。
+- Selected feature id: `005-opensparrow-cleanup-containerization`（执行） / F-007
+- Root execution artifacts:
+  - `docs/legacy-archive-freeze-20260323.md`
+  - `scripts/verify-legacy-freeze.sh`
+  - `deploy/docker/Dockerfile`
+  - `deploy/docker/docker-compose.yml`
+  - `deploy/docker/.env.example`
+  - `docs/runbooks/F-007-legacy-archive-docker-baseline.md`
+  - `specs/007-legacy-archive-docker-baseline/`
+- Shared contract updates:
+  - `ui/server.mjs` 已支持容器 runtime root / UI port / gateway port 环境变量
+  - `scripts/openclaw-usb/install-local-feishu.sh` 已支持 `prepare-only`，可供容器 bootstrap 复用
+- Validation highlights:
+  - `bash scripts/verify-legacy-freeze.sh`
+  - `docker compose -f deploy/docker/docker-compose.yml config`
+  - `docker compose -f deploy/docker/docker-compose.yml up -d --build opensparrow-core`（已尝试，但本机 Docker daemon 未启动）
+  - `OPENSPARROW_APP_ROOT=$PWD ... bash deploy/docker/bin/run-core.sh`
+  - `OPENSPARROW_APP_ROOT=$PWD ... bash deploy/docker/bin/bootstrap-profile.sh`
+  - `curl http://127.0.0.1:19001/api/status`（bootstrap 前 `installed:false`，bootstrap 后 `installed:true`）
+- Next feature candidate:
+  - 回到 F-006 或继续 build/export / native wrapper 收口
+- Progress snapshot: 6/7 passing（F-006 pending, F-007 complete）
+
