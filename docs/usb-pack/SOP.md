@@ -77,6 +77,21 @@ openclaw-usb-pack/
    - 若仅使用包内运行时：`runtime\node\node.exe runtime\openclaw\openclaw.mjs --profile usb-portable channels status --probe`
    - agent smoke 同理可替换为 `agent --agent main --message "请只回复OK" --json`
 
+### Windows 历史配置一键重放（DingTalk / WeCom / UI 历史配置）
+
+如果目标机已经有 `%USERPROFILE%\.openclaw-usb-portable\` 下的历史配置，并希望直接复用现有 UI 配置发起安装，可在 `usb-pack/` 根目录执行：
+
+```powershell
+powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\one-click-deploy.ps1 -NoPause
+```
+
+说明：
+
+- 该脚本会读取 `openclaw.json`；
+- 对 DingTalk 会额外读取可选的 `ui-meta.json`，补带 `corpId/robotCode`；
+- 即使 `corpId` 缺失，也不会再因最小契约不匹配直接失败；
+- 若 `/api/install` 返回 4xx/5xx JSON 错误体，终端会优先显示后端 `errors[]/message`。
+
 ## 验收标准
 
 - OpenClaw daemon 运行正常。

@@ -36,7 +36,21 @@ function resolvePortFromEnv(name, fallback) {
 }
 
 const RUNTIME_ROOT = resolvePathFromEnv(process.env.USB_RUNTIME_ROOT, path.join(PACK_ROOT, 'runtime'))
-const OC_ENTRY  = path.join(RUNTIME_ROOT, 'openclaw', 'openclaw.mjs')
+
+function resolveOpenClawEntry() {
+  const candidates = [
+    path.join(RUNTIME_ROOT, 'openclaw', 'openclaw.mjs'),
+    path.join(RUNTIME_ROOT, 'node_modules', 'openclaw', 'openclaw.mjs'),
+    path.join(RUNTIME_ROOT, 'bin', 'node_modules', 'openclaw', 'openclaw.mjs'),
+  ]
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate
+  }
+  return candidates[0]
+}
+
+const OC_ENTRY  = resolveOpenClawEntry()
 
 function resolveOpenclawHome() {
   return resolvePathFromEnv(process.env.OPENCLAW_HOME, os.homedir())
@@ -617,6 +631,76 @@ function parseDaemonStateFromResult(result) {
 }
 
 /**
+ * Check whether the current profile gateway responds to health checks.
+ * @returns {Promise<boolean>}
+ */
+async function isGatewayHealthy() {
+  try {
+    const result = await runOc(['health', '--json', '--timeout', '5000'], {
+      timeoutMs: OC_TIMEOUT.STATUS,
+      opName: 'health',
+    })
+    return result.code === 0
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Resolve daemon/runtime state without treating a busy port as daemon=running.
+ * @returns {Promise<{
+ *   daemon: 'running'|'stopped'|'not_installed'|'unknown',
+ *   runtimeMode: 'daemon'|'gateway-fallback'|'port-occupied'|'stopped'|'unknown',
+ *   gatewayHealthy: boolean,
+ *   gatewayPortBusy: boolean,
+ * }>}
+ */
+async function resolveRuntimeState() {
+  let daemon = 'unknown'
+  try {
+    const result = await runOc(['daemon', 'status', '--json'], {
+      timeoutMs: OC_TIMEOUT.STATUS,
+      opName: 'daemon status',
+    })
+    daemon = parseDaemonStateFromResult(result)
+  } catch {
+    daemon = 'unknown'
+  }
+
+  let gatewayHealthy = false
+  try {
+    gatewayHealthy = await isGatewayHealthy()
+  } catch {
+    gatewayHealthy = false
+  }
+
+  let gatewayPortBusy = false
+  try {
+    gatewayPortBusy = gatewayHealthy ? true : await isPortBusy(GATEWAY_PORT)
+  } catch {
+    gatewayPortBusy = false
+  }
+
+  let runtimeMode = 'unknown'
+  if (daemon === 'running') {
+    runtimeMode = 'daemon'
+  } else if (gatewayHealthy) {
+    runtimeMode = 'gateway-fallback'
+  } else if (gatewayPortBusy) {
+    runtimeMode = 'port-occupied'
+  } else if (daemon === 'stopped' || daemon === 'not_installed') {
+    runtimeMode = 'stopped'
+  }
+
+  return {
+    daemon,
+    runtimeMode,
+    gatewayHealthy,
+    gatewayPortBusy,
+  }
+}
+
+/**
  * Read config JSON safely.
  * @returns {any | null}
  */
@@ -767,38 +851,19 @@ async function buildDingtalkProbeReport() {
     checks.push('钉钉 CorpId 已填写')
   }
 
-  let daemon = 'unknown'
-  let runtimeMode = 'daemon'
-  try {
-    const daemonResult = await runOc(['daemon', 'status', '--json'], {
-      timeoutMs: OC_TIMEOUT.STATUS,
-      opName: 'daemon status',
-    })
-    daemon = parseDaemonStateFromResult(daemonResult)
-  } catch {
-    daemon = 'unknown'
-  }
-
-  if (daemon !== 'running') {
-    try {
-      if (await isPortBusy(GATEWAY_PORT)) {
-        daemon = 'running'
-        runtimeMode = 'gateway-fallback'
-      } else {
-        runtimeMode = 'stopped'
-      }
-    } catch {
-      runtimeMode = 'unknown'
-    }
-  }
+  const { daemon, runtimeMode, gatewayHealthy, gatewayPortBusy } = await resolveRuntimeState()
 
   if (daemon === 'running') {
-    checks.push('gateway 运行中')
-    if (runtimeMode === 'gateway-fallback') {
-      warnings.push('当前为 Windows fallback runtime（非 daemon 服务）')
-    }
+    checks.push('daemon 服务运行中')
+  } else if (runtimeMode === 'gateway-fallback') {
+    checks.push('gateway 健康检查通过')
+    warnings.push('当前为 gateway fallback runtime（daemon 未运行）')
+    warnings.push(`daemon 当前状态：${daemon}`)
   } else {
     warnings.push(`daemon 当前状态：${daemon}`)
+    if (runtimeMode === 'port-occupied' && gatewayPortBusy && !gatewayHealthy) {
+      warnings.push(`端口 ${GATEWAY_PORT} 已被占用，但当前 profile gateway 健康检查未通过`)
+    }
   }
 
   let probeCode = null
@@ -926,38 +991,19 @@ async function buildWecomProbeReport() {
     warnings.push(`channels.wecom.dmPolicy 当前为 ${dmPolicy || '未设置'}，网页一键部署建议设为 open（否则可能需要 CLI pairing）`)
   }
 
-  let daemon = 'unknown'
-  let runtimeMode = 'daemon'
-  try {
-    const daemonResult = await runOc(['daemon', 'status', '--json'], {
-      timeoutMs: OC_TIMEOUT.STATUS,
-      opName: 'daemon status',
-    })
-    daemon = parseDaemonStateFromResult(daemonResult)
-  } catch {
-    daemon = 'unknown'
-  }
-
-  if (daemon !== 'running') {
-    try {
-      if (await isPortBusy(GATEWAY_PORT)) {
-        daemon = 'running'
-        runtimeMode = 'gateway-fallback'
-      } else {
-        runtimeMode = 'stopped'
-      }
-    } catch {
-      runtimeMode = 'unknown'
-    }
-  }
+  const { daemon, runtimeMode, gatewayHealthy, gatewayPortBusy } = await resolveRuntimeState()
 
   if (daemon === 'running') {
-    checks.push('gateway 运行中')
-    if (runtimeMode === 'gateway-fallback') {
-      warnings.push('当前为 Windows fallback runtime（非 daemon 服务）')
-    }
+    checks.push('daemon 服务运行中')
+  } else if (runtimeMode === 'gateway-fallback') {
+    checks.push('gateway 健康检查通过')
+    warnings.push('当前为 gateway fallback runtime（daemon 未运行）')
+    warnings.push(`daemon 当前状态：${daemon}`)
   } else {
     warnings.push(`daemon 当前状态：${daemon}`)
+    if (runtimeMode === 'port-occupied' && gatewayPortBusy && !gatewayHealthy) {
+      warnings.push(`端口 ${GATEWAY_PORT} 已被占用，但当前 profile gateway 健康检查未通过`)
+    }
   }
 
   let probeCode = null
@@ -1283,40 +1329,18 @@ function sendFile(res, filePath) {
 /** GET /api/status */
 async function handleStatus(res) {
   const configExists = fs.existsSync(CONFIG_FILE)
-
-  let daemon = 'unknown'
-  let runtimeMode = 'daemon'
-  try {
-    const result = await runOc(['daemon', 'status', '--json'], {
-      timeoutMs: OC_TIMEOUT.STATUS,
-      opName: 'daemon status',
-    })
-    daemon = parseDaemonStateFromResult(result)
-  } catch {
-    daemon = 'unknown'
-  }
-
-  // Windows fallback mode: daemon may be "not_installed" while gateway is running.
-  if (daemon !== 'running') {
-    try {
-      const gatewayPortBusy = await isPortBusy(GATEWAY_PORT)
-      if (gatewayPortBusy) {
-        daemon = 'running'
-        runtimeMode = 'gateway-fallback'
-      } else {
-        runtimeMode = 'stopped'
-      }
-    } catch {
-      runtimeMode = 'unknown'
-    }
-  }
-
+  const profileDirExists = fs.existsSync(PROFILE_DIR)
+  const { daemon, runtimeMode, gatewayHealthy, gatewayPortBusy } = await resolveRuntimeState()
   const installed = configExists && daemon === 'running'
 
   sendJson(res, 200, {
     installed,
     daemon,
     runtimeMode,
+    configExists,
+    profileDirExists,
+    gatewayHealthy,
+    gatewayPortBusy,
     profile: PROFILE,
     configPath: `~/.openclaw-${PROFILE}/openclaw.json`,
   })

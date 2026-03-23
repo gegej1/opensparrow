@@ -44,6 +44,33 @@ powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File usb-pack\one-click-d
 ```
 
 2. 验证 API 契约放宽：`/api/install` 与 `/api/config/channels` 在 DingTalk 无 `corpId` 时不再 400。
+
+### 最小 API 契约回归命令（仓内可复现）
+
+```bash
+TMP_HOME="$(mktemp -d)"
+PORT=19120
+USB_RUNTIME_ROOT="$PWD/vendor/linux-openclaw" \
+OPENSPARROW_AUTO_OPEN=0 \
+OPENSPARROW_UI_PORT="$PORT" \
+OPENCLAW_HOME="$TMP_HOME" \
+node ui/server.mjs
+```
+
+```bash
+curl -sS -X POST "http://127.0.0.1:$PORT/api/install" \
+  -H 'Content-Type: application/json' \
+  --data '{"api":{"baseUrl":"https://api.openai.com/v1","apiKey":"","model":"gpt-4o-mini"},"channels":[{"type":"dingtalk","clientId":"abc","clientSecret":"def"}]}'
+# 期望：仅返回 API Key 校验错误，不出现 corpId / CorpId 不能为空
+```
+
+```bash
+curl -sS -X POST "http://127.0.0.1:$PORT/api/config/channels" \
+  -H 'Content-Type: application/json' \
+  --data '{"type":"dingtalk","enabled":true,"clientId":"abc","clientSecret":""}'
+# 期望：仅返回 AppSecret / Client Secret 校验错误，不出现 corpId / CorpId 不能为空
+```
+
 3. 验证错误可观测性：故意构造非法请求时，终端能看到后端 `errors[]/message`。
 
 ## Phase C - 跨渠道与跨平台回归

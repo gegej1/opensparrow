@@ -16,6 +16,8 @@
 - 入口：`windows/run-openclaw-usb.cmd`
 - 实际执行：`windows/install-local-feishu.ps1`
 - 主逻辑：`scripts/openclaw-usb/install-local-feishu.ps1`
+- 历史 UI 配置重放入口：`one-click-deploy.ps1`（对应 canonical 真源：`platforms/windows/wrappers/one-click-deploy.ps1`）
+- UI 服务：`ui/server.mjs`
 - bundled runtime：
   - `runtime/node/node.exe`
   - `runtime/openclaw/openclaw.mjs`
@@ -51,6 +53,21 @@ bash longrun/workspaces/openclaw-usb-portable/execution/scripts/create-windows-h
    - `OPENAI_BASE_URL`（可选）
 4. 等待脚本完成。
 5. 联调后运行 `windows/harden-openclaw-usb.cmd` 收口权限。
+
+## 历史配置 / DingTalk / WeCom 重放
+
+如果目标机已经有 `%USERPROFILE%\.openclaw-usb-portable\openclaw.json` 与 `auth-profiles.json`，并且希望直接复用现有 UI 配置执行重装，可在 `usb-pack/` 根目录运行：
+
+```powershell
+powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\one-click-deploy.ps1 -NoPause
+```
+
+该入口会：
+
+1. 启动包内 `ui/server.mjs`；
+2. 读取现有 profile 中的 `openclaw.json`、`auth-profiles.json` 与可选 `ui-meta.json`；
+3. 对 DingTalk 仅提交最小必需字段（`clientId/clientSecret`），若存在则补带 `corpId/robotCode`；
+4. 在失败时优先输出后端 `errors[] / message`，而不是只显示 `HTTP 400`。
 
 ## 当前状态
 

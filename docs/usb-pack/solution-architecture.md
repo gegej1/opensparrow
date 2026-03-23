@@ -57,6 +57,8 @@
 ```text
 openclaw-usb-pack/
 ├── README.txt
+├── one-click-deploy.cmd
+├── one-click-deploy.ps1
 ├── docs/
 │   ├── SOP.md
 │   ├── SOURCES.md
@@ -69,6 +71,9 @@ openclaw-usb-pack/
 │   ├── run-openclaw-usb.cmd
 │   ├── install-local-feishu.ps1
 │   └── harden-local-feishu.ps1
+├── ui/
+│   ├── server.mjs
+│   └── public/
 ├── runbooks/
 │   ├── F-001-install-and-configure.md
 │   ├── F-002-skill-polish.md
@@ -104,6 +109,7 @@ openclaw-usb-pack/
 
 - 主入口：`.cmd` 调起原生 PowerShell
 - 安装逻辑：PowerShell 直接执行 `scripts/openclaw-usb/install-local-feishu.ps1`
+- 历史 UI 配置重放：`one-click-deploy.ps1` 启动 `ui/server.mjs` 并把现有 profile 配置重新提交到 `/api/install`
 - 运行时：Windows handoff copy 内置 `runtime/node/node.exe` 与 `runtime/openclaw/openclaw.mjs`
 - 打包方式：使用独立 `create-windows-handoff-copy.sh` 生成 Windows 专属副本
 - 说明：不绕过 AutoRun / AutoPlay 策略，不做自动执行

@@ -297,3 +297,32 @@
   - 回到 F-006
   - 或继续 native wrapper / release archive 的下一轮收口
 - Progress snapshot: 7/8 passing（F-006 pending, F-008 complete）
+
+## Session 15 (F-006 / W-004 DingTalk Stream Win/Mac Parity)
+- Date: 2026-03-23
+- Goal: 修复 Windows DingTalk Stream 与 Mac 基线的部署契约差异，收口一键部署 payload、runtime 布局兼容与错误可观测性。
+- Selected feature id: `F-006` / W-004
+- Changes made:
+  - `ui/server.mjs` 新增 `resolveOpenClawEntry()`，让 UI 后端同时兼容 package 布局（`runtime/openclaw/openclaw.mjs`）与仓内 vendor 布局（`vendor/*-openclaw/**/openclaw.mjs`）。
+  - `platforms/windows/wrappers/one-click-deploy.ps1` 作为 canonical 真源补回，来源为冻结历史脚本 `opensparrow_win/usb-pack/one-click-deploy.ps1`，去向为 `platforms/windows/wrappers/one-click-deploy.ps1`；脚本已改为仅要求 DingTalk `clientId/clientSecret`，`corpId/robotCode` 作为可选 metadata，并支持 `ui-meta.json`。
+  - `platforms/windows/wrappers/one-click-deploy.cmd` 改为优先调用 canonical `one-click-deploy.ps1`，再回退到旧入口。
+  - `longrun/workspaces/openclaw-usb-portable/execution/scripts/build-delivery-pack.sh` 已把 `ui/`、根目录 `one-click-deploy.cmd`、根目录 `one-click-deploy.ps1` 纳入 `dist/usb-pack/openclaw-usb-pack/`。
+  - `docs/usb-pack/*` 与 `execution/docs/*` 已同步补充 Windows 一键部署与 package 结构说明。
+  - `execution/runbooks/F-006-dingtalk-stream-win-parity.md` 已补充最小 API 契约回归命令清单。
+- Validation highlights:
+  - `node --check ui/server.mjs`
+  - `bash -n longrun/workspaces/openclaw-usb-portable/execution/scripts/build-delivery-pack.sh`
+  - `bash longrun/workspaces/openclaw-usb-portable/execution/scripts/build-delivery-pack.sh`
+  - 产物检查：`dist/usb-pack/openclaw-usb-pack/ui/`、`dist/usb-pack/openclaw-usb-pack/one-click-deploy.cmd`、`dist/usb-pack/openclaw-usb-pack/one-click-deploy.ps1`
+  - API 契约回归：`/api/install` 在 DingTalk 无 `corpId` 时仅返回 `API Key 不能为空`；`/api/config/channels` 在 DingTalk 无 `corpId` 时仅返回 `AppSecret（Client Secret）不能为空`
+- Current status:
+  - 已完成后端 DingTalk 最小字段契约对齐。
+  - 已完成 Windows 一键部署 payload 与错误信息透传逻辑收口。
+  - F-006 暂不标记 pass：当前宿主机无 `pwsh` / Windows 主机 / 真实 DingTalk、Feishu、WeCom 凭据，无法完成 Windows 执行级验证与三渠道 smoke。
+- Blockers:
+  - 本机缺少 `pwsh`/`powershell`，无法做 PowerShell 语法解析与真实执行。
+  - 当前无 Windows 主机，无法留存一键部署成功与 DingTalk Stream 消息回环证据。
+  - 当前无真实 Feishu / WeCom / DingTalk 凭据，无法完成跨渠道回归。
+- Next feature candidate:
+  - 回到 Windows 主机完成 F-006 的 T009 / T012 / T013 / T014 / T015 与 V001 / V002 / V005 / V006 / V007 / V008。
+- Progress snapshot: 7/8 passing（F-006 implementation closed locally, end-to-end validation pending）

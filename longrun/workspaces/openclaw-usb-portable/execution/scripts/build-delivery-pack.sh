@@ -7,12 +7,15 @@ project_root="$(cd "${workspace_dir}/../../../.." && pwd)"
 stage_dir="${project_root}/dist/usb-pack/openclaw-usb-pack"
 
 rm -rf "$stage_dir"
-mkdir -p "$stage_dir/docs" "$stage_dir/mac" "$stage_dir/windows" "$stage_dir/runbooks" "$stage_dir/scripts/openclaw-usb" "$stage_dir/skills/openclaw-local-feishu-usb"
+mkdir -p "$stage_dir/docs" "$stage_dir/mac" "$stage_dir/windows" "$stage_dir/runbooks" "$stage_dir/scripts/openclaw-usb" "$stage_dir/skills/openclaw-local-feishu-usb" "$stage_dir/ui"
 
 rsync -a --delete "${project_root}/scripts/openclaw-usb/" "$stage_dir/scripts/openclaw-usb/"
 rsync -a --delete "${project_root}/skills/openclaw-local-feishu-usb/" "$stage_dir/skills/openclaw-local-feishu-usb/"
 rsync -a --delete "${project_root}/docs/usb-pack/" "$stage_dir/docs/"
 rsync -a --delete "${project_root}/docs/runbooks/" "$stage_dir/runbooks/"
+rsync -a --delete "${project_root}/ui/" "$stage_dir/ui/"
+cp "${project_root}/platforms/windows/wrappers/one-click-deploy.cmd" "$stage_dir/"
+cp "${project_root}/platforms/windows/wrappers/one-click-deploy.ps1" "$stage_dir/"
 cp "${project_root}/platforms/mac/wrappers/run-openclaw-usb.command" "$stage_dir/mac/"
 cp "${project_root}/platforms/mac/wrappers/harden-openclaw-usb.command" "$stage_dir/mac/"
 cp "${project_root}/platforms/windows/wrappers/run-openclaw-usb.cmd" "$stage_dir/windows/"
@@ -28,6 +31,7 @@ OpenClaw USB Portable Pack (Feishu-only)
 1. 先看 docs/SOP.md、docs/isolation-boundary.md、docs/package-boundary.md
 2. macOS: 双击 mac/run-openclaw-usb.command
 3. Windows: 双击 windows/run-openclaw-usb.cmd
+4. 若要复用历史 UI 配置（如 DingTalk / WeCom），Windows 可执行根目录 one-click-deploy.cmd / one-click-deploy.ps1
 4. 验证完成后，用收口脚本把权限从 open 收回到 pairing/allowlist
 
 说明：
