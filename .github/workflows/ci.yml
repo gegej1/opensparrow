@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  shell-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Bash syntax checks
+        run: |
+          set -euo pipefail
+          find scripts/openclaw-usb -maxdepth 1 -type f -name '*.sh' -print0 | xargs -0 -r bash -n
+          find scripts -maxdepth 1 -type f -name 'verify-legacy-freeze.sh' -print0 | xargs -0 -r bash -n
+          find deploy/docker/bin -maxdepth 1 -type f -name '*.sh' -print0 | xargs -0 -r bash -n
+          find platforms/linux/companion -maxdepth 1 -type f -name '*.sh' -print0 | xargs -0 -r bash -n
+          find platforms/mac/companion -maxdepth 1 -type f ! -name '*.md' -print0 | xargs -0 -r bash -n
+          find platforms/mac/wrappers -maxdepth 1 -type f -name '*.command' -print0 | xargs -0 -r bash -n
+
+  node-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18.x
+
+      - name: Check ui/server.mjs syntax
+        run: node --check ui/server.mjs
+
+  docker-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate docker compose
+        run: docker compose -f deploy/docker/docker-compose.yml config
+
+  repo-health:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate feature list JSON
+        run: python3 -m json.tool longrun/workspaces/opensparrow-unified/feature_list.json >/dev/null
+
+      - name: Validate legacy freeze verifier
+        run: |
+          set -euo pipefail
+          chmod +x scripts/verify-legacy-freeze.sh
+          test -x scripts/verify-legacy-freeze.sh
+          bash scripts/verify-legacy-freeze.sh
+
+      - name: Validate freeze marker files
+        run: |
+          set -euo pipefail
+          test -f docs/legacy-archive-freeze-20260323.md
+          test -f AGENTS.md
+          test -f .specify/memory/constitution.md

@@ -213,5 +213,52 @@
     "evidence_hint": "Spec-003 + runbook F-005 + status/reset syntax checks + unified progress entry",
     "risk": "medium",
     "passes": true
+  },
+  {
+    "id": "F-010",
+    "priority": 2,
+    "category": "infrastructure",
+    "component": "ci-cd-pipeline",
+    "description": "GitHub Actions CI pipeline covering shell lint, Node syntax check, Docker compose validation, and repo health checks.",
+    "depends_on": [
+      "F-007"
+    ],
+    "acceptance_criteria": [
+      "`.github/workflows/ci.yml` exists and defines shell-lint, node-check, docker-validate, and repo-health jobs.",
+      "All jobs pass on current main branch code.",
+      "Spec and runbook documentation is complete."
+    ],
+    "steps": [
+      "Create spec-009 documentation.",
+      "Implement CI workflow with four jobs.",
+      "Validate locally and sync longrun records."
+    ],
+    "evidence_hint": "CI workflow file + local act dry-run or syntax validation",
+    "risk": "low",
+    "passes": true
+  },
+  {
+    "id": "F-011",
+    "priority": 2,
+    "category": "infrastructure",
+    "component": "vendor-source-verification",
+    "description": "Vendor runtime source inventory document and verification script for supply chain traceability.",
+    "depends_on": [
+      "F-002"
+    ],
+    "acceptance_criteria": [
+      "`docs/vendor-source-inventory.md` documents version, architecture, and origin for each vendor platform bundle.",
+      "`scripts/verify-vendor.sh` checks vendor directory presence, binary versions, and key file existence.",
+      "Script passes on current vendor state."
+    ],
+    "steps": [
+      "Detect vendor binary versions and architectures.",
+      "Create source inventory document.",
+      "Create verification script.",
+      "Validate and sync longrun records."
+    ],
+    "evidence_hint": "Inventory doc + verify script output",
+    "risk": "low",
+    "passes": true
   }
 ]

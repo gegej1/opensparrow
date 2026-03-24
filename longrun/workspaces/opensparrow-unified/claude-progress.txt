@@ -163,3 +163,51 @@
   - 继续做容器 baseline 的真实宿主验证补证；或回到 native wrapper / build-export 的下一轮收口。
 - Progress snapshot: 9/9 passing（F-007 doc ops handoff complete）
 
+## Session 6 (F-010 / spec-009 CI/CD Pipeline Baseline)
+- Date: 2026-03-24
+- Goal: 为统一真源仓补齐第一版 GitHub Actions CI，覆盖 shell 语法、Node 语法、Docker compose 渲染和仓库健康检查。
+- Selected feature id: `F-010` / spec-009
+- Changes made:
+  - 新增 `specs/009-ci-cd-pipeline/`，包含 `spec.md`、`plan.md`、`tasks.md`。
+  - 新增 `.github/workflows/ci.yml`，定义 `shell-lint`、`node-check`、`docker-validate`、`repo-health` 四个 job，触发条件为 `push` to `main` 与 `pull_request`。
+  - 新增 `docs/runbooks/F-010-ci-cd-pipeline.md`，说明 CI 触发条件、job 职责、本地等价命令和故障排查。
+  - 更新 `longrun/workspaces/opensparrow-unified/feature_list.json`，新增 `F-010`。
+- Validation highlights:
+  - 已执行 workflow 对应的本地等价命令：shell `bash -n`、`node --check ui/server.mjs`、`docker compose -f deploy/docker/docker-compose.yml config`、`chmod +x scripts/verify-legacy-freeze.sh && bash scripts/verify-legacy-freeze.sh`、`python3 -m json.tool ...`。
+  - 若本机存在 PyYAML，则执行 `python3 -c "import yaml; yaml.safe_load(open('.github/workflows/ci.yml'))"` 做 YAML 解析校验。
+- Current status:
+  - 当前 main 基线已有最小 CI 门槛。
+  - 本轮未修改任何既有运行时代码，仅新增 spec/workflow/runbook 并同步 longrun 记录。
+- Next feature candidate:
+  - 后续可继续扩展 PowerShell、build/export、Docker build 或 smoke test CI，但需先补 spec/task。
+- Progress snapshot: 10/10 passing
+
+
+## Session 6 (F-011 Vendor Source Verification)
+- Date: 2026-03-24
+- Goal: 为 `vendor/` 三个平台运行时补齐来源清单、版本/架构探测证据，以及可重复执行的校验脚本。
+- Selected feature id: `F-011`
+- Changes made:
+  - 新增 `docs/vendor-source-inventory.md`，记录 macOS / Linux / Windows vendor runtime 的 Node 版本、架构、官方来源 URL、上游归档 SHA256、以及本地二进制 SHA256
+  - 新增 `scripts/verify-vendor.sh`，检查 vendor 目录存在性、关键文件、版本一致性、架构信息，并在存在 `vendor/checksums.sha256` 时自动做 checksum 校验
+  - `longrun/workspaces/opensparrow-unified/feature_list.json` 已新增 F-011 条目
+- Probe evidence:
+  - `vendor/mac-openclaw/bin/node --version` → `v24.14.0`
+  - `strings vendor/linux-openclaw/bin/node` → `v24.14.0`
+  - `strings vendor/windows-openclaw/node.exe` → `v24.14.0`
+  - `file vendor/mac-openclaw/bin/node` → `Mach-O 64-bit executable x86_64`
+  - `file vendor/linux-openclaw/bin/node` → `ELF 64-bit ... x86-64`
+  - `file vendor/windows-openclaw/node.exe` → `PE32+ ... x86-64`
+- Upstream checksum evidence:
+  - `node-v24.14.0-darwin-x64.tar.gz` → `f2879eb810e25993a0578e5d878930266fd2eafcffe9f2839b3d8db354d4879e`
+  - `node-v24.14.0-linux-x64.tar.xz` → `41cd79bb7877c81605a9e68ec4c91547774f46a40c67a17e34d7179ef11729df`
+  - `node-v24.14.0-win-x64.zip` → `313fa40c0d7b18575821de8cb17483031fe07d95de5994f6f435f3b345f85c66`
+- Regression checks:
+  - `bash -n scripts/verify-vendor.sh`
+  - `bash scripts/verify-vendor.sh` → `PASS=22 WARN=1 FAIL=0`
+  - warning only: `vendor/checksums.sha256 not found; checksum manifest verification skipped`
+- Known risks:
+  - 当前仓内仍未保留原始 vendor 归档文件，也未保存 `vendor/checksums.sha256`
+  - 文档中的上游 URL / SHA256 是基于本地版本与架构对应到 Node.js 官方发布归档，不是仓内本地压缩包摘要
+- Next follow-up:
+  - 后续可补 `vendor/checksums.sha256`，把当前仓内实际保存的关键二进制摘要纳入校验流程
