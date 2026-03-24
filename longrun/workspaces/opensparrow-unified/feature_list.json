@@ -152,7 +152,7 @@
     "acceptance_criteria": [
       "`docs/legacy-archive-freeze-20260323.md` and `scripts/verify-legacy-freeze.sh` define and validate the frozen legacy boundary.",
       "`deploy/docker/` contains Docker baseline assets, including `Dockerfile`, `docker-compose.yml`, `.env.example`, and helper scripts.",
-      "Compose/bootstrap/status flow is documented and at least the config + `/api/status` path is runnable.",
+      "Compose/bootstrap/status flow is documented in runbook/SOP and at least the config + `/api/status` path is runnable.",
       "Legacy native delivery paths remain explicitly preserved in docs and runbooks."
     ],
     "steps": [
@@ -160,7 +160,7 @@
       "Implement Docker baseline assets and shared runtime entrypoints.",
       "Validate container status flow and sync longrun/docs."
     ],
-    "evidence_hint": "Archive docs + verify script + Docker assets + status validation",
+    "evidence_hint": "Archive docs + verify script + Docker assets + docs/docker-SOP.md + status validation",
     "risk": "high",
     "passes": true
   },

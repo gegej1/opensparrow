@@ -143,3 +143,23 @@
   - 回到 `F-006`（DingTalk Win/Mac parity）
   - 或补一轮 UI status/reset 的 API smoke test 脚本
 - Progress snapshot: 9/9 passing
+
+## Session 5 (F-007 / W-006 Docker SOP)
+- Date: 2026-03-23
+- Goal: 为已落地的 Docker baseline 补齐运维 SOP，并把 `docs/` 下的 Docker 相关文档口径统一到当前容器行为。
+- Selected feature id: `F-007` / W-006
+- Changes made:
+  - 新增 `docs/docker-SOP.md`，覆盖前置条件、快速开始、配置说明、日常运维、健康检查、故障排查、备份恢复、升级流程。
+  - 同步 `docs/runbooks/F-007-legacy-archive-docker-baseline.md`，补充对 `docs/docker-SOP.md` 的引用，并修正 `/api/status` 在容器 baseline 下的预期：以 `configExists=true`、`gatewayHealthy=true`、`runtimeMode=gateway-fallback` 为主，不再把 `installed=true` 当成唯一成功标志。
+  - 更新 `longrun/workspaces/opensparrow-unified/feature_list.json` 的 F-007 文档证据描述，纳入 `docs/docker-SOP.md`。
+- Validation notes:
+  - 本轮未修改 `Dockerfile`、`docker-compose.yml` 或任何运行时代码，只对文档与 longrun 跟踪做同步。
+  - SOP 中的端口、卷、环境变量、healthcheck 与 `deploy/docker/*` 当前定义逐项核对一致。
+  - `/api/status` 的健康语义已按 `ui/server.mjs` 当前实现校对。
+- Current status:
+  - Docker baseline 的运维交接文档已补齐。
+  - `docs/` 下现有 Docker runbook 与新 SOP 口径一致。
+- Next feature candidate:
+  - 继续做容器 baseline 的真实宿主验证补证；或回到 native wrapper / build-export 的下一轮收口。
+- Progress snapshot: 9/9 passing（F-007 doc ops handoff complete）
+
