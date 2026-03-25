@@ -69,6 +69,8 @@ const SKILL_TARGETS = [
   path.join(os.homedir(), '.codex', 'skills', 'superpowers'),
 ]
 
+const DEFAULT_MODEL = process.env.OPENCLAW_MODEL ?? 'openai/gpt-4o-mini'
+
 const DEFAULT_PORT = resolvePortFromEnv('OPENSPARROW_UI_PORT', 19000)
 const GATEWAY_PORT = resolvePortFromEnv('OPENCLAW_GATEWAY_PORT', 18889)
 const AUTO_OPEN_BROWSER = !['0', 'false', 'no', 'off'].includes(
@@ -1548,7 +1550,7 @@ async function handleInstall(res, body) {
   const baseUrlRaw = typeof api.baseUrl === 'string' ? api.baseUrl.trim() : ''
   const baseUrl = normalizeOpenAIBaseUrl(baseUrlRaw)
   const apiKey = typeof api.apiKey === 'string' ? api.apiKey.trim() : ''
-  const model = typeof api.model === 'string' && api.model.trim() ? api.model.trim() : 'gpt-4o-mini'
+  const model = typeof api.model === 'string' && api.model.trim() ? api.model.trim() : DEFAULT_MODEL
 
   const errors = []
   const warnings = []
@@ -1647,6 +1649,17 @@ async function handleInstall(res, body) {
       opName: `config set ${key}`,
     })
     if (r.code !== 0) errors.push(`config set ${key} failed: ${r.stderr}`)
+  }
+
+  // Step 2.1: Set gateway.auth.mode for v2026.3.7+ compatibility
+  {
+    const rAuthMode = await runOc(['config', 'set', 'gateway.auth.mode', '"token"', '--strict-json'], {
+      timeoutMs: OC_TIMEOUT.CONFIG_SET,
+      opName: 'config set gateway.auth.mode',
+    })
+    if (rAuthMode.code !== 0) {
+      warnings.push(`config set gateway.auth.mode failed: ${rAuthMode.stderr}`)
+    }
   }
 
   // Step 3: Write API (model provider) config
@@ -1873,17 +1886,17 @@ async function handleUpdateApi(res, body) {
         if (currentBaseUrl === undefined) currentBaseUrl = openai.baseUrl ?? 'https://api.openai.com/v1'
         if (currentModel === undefined) {
           const m = Array.isArray(openai.models) ? openai.models[0]?.id : null
-          currentModel = m ?? 'gpt-4o-mini'
+          currentModel = m ?? DEFAULT_MODEL
         }
       } catch {
         currentBaseUrl = currentBaseUrl ?? 'https://api.openai.com/v1'
-        currentModel   = currentModel   ?? 'gpt-4o-mini'
+        currentModel   = currentModel   ?? DEFAULT_MODEL
       }
     }
 
     currentBaseUrl = normalizeOpenAIBaseUrl(currentBaseUrl)
     currentModel = typeof currentModel === 'string' ? currentModel.trim() : ''
-    if (!currentModel) currentModel = 'gpt-4o-mini'
+    if (!currentModel) currentModel = DEFAULT_MODEL
 
     const providerJson = JSON.stringify({
       baseUrl: currentBaseUrl,

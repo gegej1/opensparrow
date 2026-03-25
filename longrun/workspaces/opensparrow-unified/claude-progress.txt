@@ -211,3 +211,27 @@
   - 文档中的上游 URL / SHA256 是基于本地版本与架构对应到 Node.js 官方发布归档，不是仓内本地压缩包摘要
 - Next follow-up:
   - 后续可补 `vendor/checksums.sha256`，把当前仓内实际保存的关键二进制摘要纳入校验流程
+
+## Session 7 (F-012 OpenClaw Runtime Upgrade)
+- Date: 2026-03-25
+- Goal: 升级 vendor 内 OpenClaw 运行时至 v2026.3.23，适配 gateway.auth.mode 和 DEFAULT_MODEL 破坏性变更
+- Selected feature id: `F-012`
+- Changes made:
+  - 升级 `vendor/mac-openclaw/` openclaw 至 2026.3.23
+  - 升级 `vendor/linux-openclaw/` openclaw 至 2026.3.23
+  - `ui/server.mjs`: 新增 DEFAULT_MODEL 常量（line 72），替换 4 处硬编码 gpt-4o-mini
+  - `ui/server.mjs`: 新增 gateway.auth.mode 显式配置（line 1656-1663）
+  - `platforms/windows/wrappers/one-click-deploy.ps1`: 提取 DEFAULT_MODEL 为环境变量（line 355）
+  - 新增 `docs/runbooks/F-012-openclaw-runtime-upgrade.md`
+  - `longrun/workspaces/opensparrow-unified/feature_list.json` 新增 F-012 条目
+- Validation:
+  - `node --check ui/server.mjs` → PASS
+  - `bash -n scripts/openclaw-usb/*.sh` → PASS
+  - `bash -n deploy/docker/bin/*.sh` → PASS
+  - `./longrun/workspaces/opensparrow-unified/init.sh` → PASS
+  - Mac vendor: v2026.3.23
+  - Linux vendor: v2026.3.23
+- Pending:
+  - Windows vendor 升级需要 Windows 环境（标记为待办）
+  - ClawHub-first 插件验证需要升级后的 openclaw CLI
+- Risk: high (破坏性变更 + 安全修复)

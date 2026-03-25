@@ -1,7 +1,7 @@
 # Vendor Runtime 来源清单
 
 > 本文档记录 `vendor/` 下各平台运行时包的来源、版本与校验信息。
-> 最后更新：2026-03-24
+> 最后更新：2026-03-25
 
 ## 说明
 
@@ -11,11 +11,11 @@
 
 ## 总览
 
-| 平台 | 目录 | Node 版本 | 架构 | 来源 | SHA256（存档包） |
-|------|------|-----------|------|------|-----------------|
-| macOS | `vendor/mac-openclaw/` | `v24.14.0` | `x86_64` | `https://nodejs.org/dist/v24.14.0/node-v24.14.0-darwin-x64.tar.gz` | `f2879eb810e25993a0578e5d878930266fd2eafcffe9f2839b3d8db354d4879e` |
-| Linux | `vendor/linux-openclaw/` | `v24.14.0` | `x64` | `https://nodejs.org/dist/v24.14.0/node-v24.14.0-linux-x64.tar.xz` | `41cd79bb7877c81605a9e68ec4c91547774f46a40c67a17e34d7179ef11729df` |
-| Windows | `vendor/windows-openclaw/` | `v24.14.0` | `x64` | `https://nodejs.org/dist/v24.14.0/node-v24.14.0-win-x64.zip` | `313fa40c0d7b18575821de8cb17483031fe07d95de5994f6f435f3b345f85c66` |
+| 平台 | 目录 | Node 版本 | OpenClaw 版本 | 架构 | 来源 | SHA256（存档包） |
+|------|------|-----------|--------------|------|------|-----------------|
+| macOS | `vendor/mac-openclaw/` | `v24.14.0` | `2026.3.23` | `x86_64` | `https://nodejs.org/dist/v24.14.0/node-v24.14.0-darwin-x64.tar.gz` | `f2879eb810e25993a0578e5d878930266fd2eafcffe9f2839b3d8db354d4879e` |
+| Linux | `vendor/linux-openclaw/` | `v24.14.0` | `2026.3.23` | `x64` | `https://nodejs.org/dist/v24.14.0/node-v24.14.0-linux-x64.tar.xz` | `41cd79bb7877c81605a9e68ec4c91547774f46a40c67a17e34d7179ef11729df` |
+| Windows | `vendor/windows-openclaw/` | `v24.14.0` | `2026.3.12` | `x64` | `https://nodejs.org/dist/v24.14.0/node-v24.14.0-win-x64.zip` | `313fa40c0d7b18575821de8cb17483031fe07d95de5994f6f435f3b345f85c66` |
 
 ## 探测方法
 
@@ -51,7 +51,7 @@
   - `share/man/`
   - `start`
 - 本地 `node` 二进制 SHA256：`50a3ba85f9a2445591012eb9932966acf313c86712847e5c2ef19774636e681f`
-- 附加运行层：`vendor/mac-openclaw/bin/package.json` 声明 `openclaw` 依赖为 `^2026.3.12`
+- 附加运行层：`vendor/mac-openclaw/lib/node_modules/openclaw/package.json` 版本为 `2026.3.23`（升级于 2026-03-25）
 
 ### Linux (`linux-openclaw`)
 
@@ -76,7 +76,7 @@
   - `share/doc/`
   - `share/man/`
 - 本地 `node` 二进制 SHA256：`e237a2839d0cbdc9a9a2adda1a184afc0f5b20306ffbe923af5686550472d8a8`
-- 附加运行层：`vendor/linux-openclaw/bin/package.json` 声明 `openclaw` 依赖为 `^2026.3.12`
+- 附加运行层：`vendor/linux-openclaw/lib/node_modules/openclaw/package.json` 版本为 `2026.3.23`（升级于 2026-03-25）
 
 ### Windows (`windows-openclaw`)
 
@@ -99,7 +99,7 @@
   - `node_modules/`
   - `install_tools.bat`
 - 本地 `node.exe` SHA256：`63c259c81e5d472b5f11c8d506070130cb04a1ecf84b80377a34ed6ec9048088`
-- 附加运行层：`vendor/windows-openclaw/package.json` 声明 `openclaw` 依赖为 `^2026.3.12`
+- 附加运行层：`vendor/windows-openclaw/node_modules/openclaw/package.json` 版本为 `2026.3.12`（待升级至 2026.3.23，需 Windows 环境）
 
 ## 更新流程
 
