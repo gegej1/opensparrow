@@ -15,7 +15,7 @@
 |------|------|-----------|--------------|------|------|-----------------|
 | macOS | `vendor/mac-openclaw/` | `v24.14.0` | `2026.3.23` | `x86_64` | `https://nodejs.org/dist/v24.14.0/node-v24.14.0-darwin-x64.tar.gz` | `f2879eb810e25993a0578e5d878930266fd2eafcffe9f2839b3d8db354d4879e` |
 | Linux | `vendor/linux-openclaw/` | `v24.14.0` | `2026.3.23` | `x64` | `https://nodejs.org/dist/v24.14.0/node-v24.14.0-linux-x64.tar.xz` | `41cd79bb7877c81605a9e68ec4c91547774f46a40c67a17e34d7179ef11729df` |
-| Windows | `vendor/windows-openclaw/` | `v24.14.0` | `2026.3.12` | `x64` | `https://nodejs.org/dist/v24.14.0/node-v24.14.0-win-x64.zip` | `313fa40c0d7b18575821de8cb17483031fe07d95de5994f6f435f3b345f85c66` |
+| Windows | `vendor/windows-openclaw/` | `v24.14.0` | `2026.3.23` | `x64` | `https://nodejs.org/dist/v24.14.0/node-v24.14.0-win-x64.zip` | `313fa40c0d7b18575821de8cb17483031fe07d95de5994f6f435f3b345f85c66` |
 
 ## 探测方法
 
@@ -99,7 +99,7 @@
   - `node_modules/`
   - `install_tools.bat`
 - 本地 `node.exe` SHA256：`63c259c81e5d472b5f11c8d506070130cb04a1ecf84b80377a34ed6ec9048088`
-- 附加运行层：`vendor/windows-openclaw/node_modules/openclaw/package.json` 版本为 `2026.3.12`（待升级至 2026.3.23，需 Windows 环境）
+- 附加运行层：`vendor/windows-openclaw/node_modules/openclaw/package.json` 版本为 `2026.3.23`（升级于 2026-03-25）
 
 ## 更新流程
 

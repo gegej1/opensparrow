@@ -272,7 +272,7 @@
       "F-011"
     ],
     "acceptance_criteria": [
-      "All three vendor platforms upgraded to v2026.3.23 (Mac/Linux completed, Windows pending).",
+      "All three vendor platforms upgraded to v2026.3.23.",
       "gateway.auth.mode explicitly set when both token and password exist.",
       "DEFAULT_MODEL extracted to environment variable.",
       "All syntax checks and regression tests pass."
@@ -286,6 +286,6 @@
     ],
     "evidence_hint": "Vendor version output + code changes + runbook + validation results",
     "risk": "high",
-    "passes": false
+    "passes": true
   }
 ]
