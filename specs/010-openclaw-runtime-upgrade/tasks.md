@@ -26,12 +26,14 @@
 - [ ] T013 更新 `deploy/docker/docker-compose.yml` 和 `deploy/docker/bin/bootstrap-profile.sh` 中的默认模型
 - [ ] T014 更新 `deploy/docker/.env.example` 增加 `OPENCLAW_DEFAULT_MODEL` 说明
 
-## Phase 4: ClawHub-first Plugin Verification (P1)
+## Phase 4: ClawHub-first Plugin Verification (P1) — 延后
 
-- [ ] T015 升级后执行 `openclaw plugins search dingtalk`，确认 ClawHub 是否收录钉钉社区插件
-- [ ] T016 验证 npm 回退路径：`openclaw plugins install openclaw-plugin-dingtalk` 在 ClawHub 未收录时回退到 npm
-- [ ] T017 确认飞书内置插件在 2026.3.23 中的签名验证加固不影响现有配置
-- [ ] T018 如 ClawHub-first 导致钉钉插件安装异常，在安装脚本中增加显式 `--source npm` 回退
+> **延后理由**：ClawHub 收录状态不由本项目控制，npm 回退为 OpenClaw 内置逻辑，待实际部署时验证。
+
+- [ ] T015 延后 — 升级后执行 `openclaw plugins search dingtalk`，确认 ClawHub 是否收录钉钉社区插件
+- [ ] T016 延后 — 验证 npm 回退路径：`openclaw plugins install openclaw-plugin-dingtalk` 在 ClawHub 未收录时回退到 npm
+- [ ] T017 延后 — 确认飞书内置插件在 2026.3.23 中的签名验证加固不影响现有配置
+- [ ] T018 延后 — 如 ClawHub-first 导致钉钉插件安装异常，在安装脚本中增加显式 `--source npm` 回退
 
 ## Phase 5: Documentation & Longrun Sync (P1)
 

@@ -260,5 +260,32 @@
     "evidence_hint": "Inventory doc + verify script output",
     "risk": "low",
     "passes": true
+  },
+  {
+    "id": "F-012",
+    "priority": 1,
+    "category": "maintenance",
+    "component": "openclaw-runtime-upgrade",
+    "description": "Upgrade OpenClaw runtime to v2026.3.23 across all platforms with breaking change adaptations.",
+    "depends_on": [
+      "F-002",
+      "F-011"
+    ],
+    "acceptance_criteria": [
+      "All three vendor platforms upgraded to v2026.3.23.",
+      "gateway.auth.mode explicitly set when both token and password exist.",
+      "DEFAULT_MODEL extracted to environment variable.",
+      "All syntax checks and regression tests pass."
+    ],
+    "steps": [
+      "Upgrade vendor binaries for Mac/Linux/Windows.",
+      "Adapt gateway.auth.mode logic in ui/server.mjs.",
+      "Extract DEFAULT_MODEL to env var in ui/server.mjs and one-click-deploy.ps1.",
+      "Verify ClawHub-first plugin install.",
+      "Update docs and longrun records."
+    ],
+    "evidence_hint": "Vendor version output + code changes + runbook + validation results",
+    "risk": "high",
+    "passes": true
   }
 ]

@@ -352,7 +352,7 @@ function Build-InstallPayload([string]$StateDir) {
     }
   }
   if ([string]::IsNullOrWhiteSpace($model)) {
-    $model = 'gpt-4o-mini'
+    $model = if ($env:OPENCLAW_MODEL) { ($env:OPENCLAW_MODEL -replace '^openai/', '') } else { 'gpt-4o-mini' }
   }
 
   $channels = @()
