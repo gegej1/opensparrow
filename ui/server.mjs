@@ -2312,6 +2312,12 @@ async function requestHandler(req, res) {
 
   // --- API routes ---
   try {
+    if (method === 'GET' && pathname === '/health') {
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ status: 'ok', timestamp: new Date().toISOString() }))
+      return
+    }
+
     if (method === 'GET' && pathname === '/api/status') {
       await handleStatus(res)
       return
