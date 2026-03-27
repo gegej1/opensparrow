@@ -72,3 +72,18 @@ openclaw-*.log
 # Vendor runtime binaries (too large for git; consider Git LFS later)
 # =============================================
 vendor/
+
+# =============================================
+# Large binary artifacts
+# =============================================
+opensparrow-win-full.tar.gz
+
+# =============================================
+# Local skills / superpowers (managed per-machine)
+# =============================================
+superpowers/
+
+# =============================================
+# Archive (legacy, managed by codexA)
+# =============================================
+archive/
