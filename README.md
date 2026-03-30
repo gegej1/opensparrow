@@ -1,6 +1,18 @@
 # OpenSparrow Unified Source Repo
 
+![Version](https://img.shields.io/badge/version-0.1.0--alpha-2f81f7)
+![Status](https://img.shields.io/badge/status-M3%20%E5%8F%AF%E4%BA%A4%E4%BB%98-f59e0b)
+
 本目录现在作为 `OpenClaw/OpenSparrow` 的统一真源仓工作根。
+
+当前版本：`0.1.0-alpha`（见 `VERSION`）
+
+## 快速开始
+
+- 非技术用户安装指南：`docs/usb-pack/INSTALL.md`
+- 项目持久化说明：`docs/项目持久化说明.md`
+- 多平台统一仓方案：`docs/多平台统一仓方案-20260323.md`
+- unified workspace 规格：`longrun/workspaces/opensparrow-unified/app_spec.md`
 
 ## 当前真源结构
 
@@ -11,11 +23,11 @@
 - `specs/`、`longrun/`、`.specify/`、`.codex/`：文档驱动与长期维护骨架
 - `docs/`：对外说明、runbook 与迁移方案
 
-## 先看哪里
+## 面向用户的交付入口
 
-- `docs/项目持久化说明.md:1`
-- `docs/多平台统一仓方案-20260323.md:1`
-- `longrun/workspaces/opensparrow-unified/app_spec.md:1`
+- macOS：双击 `01-开始部署.command`
+- Windows：双击 `one-click-deploy.cmd`
+- 浏览器安装向导：默认自动打开 `http://localhost:19000`
 
 ## 当前边界
 
