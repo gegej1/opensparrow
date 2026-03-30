@@ -287,5 +287,54 @@
     "evidence_hint": "Vendor version output + code changes + runbook + validation results",
     "risk": "high",
     "passes": true
+  },
+  {
+    "id": "F-013",
+    "priority": 1,
+    "category": "validation",
+    "component": "windows-env-verification",
+    "description": "Windows environment verification on UTM ARM VM: UI accessibility, gateway stability, daemon status consistency, plugin install retry.",
+    "depends_on": ["F-012"],
+    "acceptance_criteria": [
+      "USB mode starts successfully on Windows (<30s).",
+      "Dashboard status matches actual gateway process state.",
+      "Plugin install includes 3x exponential backoff retry on 429.",
+      "30-minute stability test passes without crash.",
+      "Playwright automated test suite passes."
+    ],
+    "steps": [
+      "Deploy OpenSparrow on Windows VM via USB mode.",
+      "Fix daemon status inconsistency (gateway-fallback vs actual).",
+      "Add plugin install retry with exponential backoff.",
+      "Run Playwright E2E test suite.",
+      "30-minute stability soak test."
+    ],
+    "evidence_hint": "Test report + Playwright screenshots + fix commits",
+    "risk": "medium",
+    "passes": true
+  },
+  {
+    "id": "F-014",
+    "priority": 2,
+    "category": "channel",
+    "component": "wecom-channel-integration",
+    "description": "WeCom (企业微信) channel integration using community plugin @sunnoy/wecom. M3 milestone.",
+    "depends_on": ["F-012"],
+    "acceptance_criteria": [
+      "WeCom plugin installable via ClawHub or bundled.",
+      "UI setup wizard includes WeCom tab with Bot ID + Secret fields.",
+      "server.mjs handleInstall() supports wecom channel branch.",
+      "E2E test with real WeCom credentials passes."
+    ],
+    "steps": [
+      "Evaluate and select WeCom plugin.",
+      "Add WeCom UI form to setup wizard.",
+      "Add WeCom install logic to server.mjs.",
+      "E2E test on Mac and Windows.",
+      "Update docs and runbooks."
+    ],
+    "evidence_hint": "Plugin install + UI form + E2E test + runbook",
+    "risk": "medium",
+    "passes": false
   }
 ]
