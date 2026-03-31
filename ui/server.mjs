@@ -1903,7 +1903,7 @@ async function handleInstall(res, body) {
           `当前打包 OpenClaw 版本 ${bundledVersion} 低于企业微信插件最低要求 ${WECOM_MIN_OPENCLAW_VERSION}。请先升级当前平台 bundled runtime，再继续企业微信安装。`,
         ],
         warnings: [
-          '当前仓库中 Windows bundled runtime 已是 2026.3.23；macOS / Linux bundled runtime 仍是 2026.3.12。',
+          `检测到的版本：${bundledVersion}。请确认 vendor 目录已更新到 ${WECOM_MIN_OPENCLAW_VERSION} 或更高版本。`,
         ],
       })
       return
