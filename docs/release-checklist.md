@@ -20,6 +20,7 @@ bash -n scripts/verify-vendor.sh
 bash -n scripts/verify-legacy-freeze.sh
 bash -n platforms/mac/wrappers/01-开始部署.command
 bash -n longrun/workspaces/openclaw-usb-portable/execution/scripts/build-delivery-pack.sh
+bash -n scripts/build-usb-pack.sh
 ```
 
 - [ ] All `bash -n` checks pass with exit code 0
@@ -143,7 +144,11 @@ Check that runbooks exist and are current for all completed features:
 ### 4.1 Build USB Pack
 
 ```bash
-bash longrun/workspaces/openclaw-usb-portable/execution/scripts/build-delivery-pack.sh
+# M3+ recommended build script (supports --platform, --skip-skills)
+bash scripts/build-usb-pack.sh
+
+# Legacy build script (M2, Feishu-only)
+# bash longrun/workspaces/openclaw-usb-portable/execution/scripts/build-delivery-pack.sh
 ```
 
 - [ ] Build script exits with code 0
@@ -228,6 +233,7 @@ bash -n scripts/openclaw-usb/install-local-feishu.sh && \
 bash -n scripts/openclaw-usb/harden-local-feishu.sh && \
 bash -n scripts/verify-vendor.sh && \
 bash -n scripts/verify-legacy-freeze.sh && \
+bash -n scripts/build-usb-pack.sh && \
 node --check ui/server.mjs && \
 cd deploy/docker && docker compose config --quiet && cd ../.. && \
 bash scripts/verify-vendor.sh && \
