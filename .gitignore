@@ -79,9 +79,10 @@ vendor/
 opensparrow-win-full.tar.gz
 
 # =============================================
-# Local skills / superpowers (managed per-machine)
+# Local skills / superpowers (managed per-machine, see skills/README.md)
 # =============================================
 superpowers/
+skills/My_Skills/
 
 # =============================================
 # Archive (legacy, managed by codexA)
