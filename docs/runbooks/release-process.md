@@ -50,7 +50,25 @@
   ```
 - [ ] Update any version references in README.md, if present
 
-### 1.4 Run Release Checklist
+### 1.4 Verify Skill Pack Availability
+
+> **Why**: Skills are not tracked in Git (too large). They must exist locally before building.
+> See `docs/skill-pack-inventory.md` for full inventory and `skills/README.md` for acquisition instructions.
+
+- [ ] Superpowers base pack exists at project root:
+  ```bash
+  # Must have ~32 files, ~264KB
+  test -d superpowers/ && echo "OK: $(find superpowers/ -type f | wc -l) files" || echo "MISSING"
+  ```
+- [ ] Industry skill categories exist under `skills/My_Skills/`:
+  ```bash
+  # Must have 6 directories: Business, Education, Finance, Government, Healthcare, Utilities
+  ls skills/My_Skills/ | wc -l    # expect: 6
+  find skills/My_Skills/ -type f | wc -l   # expect: ~69,000
+  ```
+- [ ] If either is missing, follow `skills/README.md` "New Machine" instructions to obtain them
+
+### 1.5 Run Release Checklist
 
 - [ ] Complete ALL items in `docs/release-checklist.md`
 - [ ] Record sign-off in the checklist's Final Sign-off table
@@ -104,6 +122,40 @@ find dist/usb-pack/openclaw-usb-pack -maxdepth 2 -type f | head -30
 # Docker image size check (target: < 1GB)
 docker images opensparrow/core:baseline --format "{{.Size}}"
 ```
+
+### 2.5 Verify Skill Packs in Build Output
+
+> **Critical**: Build script maps `superpowers/` (repo root) → `dist/.../skills/superpowers/` (path remapping!).
+> Industry skills copy directly: `skills/My_Skills/` → `dist/.../skills/My_Skills/`.
+
+```bash
+DIST="dist/usb-pack/openclaw-usb-pack"
+
+# Superpowers (base skills) — MUST exist at skills/superpowers/ inside dist
+echo "=== Superpowers ==="
+test -d "$DIST/skills/superpowers/" \
+  && echo "OK: $(find $DIST/skills/superpowers/ -type f | wc -l) files" \
+  || echo "FAIL: skills/superpowers/ missing from build output!"
+
+# Core files spot-check
+for f in brainstorming.md writing-plans.md test-driven-development.md; do
+  test -f "$DIST/skills/superpowers/$f" && echo "  ✓ $f" || echo "  ✗ $f MISSING"
+done
+
+# Industry skills — MUST exist at skills/My_Skills/ inside dist
+echo "=== Industry Skills ==="
+for cat in Business Education Finance Government Healthcare Utilities; do
+  if [ -d "$DIST/skills/My_Skills/$cat" ]; then
+    echo "OK: $cat ($(find $DIST/skills/My_Skills/$cat -type f | wc -l) files)"
+  else
+    echo "FAIL: $cat missing from build output!"
+  fi
+done
+```
+
+- [ ] `skills/superpowers/` present in build output (~32 files)
+- [ ] All 6 industry categories present in build output
+- [ ] `server.mjs` paths match: `SKILLS_SRC` → `skills/superpowers`, `INDUSTRY_SKILLS_SRC` → `skills/My_Skills`
 
 ---
 
@@ -320,3 +372,54 @@ If a release is found to be broken after distribution:
 5. **Post-mortem**: Document what went wrong and update checklist
 
 > **Principle**: Prefer fix-forward over rollback. Only delete tags if the release has not been widely distributed.
+
+---
+
+## Appendix: New Developer — Skill File Onboarding
+
+Skill files (`superpowers/` and `skills/My_Skills/`) are **not tracked in Git** because they total ~425 MB. After cloning the repo, you must obtain these files separately.
+
+### Quick Start
+
+```bash
+git clone https://github.com/gegej1/opensparrow.git
+cd opensparrow
+
+# At this point, superpowers/ and skills/My_Skills/ do not exist.
+# Follow one of the methods below to populate them.
+```
+
+### Method 1: Copy from USB Pack (Recommended)
+
+If you have a previously-built USB pack:
+```bash
+cp -r /Volumes/USB/opensparrow/skills/superpowers ./superpowers/
+cp -r /Volumes/USB/opensparrow/skills/My_Skills   ./skills/My_Skills/
+```
+
+### Method 2: Copy from a Teammate's Machine
+
+```bash
+scp -r teammate:/path/to/opensparrow/superpowers    ./superpowers/
+scp -r teammate:/path/to/opensparrow/skills/My_Skills ./skills/My_Skills/
+```
+
+### Method 3: Copy from Global Claude Installation
+
+If you already have superpowers installed globally via CLAUDE.md:
+```bash
+cp -r ~/.claude/skills/superpowers ./superpowers/
+```
+
+### Verification
+
+```bash
+# Should show 32 files, ~264KB
+find superpowers/ -type f | wc -l
+
+# Should show 6 categories, ~69,000 files, ~424MB
+ls skills/My_Skills/
+find skills/My_Skills/ -type f | wc -l
+```
+
+> **Reference**: See `skills/README.md` for the authoritative guide and `docs/skill-pack-inventory.md` for the full file listing.
