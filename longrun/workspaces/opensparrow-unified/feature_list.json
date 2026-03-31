@@ -336,5 +336,30 @@
     "evidence_hint": "Plugin install + UI form + E2E test + runbook",
     "risk": "medium",
     "passes": false
+  },
+  {
+    "id": "F-015",
+    "priority": 1,
+    "category": "maintenance",
+    "component": "skill-store-source-dist-sync",
+    "description": "Skill Store correctly reads nested `skills/My_Skills/<category>/<skill>/` directories in both source and rebuilt dist packs, and the dashboard reflects installed counts and category metadata from the API.",
+    "depends_on": [
+      "F-003",
+      "F-008"
+    ],
+    "acceptance_criteria": [
+      "`ui/server.mjs` lists nested industry skills from `skills/My_Skills/<category>/<skill>/SKILL.md` and reports labeled categories.",
+      "`ui/public/dashboard.html` uses the backend `installedCount` field and builds the category dropdown from API data.",
+      "A rebuilt `dist/usb-pack/opensparrow-<version>/ui/server.mjs` returns `total > 0` from `/api/skills/list?page=1&pageSize=3`.",
+      "Install/uninstall smoke test toggles both `installed` and `installedCount` as expected in an isolated HOME directory."
+    ],
+    "steps": [
+      "Fix Skill Store API metadata and installed-count semantics.",
+      "Align dashboard state with the API payload.",
+      "Rebuild the USB pack and validate source/dist API responses plus install/uninstall smoke."
+    ],
+    "evidence_hint": "Source/dist API probe + isolated install/uninstall smoke + release-process note",
+    "risk": "medium",
+    "passes": true
   }
 ]

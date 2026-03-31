@@ -1024,13 +1024,7 @@
         skillPageSize: 50,
         skillLoading: false,
         skillCategories: [
-          { key: '',           label: '全部分类' },
-          { key: 'Business',   label: '商业' },
-          { key: 'Education',  label: '教育' },
-          { key: 'Finance',    label: '金融' },
-          { key: 'Government', label: '政务' },
-          { key: 'Healthcare', label: '医疗' },
-          { key: 'Utilities',  label: '工具' },
+          { key: '', label: '全部分类' },
         ],
         skillActionLoading: {},  // { 'category/filename': true }
         _skillSearchTimer: null,
@@ -1519,12 +1513,47 @@
             const data = await res.json();
             this.skillList      = Array.isArray(data.skills) ? data.skills : [];
             this.skillTotal     = data.total     || 0;
-            this.skillInstalled = data.installed || 0;
+            this.skillInstalled = data.installedCount || 0;
+            this.skillCategories = this.buildSkillCategories(data.categories);
+            if (this.skillCategory && !this.skillCategories.some(cat => cat.key === this.skillCategory)) {
+              this.skillCategory = '';
+            }
           } catch (e) {
             this.showToast('无法连接到服务：' + e.message, 'error');
           } finally {
             this.skillLoading = false;
           }
+        },
+
+        skillCategoryLabel(key) {
+          const labels = {
+            Business: '商业',
+            Education: '教育',
+            Finance: '金融',
+            Government: '政务',
+            Healthcare: '医疗',
+            Utilities: '工具',
+          };
+          return labels[key] || key || '全部分类';
+        },
+
+        buildSkillCategories(categories) {
+          const normalized = [{ key: '', label: '全部分类' }];
+          if (!Array.isArray(categories)) return normalized;
+
+          for (const category of categories) {
+            const key = String(category?.key || '').trim();
+            if (!key) continue;
+
+            const label = String(category?.label || '').trim() || this.skillCategoryLabel(key);
+            const count = Number.isFinite(Number(category?.count)) ? Number(category.count) : null;
+            normalized.push({
+              key,
+              label: count === null ? label : `${label} (${count})`,
+            });
+          }
+
+          return normalized;
         },
 
         skillTotalPages() {

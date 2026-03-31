@@ -156,6 +156,11 @@ done
 - [ ] `skills/superpowers/` present in build output (~32 files)
 - [ ] All 6 industry categories present in build output
 - [ ] `server.mjs` paths match: `SKILLS_SRC` → `skills/superpowers`, `INDUSTRY_SKILLS_SRC` → `skills/My_Skills`
+- [ ] 修改 Skill Store 逻辑后，重新执行 `bash scripts/build-usb-pack.sh --platform all`，不要只刷新浏览器
+- [ ] 组包后的 `dist/.../ui/server.mjs` 启动后，`/api/skills/list?page=1&pageSize=3` 返回 `total > 0`
+
+> **Why this matters**: Skill Store 的空白页可能不是前端缓存，而是正在运行的 `dist` 包仍携带旧版 `ui/server.mjs`。
+> 如果只修仓库源码、但不重建 `dist`，浏览器硬刷新也不会把旧包内的扫描逻辑换掉。
 
 ---
 

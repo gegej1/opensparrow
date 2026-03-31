@@ -87,6 +87,19 @@ const INDUSTRY_SKILL_TARGETS = [
   path.join(os.homedir(), '.codex', 'skills', 'My_Skills'),
 ]
 
+const INDUSTRY_SKILL_CATEGORIES = [
+  { key: 'Business',   name: '商业', desc: '营销、管理、运营相关' },
+  { key: 'Education',  name: '教育', desc: '教学、培训、学习相关' },
+  { key: 'Finance',    name: '金融', desc: '投资、财务、风控相关' },
+  { key: 'Government', name: '政务', desc: '公文、政策、行政相关' },
+  { key: 'Healthcare', name: '医疗', desc: '医学、健康、诊断相关' },
+  { key: 'Utilities',  name: '工具', desc: '通用工具、效率提升' },
+]
+
+function getIndustrySkillCategoryMeta(key) {
+  return INDUSTRY_SKILL_CATEGORIES.find(category => category.key === key) ?? null
+}
+
 const DEFAULT_MODEL = process.env.OPENCLAW_MODEL ?? 'openai/gpt-4o-mini'
 const DINGTALK_PLUGIN_PACKAGE = '@openclaw-china/channels'
 const DINGTALK_PLUGIN_ID = 'channels'
@@ -2558,16 +2571,21 @@ function handleSkillsList(res, searchParams) {
       for (const catDir of catDirs) {
         if (!catDir.isDirectory()) continue
         try {
-          const files = fs.readdirSync(path.join(installBase, catDir.name))
-          installedCount += files.filter(f => {
-            try {
-              return fs.statSync(path.join(installBase, catDir.name, f)).isFile()
-            } catch (_) { return false }
-          }).length
+          const entries = fs.readdirSync(path.join(installBase, catDir.name), { withFileTypes: true })
+          installedCount += entries.filter(entry => entry.isDirectory()).length
         } catch (_) {}
       }
     }
   } catch (_) {}
+
+  const categories = cache.categories.map(category => {
+    const meta = getIndustrySkillCategoryMeta(category.key)
+    return {
+      ...category,
+      label: meta?.name ?? category.key,
+      description: meta?.desc ?? '',
+    }
+  })
 
   sendJson(res, 200, {
     skills,
@@ -2575,7 +2593,7 @@ function handleSkillsList(res, searchParams) {
     page,
     pageSize,
     totalPages,
-    categories: cache.categories,
+    categories,
     installedCount,
   })
 }
@@ -2959,16 +2977,7 @@ async function handleFactoryReset(res, body) {
 
 /** GET /api/skill-categories */
 function handleSkillCategories(res) {
-  const categories = [
-    { key: 'Business',   name: '商业', desc: '营销、管理、运营相关' },
-    { key: 'Education',  name: '教育', desc: '教学、培训、学习相关' },
-    { key: 'Finance',    name: '金融', desc: '投资、财务、风控相关' },
-    { key: 'Government', name: '政务', desc: '公文、政策、行政相关' },
-    { key: 'Healthcare', name: '医疗', desc: '医学、健康、诊断相关' },
-    { key: 'Utilities',  name: '工具', desc: '通用工具、效率提升' },
-  ]
-
-  const result = categories.map(cat => {
+  const result = INDUSTRY_SKILL_CATEGORIES.map(cat => {
     const catDir = path.join(INDUSTRY_SKILLS_SRC, cat.key)
     let count = 0
     try {

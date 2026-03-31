@@ -235,3 +235,31 @@
   - Windows vendor 升级需要 Windows 环境（标记为待办）
   - ClawHub-first 插件验证需要升级后的 openclaw CLI
 - Risk: high (破坏性变更 + 安全修复)
+
+## Session 8 (F-015 Skill Store source/dist sync)
+- Date: 2026-03-31
+- Goal: 修复 Skill Store“源码已修但打包页面仍空白”的收口问题，并校准已安装统计与分类展示。
+- Selected feature id: `F-015`
+- Root cause:
+  - 仓库根目录的 `ui/server.mjs` 已经修到支持 `skills/My_Skills/<category>/<skill>/SKILL.md` 三层结构，但实际在浏览器里跑的是旧版 `dist/usb-pack/opensparrow-0.1.0-alpha/ui/server.mjs`，它仍按“分类目录下直接是文件”的旧逻辑扫描，所以 `/api/skills/list` 返回 `total=0`。
+  - 浏览器硬刷新只能刷新静态页面，不能把旧打包产物中的服务端代码替换成新逻辑；因此必须重建 `dist`。
+  - Dashboard 同时还把后端返回的 `installedCount` 误读成 `installed`，导致“已安装”统计在刷新后永远不准。
+- Changes made:
+  - `ui/server.mjs`：为 Skill Store 分类返回补齐 `label`/`description` 元数据，并把 `installedCount` 修正为“按已安装 skill 目录计数”而不是按分类目录下散文件计数。
+  - `ui/public/dashboard.html`：改为读取 `installedCount`；分类下拉改为根据 `/api/skills/list` 返回的分类动态构建，并在分类失效时自动回退到“全部分类”。
+  - `docs/runbooks/release-process.md`：补充 Skill Store 变更后的发布提醒——修完源码后必须重建 `dist`，并实际探测组包后的 `/api/skills/list`。
+  - 重新执行 `bash scripts/build-usb-pack.sh --platform all`，重建 `dist/usb-pack/opensparrow-0.1.0-alpha/`。
+  - `longrun/workspaces/opensparrow-unified/feature_list.json`：新增 `F-015` 条目。
+- Validation:
+  - `./longrun/workspaces/opensparrow-unified/init.sh` → PASS
+  - `node --check ui/server.mjs` → PASS
+  - 从 `ui/public/dashboard.html` 抽取内联 `<script>` 后执行 `node --check` → PASS
+  - 源码服务：`OPENSPARROW_AUTO_OPEN=0 node ui/server.mjs`，随后请求 `/api/skills/list?page=1&pageSize=3` → `total=60300`
+  - 组包服务：`cd dist/usb-pack/opensparrow-0.1.0-alpha && OPENSPARROW_AUTO_OPEN=0 node ui/server.mjs`，随后请求 `/api/skills/list?page=1&pageSize=3` → `total=60300`
+  - 隔离 HOME 冒烟：`HOME=/tmp/opensparrow-skilltest-home OPENSPARROW_AUTO_OPEN=0 node ui/server.mjs` 后，安装/卸载 `Business/2d-games` 验证 `installedCount` 从 `0 → 1 → 0`，`installed` 从 `false → true → false`
+- Current status:
+  - Skill Store 在源码服务和重建后的 `dist` 包里都能返回完整技能列表。
+  - “已安装”统计和分类标签现在与后端返回一致。
+- Next follow-up:
+  - 如需浏览器级 UI 证据，可补一轮 Playwright 截图或冒烟脚本（当前机器尚未安装 Playwright 浏览器运行时）。
+- Progress snapshot: 14/15 passing
