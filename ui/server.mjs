@@ -2340,6 +2340,19 @@ async function handleFactoryReset(res, body) {
         log.push(`skills directory not found: ${toUserPath(target)}`)
       }
     }
+
+    // Also clean up industry skills
+    for (const target of INDUSTRY_SKILL_TARGETS) {
+      const industryRemoval = removeDirIfExists(target)
+      if (industryRemoval.error) {
+        errors.push(`删除 industry skills 目录失败: ${toUserPath(target)} (${industryRemoval.error})`)
+      } else if (industryRemoval.removed) {
+        removed.push(toUserPath(target))
+        log.push(`removed directory: ${toUserPath(target)}`)
+      } else {
+        log.push(`industry skills directory not found: ${toUserPath(target)}`)
+      }
+    }
   }
 
   if (fs.existsSync(CONFIG_FILE)) {
