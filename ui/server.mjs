@@ -69,6 +69,12 @@ const SKILL_TARGETS = [
   path.join(os.homedir(), '.codex', 'skills', 'superpowers'),
 ]
 
+const INDUSTRY_SKILLS_SRC = path.join(PACK_ROOT, 'skills', 'My_Skills')
+const INDUSTRY_SKILL_TARGETS = [
+  path.join(os.homedir(), '.claude', 'skills', 'My_Skills'),
+  path.join(os.homedir(), '.codex', 'skills', 'My_Skills'),
+]
+
 const DEFAULT_MODEL = process.env.OPENCLAW_MODEL ?? 'openai/gpt-4o-mini'
 
 const DEFAULT_PORT = resolvePortFromEnv('OPENSPARROW_UI_PORT', 19000)
@@ -1349,29 +1355,62 @@ async function handleStatus(res) {
 }
 
 /**
+ * Recursively copy a directory tree from src to dest.
+ * Requires Node 16.7+ (fs.cpSync with recursive option).
+ * @param {string} src
+ * @param {string} dest
+ */
+function copyDirRecursive(src, dest) {
+  fs.cpSync(src, dest, { recursive: true, force: true })
+}
+
+/**
  * Copy bundled superpowers skills to user's Claude and Codex skill directories.
+ * Also copies selected industry skill categories from INDUSTRY_SKILLS_SRC.
+ * @param {string[]} selectedCategories - industry skill category names to install
  * @returns {Promise<string[]>} list of error messages (empty if all OK)
  */
-async function installSkills() {
+async function installSkills(selectedCategories = []) {
   const errors = []
 
   // Check if source skills directory exists
   if (!fs.existsSync(SKILLS_SRC)) {
     // Not bundled — skip silently (optional component)
-    return errors
+  } else {
+    for (const dest of SKILL_TARGETS) {
+      try {
+        fs.mkdirSync(dest, { recursive: true })
+        const files = fs.readdirSync(SKILLS_SRC)
+        for (const file of files) {
+          const src = path.join(SKILLS_SRC, file)
+          const dst = path.join(dest, file)
+          fs.copyFileSync(src, dst)
+        }
+      } catch (e) {
+        errors.push(`skills copy to ${dest} failed: ${e.message}`)
+      }
+    }
   }
 
-  for (const dest of SKILL_TARGETS) {
-    try {
-      fs.mkdirSync(dest, { recursive: true })
-      const files = fs.readdirSync(SKILLS_SRC)
-      for (const file of files) {
-        const src = path.join(SKILLS_SRC, file)
-        const dst = path.join(dest, file)
-        fs.copyFileSync(src, dst)
+  // Install selected industry skill categories
+  if (Array.isArray(selectedCategories) && selectedCategories.length > 0) {
+    if (fs.existsSync(INDUSTRY_SKILLS_SRC)) {
+      for (const category of selectedCategories) {
+        const categorySrc = path.join(INDUSTRY_SKILLS_SRC, category)
+        if (!fs.existsSync(categorySrc)) {
+          errors.push(`industry skills category not found: ${category}`)
+          continue
+        }
+        for (const dest of INDUSTRY_SKILL_TARGETS) {
+          const categoryDest = path.join(dest, category)
+          try {
+            fs.mkdirSync(categoryDest, { recursive: true })
+            copyDirRecursive(categorySrc, categoryDest)
+          } catch (e) {
+            errors.push(`industry skills copy (${category}) to ${categoryDest} failed: ${e.message}`)
+          }
+        }
       }
-    } catch (e) {
-      errors.push(`skills copy to ${dest} failed: ${e.message}`)
     }
   }
 
@@ -1551,6 +1590,7 @@ async function handleInstall(res, body) {
   const baseUrl = normalizeOpenAIBaseUrl(baseUrlRaw)
   const apiKey = typeof api.apiKey === 'string' ? api.apiKey.trim() : ''
   const model = typeof api.model === 'string' && api.model.trim() ? api.model.trim() : DEFAULT_MODEL
+  const selectedSkillCategories = Array.isArray(body?.selectedSkillCategories) ? body.selectedSkillCategories : []
 
   const errors = []
   const warnings = []
@@ -1599,9 +1639,9 @@ async function handleInstall(res, body) {
     }
   }
 
-  // Step 0: Install bundled superpowers skills
+  // Step 0: Install bundled superpowers skills + industry skills
   {
-    const skillErrors = await installSkills()
+    const skillErrors = await installSkills(selectedSkillCategories)
     errors.push(...skillErrors)
   }
 
@@ -1960,6 +2000,108 @@ function handleGetChannels(res) {
   }
 }
 
+/**
+ * Count all files recursively under a directory (no directories counted).
+ * @param {string} dir
+ * @returns {number}
+ */
+function countFilesRecursive(dir) {
+  let count = 0
+  try {
+    const entries = fs.readdirSync(dir, { withFileTypes: true })
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        count += countFilesRecursive(path.join(dir, entry.name))
+      } else {
+        count++
+      }
+    }
+  } catch (_) {
+    // ignore unreadable subdirectories
+  }
+  return count
+}
+
+/** GET /api/skill-categories */
+function handleGetSkillCategories(res) {
+  if (!fs.existsSync(INDUSTRY_SKILLS_SRC)) {
+    sendJson(res, 200, { categories: [] })
+    return
+  }
+
+  const categories = []
+  try {
+    const entries = fs.readdirSync(INDUSTRY_SKILLS_SRC, { withFileTypes: true })
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        const categoryPath = path.join(INDUSTRY_SKILLS_SRC, entry.name)
+        const fileCount = countFilesRecursive(categoryPath)
+        categories.push({ name: entry.name, fileCount, available: true })
+      }
+    }
+  } catch (e) {
+    sendJson(res, 500, { error: `Cannot read skill categories: ${e.message}` })
+    return
+  }
+
+  sendJson(res, 200, { categories })
+}
+
+/** GET /api/skill-status */
+function handleGetSkillStatus(res) {
+  // Check superpowers installation (use first target as canonical)
+  const superpowersTarget = SKILL_TARGETS[0]
+  let superpowersInstalled = false
+  try {
+    if (fs.existsSync(superpowersTarget)) {
+      const entries = fs.readdirSync(superpowersTarget)
+      superpowersInstalled = entries.length > 0
+    }
+  } catch (_) {}
+
+  // Check which industry categories are installed
+  const industryTarget = INDUSTRY_SKILL_TARGETS[0]
+  const installedCategories = []
+  const availableCategories = []
+
+  if (fs.existsSync(INDUSTRY_SKILLS_SRC)) {
+    try {
+      const srcEntries = fs.readdirSync(INDUSTRY_SKILLS_SRC, { withFileTypes: true })
+      for (const entry of srcEntries) {
+        if (entry.isDirectory()) availableCategories.push(entry.name)
+      }
+    } catch (_) {}
+  }
+
+  if (fs.existsSync(industryTarget)) {
+    try {
+      const destEntries = fs.readdirSync(industryTarget, { withFileTypes: true })
+      for (const entry of destEntries) {
+        if (entry.isDirectory()) {
+          const categoryPath = path.join(industryTarget, entry.name)
+          try {
+            const files = fs.readdirSync(categoryPath)
+            if (files.length > 0) installedCategories.push(entry.name)
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
+  }
+
+  sendJson(res, 200, {
+    superpowers: {
+      installed: superpowersInstalled,
+      location: toUserPath(superpowersTarget),
+      source: 'bundled',
+    },
+    industrySkills: {
+      installed: installedCategories,
+      location: toUserPath(industryTarget),
+      availableCategories,
+    },
+  })
+}
+
 /** POST /api/config/channels */
 async function handleUpdateChannel(res, body) {
   const errors = []
@@ -2227,6 +2369,33 @@ async function handleFactoryReset(res, body) {
   sendJson(res, errors.length > 0 ? 500 : 200, payload)
 }
 
+/** GET /api/skill-categories */
+function handleSkillCategories(res) {
+  const categories = [
+    { key: 'Business',   name: '商业', desc: '营销、管理、运营相关' },
+    { key: 'Education',  name: '教育', desc: '教学、培训、学习相关' },
+    { key: 'Finance',    name: '金融', desc: '投资、财务、风控相关' },
+    { key: 'Government', name: '政务', desc: '公文、政策、行政相关' },
+    { key: 'Healthcare', name: '医疗', desc: '医学、健康、诊断相关' },
+    { key: 'Utilities',  name: '工具', desc: '通用工具、效率提升' },
+  ]
+
+  const result = categories.map(cat => {
+    const catDir = path.join(INDUSTRY_SKILLS_SRC, cat.key)
+    let count = 0
+    try {
+      if (fs.existsSync(catDir)) {
+        // Count immediate subdirectories as skill count (each subfolder = 1 skill)
+        const entries = fs.readdirSync(catDir, { withFileTypes: true })
+        count = entries.filter(e => e.isDirectory()).length
+      }
+    } catch (_) { /* ignore */ }
+    return { ...cat, count }
+  })
+
+  sendJson(res, 200, { categories: result })
+}
+
 /** POST /api/dingtalk/probe */
 async function handleDingtalkProbe(res) {
   try {
@@ -2362,6 +2531,11 @@ async function requestHandler(req, res) {
       return
     }
 
+    if (method === 'GET' && pathname === '/api/skill-categories') {
+      handleSkillCategories(res)
+      return
+    }
+
     if (method === 'POST' && pathname === '/api/dingtalk/probe') {
       await handleDingtalkProbe(res)
       return
@@ -2369,6 +2543,16 @@ async function requestHandler(req, res) {
 
     if (method === 'POST' && pathname === '/api/wecom/probe') {
       await handleWecomProbe(res)
+      return
+    }
+
+    if (method === 'GET' && pathname === '/api/skill-categories') {
+      handleGetSkillCategories(res)
+      return
+    }
+
+    if (method === 'GET' && pathname === '/api/skill-status') {
+      handleGetSkillStatus(res)
       return
     }
 
