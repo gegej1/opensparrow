@@ -70,6 +70,7 @@
      2. 读取现有 profile 中的 `openclaw.json`、`auth-profiles.json` 与可选 `ui-meta.json`；
      3. 对 DingTalk 仅提交最小必需字段（`clientId/clientSecret`），若存在则补带 `corpId/robotCode`；
      4. 在失败时优先输出后端 `errors[] / message`，而不是只显示 `HTTP 400`。
+   - 路径兼容性说明：`one-click-deploy.ps1` 现在优先使用当前 `HOME` / `USERPROFILE`，并回退到 Windows 用户配置 API（`Win32_UserProfile`）发现历史 profile；不再写死依赖 `C:\Users\...`。
 
 ## 验证方法
 - 导出后应至少确认：

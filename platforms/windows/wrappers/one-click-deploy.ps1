@@ -176,6 +176,64 @@ function Resolve-PackContext() {
   throw 'Unable to resolve pack root. Expected either usb-pack/{runtime,ui}/ or repo-root/{ui/,vendor/windows-openclaw/}.'
 }
 
+function Get-UserHomeCandidates() {
+  $seen = @{}
+  $homes = New-Object System.Collections.Generic.List[string]
+
+  function Add-HomeCandidate([string]$RawPath) {
+    if ([string]::IsNullOrWhiteSpace($RawPath)) {
+      return
+    }
+
+    try {
+      $fullPath = Resolve-AbsolutePath $RawPath
+    }
+    catch {
+      return
+    }
+
+    if ([string]::IsNullOrWhiteSpace($fullPath)) {
+      return
+    }
+    if (-not (Test-Path $fullPath)) {
+      return
+    }
+
+    $normalized = $fullPath.TrimEnd('\','/')
+    $key = $normalized.ToLowerInvariant()
+    if ($seen.ContainsKey($key)) {
+      return
+    }
+
+    $seen[$key] = $true
+    $homes.Add($normalized)
+  }
+
+  Add-HomeCandidate ([string]$HOME)
+  Add-HomeCandidate ([Environment]::GetFolderPath('UserProfile'))
+  Add-HomeCandidate ([Environment]::GetEnvironmentVariable('USERPROFILE', 'Process'))
+  Add-HomeCandidate ([Environment]::GetEnvironmentVariable('USERPROFILE', 'User'))
+  Add-HomeCandidate ([Environment]::GetEnvironmentVariable('USERPROFILE', 'Machine'))
+
+  $homeDrive = [Environment]::GetEnvironmentVariable('HOMEDRIVE', 'Process')
+  $homePath = [Environment]::GetEnvironmentVariable('HOMEPATH', 'Process')
+  if (-not [string]::IsNullOrWhiteSpace($homeDrive) -and -not [string]::IsNullOrWhiteSpace($homePath)) {
+    Add-HomeCandidate (Join-Path $homeDrive $homePath.TrimStart('\'))
+  }
+
+  try {
+    $profiles = Get-CimInstance Win32_UserProfile -ErrorAction Stop | Where-Object {
+      $_.Special -ne $true -and -not [string]::IsNullOrWhiteSpace([string]$_.LocalPath)
+    }
+    foreach ($profile in $profiles) {
+      Add-HomeCandidate ([string]$profile.LocalPath)
+    }
+  }
+  catch {}
+
+  return @($homes)
+}
+
 function Resolve-OpenClawHome([string]$Profile) {
   $currentHome = [string]$HOME
   if ([string]::IsNullOrWhiteSpace($currentHome)) {
@@ -192,23 +250,17 @@ function Resolve-OpenClawHome([string]$Profile) {
     }
   }
 
-  $roots = @('C:\Users')
   $candidates = @()
-  foreach ($root in $roots) {
-    if (-not (Test-Path $root)) { continue }
-    foreach ($dir in (Get-ChildItem -Directory $root -ErrorAction SilentlyContinue)) {
-      $name = [string]$dir.Name
-      if ($name -in @('Public', 'Default', 'Default User', 'All Users')) { continue }
-      $stateDir = Join-Path $dir.FullName (".openclaw-{0}" -f $Profile)
-      $config = Join-Path $stateDir 'openclaw.json'
-      if (Test-Path $config) {
-        $info = Get-Item $config -ErrorAction SilentlyContinue
-        if ($info) {
-          $candidates += [pscustomobject]@{
-            home = $dir.FullName
-            config = $config
-            lastWrite = $info.LastWriteTime
-          }
+  foreach ($homeDir in (Get-UserHomeCandidates)) {
+    $stateDir = Join-Path $homeDir (".openclaw-{0}" -f $Profile)
+    $config = Join-Path $stateDir 'openclaw.json'
+    if (Test-Path $config) {
+      $info = Get-Item $config -ErrorAction SilentlyContinue
+      if ($info) {
+        $candidates += [pscustomobject]@{
+          home = $homeDir
+          config = $config
+          lastWrite = $info.LastWriteTime
         }
       }
     }

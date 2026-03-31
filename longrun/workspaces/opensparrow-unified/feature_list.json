@@ -361,5 +361,29 @@
     "evidence_hint": "Source/dist API probe + isolated install/uninstall smoke + release-process note",
     "risk": "medium",
     "passes": true
+  },
+  {
+    "id": "F-016",
+    "priority": 1,
+    "category": "maintenance",
+    "component": "windows-home-path-portability",
+    "description": "Windows one-click deployment no longer assumes historical profiles live under a hardcoded `C:\\Users` root; it resolves candidate home directories from environment variables and Windows user profile APIs.",
+    "depends_on": [
+      "F-008",
+      "F-013"
+    ],
+    "acceptance_criteria": [
+      "`platforms/windows/wrappers/one-click-deploy.ps1` does not hardcode `C:\\Users` when locating existing `.openclaw-<profile>` state.",
+      "Historical profile detection still prefers the current user's home when config already exists, and can fall back to discovered Windows user homes for elevated-launch scenarios.",
+      "Affected Windows delivery docs and unified longrun records mention the new discovery strategy."
+    ],
+    "steps": [
+      "Replace hardcoded Windows user-root scanning with environment-driven candidate homes.",
+      "Add Windows profile API fallback for non-standard home locations.",
+      "Sync Windows delivery docs and unified progress records."
+    ],
+    "evidence_hint": "one-click-deploy.ps1 diff + docs/usb-pack/windows-native-delivery.md note + longrun entry",
+    "risk": "medium",
+    "passes": true
   }
 ]

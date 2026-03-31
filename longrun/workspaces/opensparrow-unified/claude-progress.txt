@@ -263,3 +263,26 @@
 - Next follow-up:
   - 如需浏览器级 UI 证据，可补一轮 Playwright 截图或冒烟脚本（当前机器尚未安装 Playwright 浏览器运行时）。
 - Progress snapshot: 14/15 passing
+
+## Session 9 (F-016 Windows home path portability)
+- Date: 2026-03-31
+- Goal: 去掉 Windows one-click 部署对 `C:\Users` 的根路径假设，避免 VM / 域用户 / 重定向用户目录环境下历史 profile 发现失效。
+- Selected feature id: `F-016`
+- Root cause:
+  - `platforms/windows/wrappers/one-click-deploy.ps1` 原先在 `Resolve-OpenClawHome()` 中直接扫描 `C:\Users` 查找 `.openclaw-<profile>\openclaw.json`。
+  - 这虽然不是绑定到某个具体用户名，但仍然假设了“所有用户目录都挂在 `C:\Users`”，在企业域、用户目录迁移、非标准系统盘或某些虚拟机镜像中都有风险。
+- Changes made:
+  - `platforms/windows/wrappers/one-click-deploy.ps1`：新增 `Get-UserHomeCandidates()`，优先从 `HOME`、`USERPROFILE`、`HOMEDRIVE` + `HOMEPATH` 生成候选目录，并使用 `Win32_UserProfile` 枚举可用用户目录去重补充。
+  - `Resolve-OpenClawHome()` 改为遍历候选 home 目录寻找历史 profile，不再写死 `C:\Users`。
+  - `docs/usb-pack/windows-native-delivery.md`：补充路径兼容性说明，明确 one-click 已改为环境变量 + Windows 用户配置 API 发现历史 profile。
+  - `longrun/workspaces/opensparrow-unified/feature_list.json`：新增 `F-016` 条目。
+- Validation:
+  - `grep -F 'C:\Users' platforms/windows/wrappers/one-click-deploy.ps1` → 无结果
+  - 本机无 `pwsh` / `powershell` 可执行文件，因此本轮无法在 macOS 上做 PowerShell 语法解析；已改为最小范围静态审查 + 差异核对，并保留后续在 Windows VM 上补 `pwsh` 解析 / 实机执行。
+  - `./longrun/workspaces/opensparrow-unified/init.sh` 仍通过（未影响 shell / node 验证链）。
+- Current status:
+  - Windows one-click 历史配置发现逻辑已不依赖固定的 `C:\Users` 根目录。
+  - 当前剩余建议是在 Windows VM 上补一轮 `one-click-deploy.ps1` 实机验证，确认提权/非标准 home 环境下仍能正确命中历史 profile。
+- Next follow-up:
+  - 在 Windows VM 中执行 `platforms\windows\wrappers\one-click-deploy.ps1`，分别验证当前用户 HOME、提权启动、以及历史 profile 自动发现三种场景。
+- Progress snapshot: 15/16 passing
