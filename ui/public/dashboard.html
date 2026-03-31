@@ -1501,6 +1501,7 @@
         // ─── Skill Store ─────────────────────────────────────────────
 
         async loadSkills() {
+          if (this.skillLoading) return;
           this.skillLoading = true;
           try {
             const params = new URLSearchParams({
