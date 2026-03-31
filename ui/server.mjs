@@ -2461,19 +2461,37 @@ function getSkillsCache() {
       let catCount = 0
 
       try {
-        const fileEntries = fs.readdirSync(categoryDir, { withFileTypes: true })
-        for (const fileEntry of fileEntries) {
-          if (!fileEntry.isFile()) continue
-          const name = fileEntry.name
-          const filePath = path.join(categoryDir, name)
+        const skillDirEntries = fs.readdirSync(categoryDir, { withFileTypes: true })
+        for (const skillDirEntry of skillDirEntries) {
+          if (!skillDirEntry.isDirectory()) continue
+          const skillName = skillDirEntry.name
+          const skillDir = path.join(categoryDir, skillName)
+
+          // Try to find SKILL.md or any markdown file in the skill directory
+          let skillFilePath = null
+          try {
+            const skillFiles = fs.readdirSync(skillDir)
+            for (const file of skillFiles) {
+              if (file.toLowerCase() === 'skill.md' || file.endsWith('.md')) {
+                skillFilePath = path.join(skillDir, file)
+                break
+              }
+            }
+          } catch (_) {
+            // unable to read skill directory
+            continue
+          }
+
+          if (!skillFilePath) continue // no markdown file found
+
           let size = 0
           try {
-            size = fs.statSync(filePath).size
+            size = fs.statSync(skillFilePath).size
           } catch (_) {}
           skills.push({
-            name,
+            name: skillName,
             category,
-            path: `${category}/${name}`,
+            path: `${category}/${skillName}`,
             size,
           })
           catCount++
@@ -2570,33 +2588,41 @@ function handleSkillsList(res, searchParams) {
 async function handleSkillInstall(res, body) {
   const skillPath = typeof body?.skill === 'string' ? body.skill.trim() : ''
   if (!skillPath) {
-    sendJson(res, 400, { ok: false, error: '缺少 skill 字段，格式: "category/filename"' })
+    sendJson(res, 400, { ok: false, error: '缺少 skill 字段，格式: "category/skillname"' })
     return
   }
 
-  // Safely parse "category/filename" — reject traversal attempts
+  // Safely parse "category/skillname" — reject traversal attempts
   const parts = skillPath.split('/')
   if (parts.length !== 2 || parts.some(p => !p || p.includes('..') || p.includes('\\'))) {
-    sendJson(res, 400, { ok: false, error: 'skill 格式无效，需为 "category/filename"（不含路径穿越字符）' })
+    sendJson(res, 400, { ok: false, error: 'skill 格式无效，需为 "category/skillname"（不含路径穿越字符）' })
     return
   }
-  const [category, filename] = parts
+  const [category, skillName] = parts
 
-  const srcFile = path.join(INDUSTRY_SKILLS_SRC, category, filename)
-  if (!fs.existsSync(srcFile)) {
-    sendJson(res, 404, { ok: false, error: `源文件不存在: ${skillPath}` })
+  const srcDir = path.join(INDUSTRY_SKILLS_SRC, category, skillName)
+  if (!fs.existsSync(srcDir) || !fs.statSync(srcDir).isDirectory()) {
+    sendJson(res, 404, { ok: false, error: `源目录不存在: ${skillPath}` })
     return
   }
 
   const copyErrors = []
   for (const targetBase of INDUSTRY_SKILL_TARGETS) {
-    const destDir  = path.join(targetBase, category)
-    const destFile = path.join(destDir, filename)
+    const destDir = path.join(targetBase, category, skillName)
     try {
       fs.mkdirSync(destDir, { recursive: true })
-      fs.copyFileSync(srcFile, destFile)
+      // Copy all files from source skill directory to destination
+      const files = fs.readdirSync(srcDir)
+      for (const file of files) {
+        const srcFile = path.join(srcDir, file)
+        const destFile = path.join(destDir, file)
+        const stat = fs.statSync(srcFile)
+        if (stat.isFile()) {
+          fs.copyFileSync(srcFile, destFile)
+        }
+      }
     } catch (e) {
-      copyErrors.push(`copy to ${destFile} failed: ${e.message}`)
+      copyErrors.push(`copy to ${destDir} failed: ${e.message}`)
     }
   }
 
@@ -2611,33 +2637,34 @@ async function handleSkillInstall(res, body) {
 
 /**
  * DELETE /api/skills/uninstall
- * Body: { "skill": "category/filename.md" }
- * Remove a single skill file from all INDUSTRY_SKILL_TARGETS (idempotent).
+ * Body: { "skill": "category/skillname" }
+ * Remove a single skill directory from all INDUSTRY_SKILL_TARGETS (idempotent).
  */
 async function handleSkillUninstall(res, body) {
   const skillPath = typeof body?.skill === 'string' ? body.skill.trim() : ''
   if (!skillPath) {
-    sendJson(res, 400, { ok: false, error: '缺少 skill 字段，格式: "category/filename"' })
+    sendJson(res, 400, { ok: false, error: '缺少 skill 字段，格式: "category/skillname"' })
     return
   }
 
   const parts = skillPath.split('/')
   if (parts.length !== 2 || parts.some(p => !p || p.includes('..') || p.includes('\\'))) {
-    sendJson(res, 400, { ok: false, error: 'skill 格式无效，需为 "category/filename"（不含路径穿越字符）' })
+    sendJson(res, 400, { ok: false, error: 'skill 格式无效，需为 "category/skillname"（不含路径穿越字符）' })
     return
   }
-  const [category, filename] = parts
+  const [category, skillName] = parts
 
   const deleteErrors = []
   for (const targetBase of INDUSTRY_SKILL_TARGETS) {
-    const destFile = path.join(targetBase, category, filename)
+    const destDir = path.join(targetBase, category, skillName)
     try {
-      if (fs.existsSync(destFile)) {
-        fs.unlinkSync(destFile)
+      if (fs.existsSync(destDir)) {
+        // Recursively delete the entire skill directory
+        fs.rmSync(destDir, { recursive: true, force: true })
       }
-      // Idempotent: no error if file doesn't exist
+      // Idempotent: no error if directory doesn't exist
     } catch (e) {
-      deleteErrors.push(`delete ${destFile} failed: ${e.message}`)
+      deleteErrors.push(`delete ${destDir} failed: ${e.message}`)
     }
   }
 
