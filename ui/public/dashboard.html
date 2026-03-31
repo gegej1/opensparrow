@@ -371,17 +371,67 @@
         <template x-if="modal.channel === 'wecom'">
           <div class="space-y-4">
             <div class="modal-note rounded-lg p-3 text-xs">
-              在企微管理后台 → 应用管理 → 智能机器人，创建应用选 API 模式 + 长连接
+              社区企微插件主链路必填为 Bot ID + Bot Secret；CorpId / CorpSecret / AgentId 仅用于自建应用增强出站 / 回调入站。
             </div>
-            <div>
-              <label class="block text-sm font-medium mb-1" style="color:#6B7A99">Bot ID</label>
-              <input type="text" x-model="modal.fields.botId" placeholder="ww_xxxxxxxxxxxxxxxx"
-                     class="light-input" />
+            <div class="grid md:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-medium mb-1" style="color:#6B7A99">Bot ID（必填）</label>
+                <input type="text" x-model="modal.fields.botId" placeholder="aibxxxxxxxxxxxxxxxx"
+                       class="light-input" />
+              </div>
+              <div>
+                <label class="block text-sm font-medium mb-1" style="color:#6B7A99">Bot Secret（必填）</label>
+                <input type="password" x-model="modal.fields.secret" placeholder="••••••••••••••••"
+                       class="light-input" />
+              </div>
             </div>
-            <div>
-              <label class="block text-sm font-medium mb-1" style="color:#6B7A99">Bot Secret</label>
-              <input type="password" x-model="modal.fields.secret" placeholder="••••••••••••••••"
-                     class="light-input" />
+            <div class="rounded-lg border p-3 space-y-3" style="border-color:#E3E8F2;background:#FAFBFD">
+              <div class="text-sm font-semibold" style="color:#1D2B4E">自建应用增强出站（可选）</div>
+              <div class="grid md:grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-sm font-medium mb-1" style="color:#6B7A99">CorpId</label>
+                  <input type="text" x-model="modal.fields.corpId" placeholder="wwxxxxxxxxxxxxxxxx"
+                         class="light-input" />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium mb-1" style="color:#6B7A99">CorpSecret</label>
+                  <input type="password" x-model="modal.fields.corpSecret" placeholder="••••••••••••••••"
+                         class="light-input" />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium mb-1" style="color:#6B7A99">AgentId</label>
+                  <input type="text" x-model="modal.fields.agentId" placeholder="1000002"
+                         class="light-input" />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium mb-1" style="color:#6B7A99">Reply Format</label>
+                  <select x-model="modal.fields.replyFormat" class="light-input">
+                    <option value="">默认（markdown）</option>
+                    <option value="markdown">markdown</option>
+                    <option value="text">text</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div class="rounded-lg border p-3 space-y-3" style="border-color:#E3E8F2;background:#FAFBFD">
+              <div class="text-sm font-semibold" style="color:#1D2B4E">回调入站（可选，需与自建应用字段一起完整填写）</div>
+              <div class="grid md:grid-cols-3 gap-4">
+                <div>
+                  <label class="block text-sm font-medium mb-1" style="color:#6B7A99">Callback Token</label>
+                  <input type="text" x-model="modal.fields.callbackToken" placeholder="callback-token"
+                         class="light-input" />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium mb-1" style="color:#6B7A99">EncodingAESKey</label>
+                  <input type="password" x-model="modal.fields.encodingAESKey" placeholder="43 位 AES Key"
+                         class="light-input" />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium mb-1" style="color:#6B7A99">Callback Path</label>
+                  <input type="text" x-model="modal.fields.callbackPath" placeholder="/webhooks/app"
+                         class="light-input" />
+                </div>
+              </div>
             </div>
           </div>
         </template>
@@ -708,7 +758,17 @@
             icon: '💼',
             name: '企业微信',
             enabled: false,
-            fields: { botId: '', secret: '' },
+            fields: {
+              botId: '',
+              secret: '',
+              corpId: '',
+              corpSecret: '',
+              agentId: '',
+              replyFormat: '',
+              callbackToken: '',
+              encodingAESKey: '',
+              callbackPath: '',
+            },
             summaryFields: [],
           },
         ],
@@ -837,8 +897,15 @@
                   card.fields.robotCode    = ch.robotCode    || ch.clientId || '';
                   card.fields.clientSecret = ch.clientSecret || '';
                 } else if (card.key === 'wecom') {
-                  card.fields.botId  = ch.botId  || '';
-                  card.fields.secret = ch.secret || '';
+                  card.fields.botId          = ch.botId          || '';
+                  card.fields.secret         = ch.secret         || '';
+                  card.fields.corpId         = ch.corpId         || '';
+                  card.fields.corpSecret     = ch.corpSecret     || '';
+                  card.fields.agentId        = ch.agentId        || '';
+                  card.fields.replyFormat    = ch.replyFormat    || '';
+                  card.fields.callbackToken  = ch.callbackToken  || '';
+                  card.fields.encodingAESKey = ch.encodingAESKey || '';
+                  card.fields.callbackPath   = ch.callbackPath   || '';
                 }
               }
               card.summaryFields = this.buildSummaryFields(card.key, card.fields);
@@ -875,12 +942,69 @@
             ];
           }
           if (channelKey === 'wecom') {
-            return [
+            const rows = [
               { label: 'Bot ID',     value: mask(fields.botId) },
               { label: 'Bot Secret', value: mask(fields.secret) },
             ];
+            if (fields.corpId) rows.push({ label: 'CorpId', value: mask(fields.corpId) });
+            if (fields.agentId) rows.push({ label: 'AgentId', value: String(fields.agentId) });
+            if (fields.callbackPath) rows.push({ label: 'Callback', value: fields.callbackPath });
+            return rows;
           }
           return [];
+        },
+
+        isLikelyWecomBotId(value) {
+          return /^aib(?:[_-]?[A-Za-z0-9][A-Za-z0-9._-]*)$/i.test(String(value || '').trim());
+        },
+
+        validateWecomFields(fields) {
+          const botId = String(fields?.botId || '').trim();
+          const secret = String(fields?.secret || '').trim();
+          const corpId = String(fields?.corpId || '').trim();
+          const corpSecret = String(fields?.corpSecret || '').trim();
+          const agentId = String(fields?.agentId || '').trim();
+          const replyFormat = String(fields?.replyFormat || '').trim().toLowerCase();
+          const callbackToken = String(fields?.callbackToken || '').trim();
+          const encodingAESKey = String(fields?.encodingAESKey || '').trim();
+          const callbackPath = String(fields?.callbackPath || '').trim();
+          const hasAgentBasics = Boolean(corpId || corpSecret || agentId);
+          const hasCallback = Boolean(callbackToken || encodingAESKey || callbackPath);
+          const errors = [];
+
+          if (!botId) errors.push('企业微信需要填写 Bot ID');
+          if (botId && !this.isLikelyWecomBotId(botId)) {
+            errors.push('企业微信 Bot ID 格式疑似错误，请填写智能机器人（API+长连接）生成的 Bot ID（通常以 aib 或 aib_ 开头）');
+          }
+          if (!secret) errors.push('企业微信需要填写 Bot Secret');
+          if (hasAgentBasics && (!corpId || !corpSecret || !agentId)) {
+            errors.push('启用企业微信自建应用增强出站时，需要同时填写 CorpId、CorpSecret、AgentId');
+          }
+          if (agentId && !/^\d+$/.test(agentId)) {
+            errors.push('企业微信 AgentId 必须是正整数');
+          }
+          if (replyFormat && !['markdown', 'text'].includes(replyFormat)) {
+            errors.push('企业微信 Reply Format 仅支持 markdown 或 text');
+          }
+          if (hasCallback && (!callbackToken || !encodingAESKey || !callbackPath)) {
+            errors.push('启用企业微信回调入站时，需要同时填写 Callback Token、EncodingAESKey、Callback Path');
+          }
+          if (hasCallback && (!corpId || !corpSecret || !agentId)) {
+            errors.push('企业微信回调入站依赖完整的自建应用 CorpId、CorpSecret、AgentId');
+          }
+
+          return {
+            botId,
+            secret,
+            corpId,
+            corpSecret,
+            agentId,
+            replyFormat,
+            callbackToken,
+            encodingAESKey,
+            callbackPath,
+            errors,
+          };
         },
 
         showToast(msg, type = 'success') {
@@ -1079,6 +1203,13 @@
               payloadFields.clientId = clientId || robotCode;
               payloadFields.robotCode = robotCode || clientId;
               payloadFields.clientSecret = clientSecret;
+            } else if (this.modal.channel === 'wecom') {
+              const { errors, ...normalizedFields } = this.validateWecomFields(payloadFields);
+              if (errors.length > 0) {
+                this.showToast(errors.join('；'), 'error');
+                return;
+              }
+              Object.assign(payloadFields, normalizedFields);
             }
             const res = await this.fetchWithTimeout('/api/config/channels', {
               method: 'POST',

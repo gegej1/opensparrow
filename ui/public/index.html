@@ -410,31 +410,95 @@
                 <span class="text-2xl">💼</span>
                 <h3 class="font-bold" style="color:#1D2B4E">企业微信</h3>
               </div>
-              <a href="https://work.weixin.qq.com/nl/index/openclaw" target="_blank" class="text-xs link-gold flex items-center gap-1">
-                如何获取？ ↗
-              </a>
+              <div class="flex items-center gap-3 text-xs">
+                <a href="https://github.com/sunnoy/openclaw-plugin-wecom" target="_blank" class="link-gold flex items-center gap-1">
+                  社区插件文档 ↗
+                </a>
+                <a href="https://work.weixin.qq.com/wework_admin/frame#apps" target="_blank" class="link-gold flex items-center gap-1">
+                  自建应用后台 ↗
+                </a>
+              </div>
             </div>
             <div class="info-box mb-4">
-              在企微智能机器人页面创建 API 模式 + 长连接机器人，填写机器人 Bot ID + Secret
+              OpenClaw 社区企微插件 <code>@sunnoy/wecom</code> 以 <strong>Bot ID + Bot Secret</strong> 作为主链路必填；如需自建应用增强出站 / 回调入站，再补充 CorpId / CorpSecret / AgentId。
             </div>
             <ul class="text-xs mb-3 list-disc pl-5" style="color:#6B7A99">
-              <li>机器人模式选择 API + 长连接，状态为启用。</li>
-              <li>Bot ID 通常以 <code>aib</code> 或 <code>aib_</code> 开头；不要填写 corpId 或自建应用 Secret。</li>
-              <li>企微后台事件权限和可见范围已完成配置。</li>
-              <li>变更权限后，重新保存并重启服务后再验证消息。</li>
+              <li>机器人模式选择 API + 长连接，Bot ID 通常以 <code>aib</code> 或 <code>aib_</code> 开头。</li>
+              <li>仅填写 CorpId / CorpSecret / AgentId 还不能让企微渠道变成 configured；Bot ID + Bot Secret 仍是必填。</li>
+              <li>自建应用字段是增强功能：可选支持应用消息出站、回调入站和 AES 解密。</li>
+              <li>如启用回调入站，需同时填写 Callback Token、EncodingAESKey、Callback Path。</li>
             </ul>
             <div class="space-y-4">
-              <div>
-                <label class="block text-sm font-medium mb-1" style="color:#6B7A99">Bot ID</label>
-                <input type="text" x-model="credentials.wecom.botId"
-                       placeholder="aibxxxxxxxxxxxxxxxx"
-                       class="step-input" />
+              <div class="grid md:grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-sm font-medium mb-1" style="color:#6B7A99">Bot ID（必填）</label>
+                  <input type="text" x-model="credentials.wecom.botId"
+                         placeholder="aibxxxxxxxxxxxxxxxx"
+                         class="step-input" />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium mb-1" style="color:#6B7A99">Bot Secret（必填）</label>
+                  <input type="password" x-model="credentials.wecom.secret"
+                         placeholder="••••••••••••••••"
+                         class="step-input" />
+                </div>
               </div>
-              <div>
-                <label class="block text-sm font-medium mb-1" style="color:#6B7A99">Bot Secret</label>
-                <input type="password" x-model="credentials.wecom.secret"
-                       placeholder="••••••••••••••••"
-                       class="step-input" />
+
+              <div class="p-4 rounded-xl border" style="border-color:#E3E8F2;background:#FAFBFD">
+                <div class="font-semibold mb-2" style="color:#1D2B4E">自建应用增强出站（可选）</div>
+                <div class="text-xs mb-3" style="color:#6B7A99">如果你需要用自建应用发消息、接回调或走 AES 解密，再填写下面字段。</div>
+                <div class="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <label class="block text-sm font-medium mb-1" style="color:#6B7A99">CorpId</label>
+                    <input type="text" x-model="credentials.wecom.corpId"
+                           placeholder="wwxxxxxxxxxxxxxxxx"
+                           class="step-input" />
+                  </div>
+                  <div>
+                    <label class="block text-sm font-medium mb-1" style="color:#6B7A99">CorpSecret</label>
+                    <input type="password" x-model="credentials.wecom.corpSecret"
+                           placeholder="••••••••••••••••"
+                           class="step-input" />
+                  </div>
+                  <div>
+                    <label class="block text-sm font-medium mb-1" style="color:#6B7A99">AgentId</label>
+                    <input type="text" x-model="credentials.wecom.agentId"
+                           placeholder="1000002"
+                           class="step-input" />
+                  </div>
+                  <div>
+                    <label class="block text-sm font-medium mb-1" style="color:#6B7A99">Reply Format</label>
+                    <select x-model="credentials.wecom.replyFormat" class="step-input">
+                      <option value="">默认（markdown）</option>
+                      <option value="markdown">markdown</option>
+                      <option value="text">text</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div class="p-4 rounded-xl border" style="border-color:#E3E8F2;background:#FAFBFD">
+                <div class="font-semibold mb-2" style="color:#1D2B4E">回调入站（可选，需与自建应用字段一起完整填写）</div>
+                <div class="grid md:grid-cols-3 gap-4">
+                  <div>
+                    <label class="block text-sm font-medium mb-1" style="color:#6B7A99">Callback Token</label>
+                    <input type="text" x-model="credentials.wecom.callbackToken"
+                           placeholder="callback-token"
+                           class="step-input" />
+                  </div>
+                  <div>
+                    <label class="block text-sm font-medium mb-1" style="color:#6B7A99">EncodingAESKey</label>
+                    <input type="password" x-model="credentials.wecom.encodingAESKey"
+                           placeholder="43 位 AES Key"
+                           class="step-input" />
+                  </div>
+                  <div>
+                    <label class="block text-sm font-medium mb-1" style="color:#6B7A99">Callback Path</label>
+                    <input type="text" x-model="credentials.wecom.callbackPath"
+                           placeholder="/webhooks/app"
+                           class="step-input" />
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -674,7 +738,7 @@
         channelOptions: [
           { key: 'feishu',   icon: '🐦', name: '飞书 / Lark', desc: '飞书/Lark 机器人，国内最完善' },
           { key: 'dingtalk', icon: '📎', name: '钉钉',         desc: '钉钉企业机器人，Stream 长连接' },
-          { key: 'wecom',    icon: '💼', name: '企业微信',     desc: '企微智能机器人，长连接模式' },
+          { key: 'wecom',    icon: '💼', name: '企业微信',     desc: '社区企微插件，Bot 必填 + 自建应用可选' },
         ],
 
         channelMap: { feishu: '飞书', dingtalk: '钉钉', wecom: '企业微信' },
@@ -684,7 +748,17 @@
         credentials: {
           feishu:   { appId: '', appSecret: '' },
           dingtalk: { corpId: '', clientId: '', robotCode: '', clientSecret: '' },
-          wecom:    { botId: '', secret: '' },
+          wecom:    {
+            botId: '',
+            secret: '',
+            corpId: '',
+            corpSecret: '',
+            agentId: '',
+            replyFormat: '',
+            callbackToken: '',
+            encodingAESKey: '',
+            callbackPath: '',
+          },
         },
 
         apiConfig: {
@@ -829,6 +903,55 @@
           return /^aib(?:[_-]?[A-Za-z0-9][A-Za-z0-9._-]*)$/i.test(String(value || '').trim());
         },
 
+        validateWecomFields(fields) {
+          const botId = String(fields?.botId || '').trim();
+          const secret = String(fields?.secret || '').trim();
+          const corpId = String(fields?.corpId || '').trim();
+          const corpSecret = String(fields?.corpSecret || '').trim();
+          const agentId = String(fields?.agentId || '').trim();
+          const replyFormat = String(fields?.replyFormat || '').trim().toLowerCase();
+          const callbackToken = String(fields?.callbackToken || '').trim();
+          const encodingAESKey = String(fields?.encodingAESKey || '').trim();
+          const callbackPath = String(fields?.callbackPath || '').trim();
+          const hasAgentBasics = Boolean(corpId || corpSecret || agentId);
+          const hasCallback = Boolean(callbackToken || encodingAESKey || callbackPath);
+          const errors = [];
+
+          if (!botId) errors.push('企业微信需要填写 Bot ID');
+          if (botId && !this.isLikelyWecomBotId(botId)) {
+            errors.push('企业微信 Bot ID 格式疑似错误，请填写智能机器人（API+长连接）生成的 Bot ID（通常以 aib 或 aib_ 开头）');
+          }
+          if (!secret) errors.push('企业微信需要填写 Bot Secret');
+          if (hasAgentBasics && (!corpId || !corpSecret || !agentId)) {
+            errors.push('启用企业微信自建应用增强出站时，需要同时填写 CorpId、CorpSecret、AgentId');
+          }
+          if (agentId && !/^\d+$/.test(agentId)) {
+            errors.push('企业微信 AgentId 必须是正整数');
+          }
+          if (replyFormat && !['markdown', 'text'].includes(replyFormat)) {
+            errors.push('企业微信 Reply Format 仅支持 markdown 或 text');
+          }
+          if (hasCallback && (!callbackToken || !encodingAESKey || !callbackPath)) {
+            errors.push('启用企业微信回调入站时，需要同时填写 Callback Token、EncodingAESKey、Callback Path');
+          }
+          if (hasCallback && (!corpId || !corpSecret || !agentId)) {
+            errors.push('企业微信回调入站依赖完整的自建应用 CorpId、CorpSecret、AgentId');
+          }
+
+          return {
+            botId,
+            secret,
+            corpId,
+            corpSecret,
+            agentId,
+            replyFormat,
+            callbackToken,
+            encodingAESKey,
+            callbackPath,
+            errors,
+          };
+        },
+
         isInstallTimeoutLike(errorText) {
           const text = String(errorText || '');
           const timeoutLike = /(timed out|timeout|health\s*check)/i.test(text);
@@ -874,12 +997,12 @@
           }
 
           if (this.selectedChannels.includes('wecom')) {
-            const botId = String(this.credentials.wecom?.botId || '').trim();
-            if (botId && !this.isLikelyWecomBotId(botId)) {
+            const result = this.validateWecomFields(this.credentials.wecom);
+            if (result.errors.length > 0) {
               this.installStarted = false;
               this.installDone = false;
               this.installError = true;
-              this.installErrorMsg = '企业微信 Bot ID 格式疑似错误，请填写智能机器人（API+长连接）生成的 Bot ID（通常以 aib 或 aib_ 开头）';
+              this.installErrorMsg = result.errors.join('；');
               return;
             }
           }
@@ -899,8 +1022,14 @@
           const body = {
             selectedSkillCategories: this.selectedSkillCategories,
             channels: this.selectedChannels.map(key => ({
+              ...(key === 'wecom'
+                ? (() => {
+                    const { errors, ...wecomPayload } = this.validateWecomFields(this.credentials.wecom);
+                    return wecomPayload;
+                  })()
+                : {}),
               type: key,
-              ...this.credentials[key],
+              ...(key === 'wecom' ? {} : this.credentials[key]),
               ...(key === 'dingtalk'
                 ? {
                     corpId: this.credentials.dingtalk.corpId,

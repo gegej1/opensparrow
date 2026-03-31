@@ -35,13 +35,25 @@ function resolvePortFromEnv(name, fallback) {
   return raw
 }
 
-const RUNTIME_ROOT = resolvePathFromEnv(process.env.USB_RUNTIME_ROOT, path.join(PACK_ROOT, 'runtime'))
+function resolveDefaultRuntimeRoot() {
+  const runtimeRoot = path.join(PACK_ROOT, 'runtime')
+  if (fs.existsSync(runtimeRoot) && fs.readdirSync(runtimeRoot).length > 0) {
+    return runtimeRoot
+  }
+
+  if (process.platform === 'win32') return path.join(PACK_ROOT, 'vendor', 'windows-openclaw')
+  if (process.platform === 'darwin') return path.join(PACK_ROOT, 'vendor', 'mac-openclaw')
+  return path.join(PACK_ROOT, 'vendor', 'linux-openclaw')
+}
+
+const RUNTIME_ROOT = resolvePathFromEnv(process.env.USB_RUNTIME_ROOT, resolveDefaultRuntimeRoot())
 
 function resolveOpenClawEntry() {
   const candidates = [
     path.join(RUNTIME_ROOT, 'openclaw', 'openclaw.mjs'),
     path.join(RUNTIME_ROOT, 'node_modules', 'openclaw', 'openclaw.mjs'),
     path.join(RUNTIME_ROOT, 'bin', 'node_modules', 'openclaw', 'openclaw.mjs'),
+    path.join(RUNTIME_ROOT, 'lib', 'node_modules', 'openclaw', 'openclaw.mjs'),
   ]
 
   for (const candidate of candidates) {
@@ -76,6 +88,11 @@ const INDUSTRY_SKILL_TARGETS = [
 ]
 
 const DEFAULT_MODEL = process.env.OPENCLAW_MODEL ?? 'openai/gpt-4o-mini'
+const DINGTALK_PLUGIN_PACKAGE = '@openclaw-china/channels'
+const DINGTALK_PLUGIN_ID = 'channels'
+const WECOM_PLUGIN_PACKAGE = '@sunnoy/wecom'
+const WECOM_PLUGIN_ID = 'wecom'
+const WECOM_MIN_OPENCLAW_VERSION = '2026.3.23'
 
 const DEFAULT_PORT = resolvePortFromEnv('OPENSPARROW_UI_PORT', 19000)
 const GATEWAY_PORT = resolvePortFromEnv('OPENCLAW_GATEWAY_PORT', 18889)
@@ -100,11 +117,14 @@ const OC_TIMEOUT = {
 function resolveBundledNodeBinary() {
   const candidates = process.platform === 'win32'
     ? [
+        path.join(RUNTIME_ROOT, 'node.exe'),
+        path.join(RUNTIME_ROOT, 'bin', 'node.exe'),
         path.join(RUNTIME_ROOT, 'node', 'node.exe'),
         path.join(RUNTIME_ROOT, 'node', 'bin', 'node.exe'),
         path.join(RUNTIME_ROOT, 'node', 'bin', 'node'),
       ]
     : [
+        path.join(RUNTIME_ROOT, 'bin', 'node'),
         path.join(RUNTIME_ROOT, 'node', 'bin', 'node'),
         path.join(RUNTIME_ROOT, 'node', 'node'),
         path.join(RUNTIME_ROOT, 'node', 'node.exe'),
@@ -550,6 +570,132 @@ function isLikelyWecomBotId(raw) {
 }
 
 /**
+ * Normalize WeCom credentials from UI aliases or persisted nested config.
+ * @param {any} raw
+ * @returns {{
+ *   botId: string,
+ *   secret: string,
+ *   corpId: string,
+ *   corpSecret: string,
+ *   agentId: string,
+ *   replyFormat: string,
+ *   callbackToken: string,
+ *   encodingAESKey: string,
+ *   callbackPath: string,
+ *   hasAnyAgentFields: boolean,
+ *   agentConfigured: boolean,
+ *   hasCallbackFields: boolean,
+ *   callbackConfigured: boolean,
+ * }}
+ */
+function normalizeWecomCredentials(raw) {
+  const data = raw && typeof raw === 'object' ? raw : {}
+  const agent = data.agent && typeof data.agent === 'object' ? data.agent : {}
+  const rootCallback = data.callback && typeof data.callback === 'object' ? data.callback : {}
+  const agentCallback = agent.callback && typeof agent.callback === 'object' ? agent.callback : {}
+  const botId = String(data.botId ?? '').trim()
+  const secret = String(data.secret ?? '').trim()
+  const corpId = String(data.corpId ?? agent.corpId ?? '').trim()
+  const corpSecret = String(data.corpSecret ?? agent.corpSecret ?? '').trim()
+  const agentId = String(data.agentId ?? agent.agentId ?? '').trim()
+  const replyFormat = String(data.replyFormat ?? agent.replyFormat ?? '').trim().toLowerCase()
+  const callbackToken = String(data.callbackToken ?? rootCallback.token ?? agentCallback.token ?? '').trim()
+  const encodingAESKey = String(data.encodingAESKey ?? rootCallback.encodingAESKey ?? agentCallback.encodingAESKey ?? '').trim()
+  const callbackPath = String(data.callbackPath ?? rootCallback.path ?? agentCallback.path ?? '').trim()
+  const hasAnyAgentFields = Boolean(corpId || corpSecret || agentId || replyFormat)
+  const agentConfigured = Boolean(corpId && corpSecret && agentId)
+  const hasCallbackFields = Boolean(callbackToken || encodingAESKey || callbackPath)
+  const callbackConfigured = Boolean(callbackToken && encodingAESKey && callbackPath)
+
+  return {
+    botId,
+    secret,
+    corpId,
+    corpSecret,
+    agentId,
+    replyFormat,
+    callbackToken,
+    encodingAESKey,
+    callbackPath,
+    hasAnyAgentFields,
+    agentConfigured,
+    hasCallbackFields,
+    callbackConfigured,
+  }
+}
+
+/**
+ * Validate WeCom required and advanced credential groups.
+ * @param {any} raw
+ * @returns {{errors: string[]} & ReturnType<typeof normalizeWecomCredentials>}
+ */
+function collectWecomInputErrors(raw) {
+  const normalized = normalizeWecomCredentials(raw)
+  const {
+    botId,
+    secret,
+    corpId,
+    corpSecret,
+    agentId,
+    replyFormat,
+    callbackToken,
+    encodingAESKey,
+    callbackPath,
+    hasAnyAgentFields,
+    hasCallbackFields,
+  } = normalized
+  const errors = []
+
+  if (!botId) errors.push('企业微信需要填写 Bot ID')
+  if (botId && !isLikelyWecomBotId(botId)) {
+    errors.push('企业微信 Bot ID 格式疑似错误，请填写智能机器人（API+长连接）生成的 Bot ID（通常以 aib 或 aib_ 开头）')
+  }
+  if (!secret) errors.push('企业微信需要填写 Bot Secret')
+  if (hasAnyAgentFields && (!corpId || !corpSecret || !agentId)) {
+    errors.push('启用企业微信自建应用增强出站时，需要同时填写 CorpId、CorpSecret、AgentId')
+  }
+  if (agentId && !/^\d+$/.test(agentId)) {
+    errors.push('企业微信 AgentId 必须是正整数')
+  }
+  if (replyFormat && !['markdown', 'text'].includes(replyFormat)) {
+    errors.push('企业微信 Reply Format 仅支持 markdown 或 text')
+  }
+  if (hasCallbackFields && (!callbackToken || !encodingAESKey || !callbackPath)) {
+    errors.push('启用企业微信回调入站时，需要同时填写 Callback Token、EncodingAESKey、Callback Path')
+  }
+  if (hasCallbackFields && (!corpId || !corpSecret || !agentId)) {
+    errors.push('企业微信回调入站依赖完整的自建应用 CorpId、CorpSecret、AgentId')
+  }
+
+  return {
+    ...normalized,
+    errors,
+  }
+}
+
+/**
+ * Flatten nested WeCom config for UI forms.
+ * @param {any} channelCfg
+ * @returns {any}
+ */
+function enrichWecomChannelForUi(channelCfg) {
+  if (!channelCfg || typeof channelCfg !== 'object') return channelCfg
+  const normalized = normalizeWecomCredentials(channelCfg)
+  return {
+    ...channelCfg,
+    botId: normalized.botId,
+    secret: normalized.secret,
+    corpId: normalized.corpId,
+    corpSecret: normalized.corpSecret,
+    agentId: normalized.agentId,
+    replyFormat: normalized.replyFormat,
+    callbackToken: normalized.callbackToken,
+    encodingAESKey: normalized.encodingAESKey,
+    callbackPath: normalized.callbackPath,
+  }
+}
+
+/**
  * Display path with ~ prefix when under user home.
  * @param {string} absolutePath
  * @returns {string}
@@ -560,6 +706,62 @@ function toUserPath(absolutePath) {
     return `~${absolutePath.slice(home.length)}`
   }
   return absolutePath
+}
+
+
+/**
+ * Compare numeric dotted versions like 2026.3.23.
+ * Non-numeric suffixes are ignored.
+ * @param {string | null | undefined} raw
+ * @returns {number[]}
+ */
+function parseComparableVersion(raw) {
+  return String(raw ?? '')
+    .match(/\d+/g)?.map(part => Number.parseInt(part, 10)).filter(Number.isFinite) ?? []
+}
+
+/**
+ * @param {string | null | undefined} actual
+ * @param {string | null | undefined} minimum
+ * @returns {boolean}
+ */
+function isVersionAtLeast(actual, minimum) {
+  const left = parseComparableVersion(actual)
+  const right = parseComparableVersion(minimum)
+  const length = Math.max(left.length, right.length)
+  for (let index = 0; index < length; index += 1) {
+    const a = left[index] ?? 0
+    const b = right[index] ?? 0
+    if (a > b) return true
+    if (a < b) return false
+  }
+  return true
+}
+
+/**
+ * @returns {string}
+ */
+function getBundledOpenClawVersion() {
+  const candidates = [
+    path.join(path.dirname(OC_ENTRY), 'package.json'),
+    path.join(RUNTIME_ROOT, 'bin', 'node_modules', 'openclaw', 'package.json'),
+    path.join(RUNTIME_ROOT, 'lib', 'node_modules', 'openclaw', 'package.json'),
+    path.join(RUNTIME_ROOT, 'node_modules', 'openclaw', 'package.json'),
+  ]
+
+  for (const candidate of candidates) {
+    try {
+      if (!fs.existsSync(candidate)) continue
+      const raw = fs.readFileSync(candidate, 'utf8')
+      const parsed = JSON.parse(raw)
+      const version = String(parsed?.version ?? '').trim()
+      if (version) return version
+    } catch {
+      // continue
+    }
+  }
+
+  return ''
 }
 
 /**
@@ -810,6 +1012,47 @@ async function ensurePluginsAllowIncludes(ids) {
   return []
 }
 
+
+/**
+ * Install an OpenClaw plugin package into the current profile.
+ * @param {string} spec
+ * @param {string} pluginId
+ * @param {{pin?: boolean}} [options]
+ * @returns {Promise<{ok: boolean, errors: string[]}>}
+ */
+async function installPluginPackage(spec, pluginId, options = {}) {
+  const packageSpec = String(spec ?? '').trim()
+  const id = String(pluginId ?? '').trim()
+  if (!packageSpec || !id) {
+    return { ok: false, errors: ['plugin package spec / id 无效'] }
+  }
+
+  const args = ['plugins', 'install', packageSpec]
+  if (options?.pin) args.push('--pin')
+
+  const result = await runOc(args, {
+    timeoutMs: OC_TIMEOUT.PLUGIN_INSTALL,
+    opName: `plugins install ${packageSpec}`,
+  })
+  if (result.code !== 0) {
+    return {
+      ok: false,
+      errors: [`安装插件 ${packageSpec} 失败：${compactProbeOutput(`${result.stdout}
+${result.stderr}`) || `exit code ${result.code}`}`],
+    }
+  }
+
+  const extDir = path.join(PROFILE_DIR, 'extensions', id)
+  if (!fs.existsSync(extDir)) {
+    return {
+      ok: false,
+      errors: [`插件 ${packageSpec} 安装完成，但未找到扩展目录：${toUserPath(extDir)}`],
+    }
+  }
+
+  return { ok: true, errors: [] }
+}
+
 /**
  * Build DingTalk diagnostics report.
  * @returns {Promise<{
@@ -955,11 +1198,17 @@ async function buildWecomProbeReport() {
   const hasChannelConfig = Boolean(config?.channels?.wecom && typeof config.channels.wecom === 'object')
   const wecom = hasChannelConfig ? config.channels.wecom : {}
   const enabled = hasChannelConfig && wecom?.enabled !== false
-  const botId = String(wecom?.botId ?? '').trim()
-  const secret = String(wecom?.secret ?? '').trim()
-  const mode = String(wecom?.mode ?? '').trim().toLowerCase()
+  const normalized = normalizeWecomCredentials(wecom)
+  const { botId, secret, corpSecret, callbackToken, encodingAESKey } = normalized
   const dmPolicy = String(wecom?.dmPolicy ?? '').trim().toLowerCase()
   const allowFrom = Array.isArray(wecom?.allowFrom) ? wecom.allowFrom.map(v => String(v ?? '').trim()) : []
+  const pluginsAllow = Array.isArray(config?.plugins?.allow)
+    ? config.plugins.allow.map(v => String(v ?? '').trim())
+    : []
+  const pluginEntryValue = config?.plugins?.entries?.wecom?.enabled
+  const groupChat = wecom?.groupChat && typeof wecom.groupChat === 'object' ? wecom.groupChat : {}
+  const groupChatEnabled = groupChat.enabled !== false
+  const requireMention = groupChat.requireMention !== false
 
   if (!config) {
     errors.push('配置文件不存在或不可读，请先完成安装')
@@ -973,8 +1222,24 @@ async function buildWecomProbeReport() {
     checks.push('企业微信渠道已启用')
   }
 
+  if (pluginEntryValue === false) {
+    errors.push('plugins.entries.wecom.enabled=false，请重新保存企业微信配置或重新安装企微插件')
+  } else if (pluginEntryValue === true) {
+    checks.push('企业微信插件入口已启用')
+  } else if (config) {
+    warnings.push('plugins.entries.wecom.enabled 未显式写入：建议重新保存企业微信配置以固定插件入口')
+  }
+
+  if (pluginsAllow.length === 0) {
+    warnings.push('plugins.allow 为空：当前依赖 OpenClaw auto-load 发现企微插件，建议显式包含 wecom')
+  } else if (pluginsAllow.includes(WECOM_PLUGIN_ID)) {
+    checks.push('plugins.allow 已显式包含 wecom')
+  } else {
+    warnings.push('plugins.allow 未显式包含 wecom，可能在更严格的 profile 中导致插件不加载')
+  }
+
   if (!botId || !secret) {
-    errors.push('企业微信 Bot ID / Secret 缺失，请先填写并保存')
+    errors.push('企业微信 Bot ID / Bot Secret 缺失，请先填写并保存')
   } else {
     checks.push('企业微信凭证字段已写入')
     if (!isLikelyWecomBotId(botId)) {
@@ -982,21 +1247,29 @@ async function buildWecomProbeReport() {
     }
   }
 
-  if (mode === 'ws') {
-    checks.push('企业微信连接模式为 ws（长连接）')
-  } else {
-    warnings.push(`channels.wecom.mode 当前为 ${mode || '未设置'}，建议设为 ws`)
-  }
-
-  if (dmPolicy === 'open') {
-    checks.push('企业微信 DM 策略为 open（无需 CLI pairing）')
-    if (allowFrom.includes('*')) {
-      checks.push('企业微信 DM allowFrom 包含 *')
+  if (hasChannelConfig) {
+    if (groupChatEnabled) {
+      checks.push('企业微信群聊处理已启用')
     } else {
-      warnings.push('channels.wecom.allowFrom 未包含 *，可能导致部分单聊无法触发')
+      warnings.push('channels.wecom.groupChat.enabled=false，群聊 @Bot 将不会触发')
     }
-  } else {
-    warnings.push(`channels.wecom.dmPolicy 当前为 ${dmPolicy || '未设置'}，网页一键部署建议设为 open（否则可能需要 CLI pairing）`)
+
+    if (requireMention) {
+      checks.push('企业微信群聊 requireMention 已启用')
+    } else {
+      warnings.push('channels.wecom.groupChat.requireMention=false，群聊中未 @Bot 也会触发回复')
+    }
+
+    if (dmPolicy === 'open') {
+      checks.push('企业微信 DM 策略为 open（无需 CLI pairing）')
+      if (allowFrom.includes('*')) {
+        checks.push('企业微信 DM allowFrom 包含 *')
+      } else {
+        warnings.push('channels.wecom.allowFrom 未包含 *，可能导致部分单聊无法触发')
+      }
+    } else {
+      warnings.push(`channels.wecom.dmPolicy 当前为 ${dmPolicy || '未设置'}，网页一键部署建议设为 open（否则可能需要 CLI pairing）`)
+    }
   }
 
   const { daemon, runtimeMode, gatewayHealthy, gatewayPortBusy } = await resolveRuntimeState()
@@ -1027,7 +1300,7 @@ async function buildWecomProbeReport() {
     probeCode = probeResult.code
     probeSummary = compactProbeOutput(
       `${probeResult.stdout}\n${probeResult.stderr}`,
-      [botId, secret]
+      [botId, secret, corpSecret, callbackToken, encodingAESKey]
     )
   } catch (e) {
     probeSummary = `probe 执行异常: ${e?.message ?? String(e)}`
@@ -1042,6 +1315,21 @@ async function buildWecomProbeReport() {
     && daemon !== 'running'
   ) {
     warnings.push('Gateway 不可达，请确认服务已启动且 18889 端口被当前 profile 占用')
+  }
+
+  if (normalized.agentConfigured) {
+    checks.push('企业微信自建应用增强出站已配置')
+    if (normalized.replyFormat) {
+      checks.push(`企业微信自建应用 replyFormat=${normalized.replyFormat}`)
+    }
+  } else if (normalized.hasAnyAgentFields) {
+    warnings.push('企业微信自建应用字段未完整配置：当前仅保留 AI Bot 主链路可用')
+  }
+
+  if (normalized.callbackConfigured) {
+    checks.push('企业微信回调入站字段已配置')
+  } else if (normalized.hasCallbackFields) {
+    warnings.push('企业微信回调入站字段不完整：如需回调，请同时填写 Token、EncodingAESKey、Callback Path')
   }
   const hasWecomAuthContext =
     summaryLower.includes('channels.wecom')
@@ -1058,7 +1346,7 @@ async function buildWecomProbeReport() {
       || summaryLower.includes('unauthorized')
     )
   ) {
-    warnings.push('企业微信返回鉴权错误，请检查 Bot ID / Secret 与后台权限配置后重试')
+    warnings.push('企业微信返回鉴权错误，请检查 Bot ID / Bot Secret；若启用了自建应用回调，再同时检查 CorpSecret / Token / EncodingAESKey')
   }
 
   if (
@@ -1440,7 +1728,7 @@ function removeDirIfExists(target) {
  * @returns {Promise<{cleaned: boolean, portBusy: boolean, log: string[]}>}
  */
 async function cleanupOldDaemon(options = {}) {
-  const PORT = Number.isFinite(options?.port) ? options.port : 18889
+  const PORT = Number.isFinite(options?.port) ? options.port : GATEWAY_PORT
   const graceful = options?.graceful !== false
   const forceKill = options?.forceKill !== false
   const log = []
@@ -1613,17 +1901,31 @@ async function handleInstall(res, body) {
       if (!clientId) inputErrors.push('钉钉 AppKey（Client ID / Robot Code）不能为空')
       if (!clientSecret) inputErrors.push('钉钉 AppSecret（Client Secret）不能为空')
     } else if (type === 'wecom') {
-      const botId = String(ch.botId ?? '').trim()
-      if (!botId) inputErrors.push('企业微信 Bot ID 不能为空')
-      if (botId && !isLikelyWecomBotId(botId)) {
-        inputErrors.push('企业微信 Bot ID 格式疑似错误，请填写智能机器人（API+长连接）生成的 Bot ID（通常以 aib 或 aib_ 开头）')
-      }
-      if (!String(ch.secret ?? '').trim()) inputErrors.push('企业微信 Secret 不能为空')
+      inputErrors.push(...collectWecomInputErrors(ch).errors)
     }
   }
   if (inputErrors.length > 0) {
     sendJson(res, 400, { ok: false, errors: inputErrors })
     return
+  }
+
+  const requestedHasDingtalk = channels.some((ch) => ch.type === 'dingtalk')
+  const requestedHasWecom = channels.some((ch) => ch.type === 'wecom')
+
+  if (requestedHasWecom) {
+    const bundledVersion = getBundledOpenClawVersion()
+    if (bundledVersion && !isVersionAtLeast(bundledVersion, WECOM_MIN_OPENCLAW_VERSION)) {
+      sendJson(res, 409, {
+        ok: false,
+        errors: [
+          `当前打包 OpenClaw 版本 ${bundledVersion} 低于企业微信插件最低要求 ${WECOM_MIN_OPENCLAW_VERSION}。请先升级当前平台 bundled runtime，再继续企业微信安装。`,
+        ],
+        warnings: [
+          '当前仓库中 Windows bundled runtime 已是 2026.3.23；macOS / Linux bundled runtime 仍是 2026.3.12。',
+        ],
+      })
+      return
+    }
   }
 
   // Step -1: Cleanup stale daemon/service state before install.
@@ -1632,7 +1934,7 @@ async function handleInstall(res, body) {
       const { log, portBusy } = await cleanupOldDaemon({ graceful: true, forceKill: true })
       console.log('[cleanup]', log.join(' | '))
       if (portBusy) {
-        console.log('[cleanup] warning: Port 18889 is still occupied after pre-install cleanup')
+        console.log(`[cleanup] warning: Port ${GATEWAY_PORT} is still occupied after pre-install cleanup`)
       }
     } catch (e) {
       console.log(`[cleanup] unexpected error: ${e?.message ?? String(e)}`)
@@ -1645,36 +1947,19 @@ async function handleInstall(res, body) {
     errors.push(...skillErrors)
   }
 
-  // Step 1: Install channel plugins (non-feishu channels share one package)
-  const needsChannelPackage = channels.some(
-    (ch) => ch.type === 'dingtalk' || ch.type === 'wecom'
-  )
-  const requestedHasDingtalk = channels.some((ch) => ch.type === 'dingtalk')
-  if (needsChannelPackage) {
-    errors.push(...await ensurePluginsAllowIncludes(['channels']))
-    const r = await runOc(['plugins', 'install', '@openclaw-china/channels'], {
-      timeoutMs: OC_TIMEOUT.PLUGIN_INSTALL,
-      opName: 'plugins install @openclaw-china/channels',
-    })
-    const pluginInstallText = `${r.stdout}\n${r.stderr}`.toLowerCase()
-    const pluginAlreadyExists = pluginInstallText.includes('plugin already exists')
-    const installOk = r.code === 0 || pluginAlreadyExists
-    if (!installOk) errors.push(`plugin install failed: ${r.stderr}`)
-    if (installOk) {
-      errors.push(...await ensurePluginsAllowIncludes(['channels']))
-      const enableEntry = await runOc(['config', 'set', 'plugins.entries.channels.enabled', 'true', '--strict-json'], {
-        timeoutMs: OC_TIMEOUT.CONFIG_SET,
-        opName: 'config set plugins.entries.channels.enabled',
-      })
-      if (enableEntry.code !== 0) {
-        errors.push(`config set plugins.entries.channels.enabled failed: ${enableEntry.stderr}`)
-      }
-    }
-    if (installOk && requestedHasDingtalk) {
+  if (requestedHasDingtalk) {
+    const dingtalkInstall = await installPluginPackage(DINGTALK_PLUGIN_PACKAGE, DINGTALK_PLUGIN_ID)
+    errors.push(...dingtalkInstall.errors)
+    if (dingtalkInstall.ok) {
       const patch = patchDingtalkPluginDist()
       if (!patch.ok) warnings.push(patch.message)
       if (patch.ok && patch.changed) warnings.push(patch.message)
     }
+  }
+
+  if (requestedHasWecom) {
+    const wecomInstall = await installPluginPackage(WECOM_PLUGIN_PACKAGE, WECOM_PLUGIN_ID, { pin: true })
+    errors.push(...wecomInstall.errors)
   }
 
   // Step 2: Write base gateway config
@@ -1834,6 +2119,17 @@ async function configureChannel(channel) {
     if (r.code !== 0) errors.push(`config set ${args[0]} failed: ${r.stderr}`)
   }
 
+  async function ocUnset(pathKey) {
+    const r = await runOc(['config', 'unset', pathKey], {
+      timeoutMs: OC_TIMEOUT.CONFIG_SET,
+      opName: `config unset ${pathKey}`,
+    })
+    const text = `${r.stdout}\n${r.stderr}`.toLowerCase()
+    if (r.code !== 0 && !text.includes('config path not found')) {
+      errors.push(`config unset ${pathKey} failed: ${r.stderr}`)
+    }
+  }
+
   switch (channel.type) {
     case 'feishu': {
       const { appId = '', appSecret = '' } = channel
@@ -1873,16 +2169,47 @@ async function configureChannel(channel) {
     }
 
     case 'wecom': {
-      errors.push(...await ensurePluginsAllowIncludes(['channels']))
-      const { botId = '', secret = '' } = channel
+      errors.push(...await ensurePluginsAllowIncludes([WECOM_PLUGIN_ID]))
+      const wecom = normalizeWecomCredentials(channel)
+      const { botId, secret } = wecom
+      await oc('plugins.entries.wecom.enabled', 'true')
       await oc('channels.wecom.enabled', 'true')
-      await oc('channels.wecom.mode',    '"ws"')
-      await oc('channels.wecom.botId',   JSON.stringify(botId))
-      await oc('channels.wecom.secret',  JSON.stringify(secret))
-      await oc('channels.wecom.dmPolicy',      '"open"')
-      await oc('channels.wecom.allowFrom',     '["*"]')
-      await oc('channels.wecom.groupPolicy',   '"open"')
-      await oc('channels.wecom.requireMention','true')
+      await oc('channels.wecom.botId', JSON.stringify(botId))
+      await oc('channels.wecom.secret', JSON.stringify(secret))
+      await oc('channels.wecom.dmPolicy', '"open"')
+      await oc('channels.wecom.allowFrom', '["*"]')
+      await oc('channels.wecom.groupPolicy', '"open"')
+      await oc('channels.wecom.groupChat.enabled', 'true')
+      await oc('channels.wecom.groupChat.requireMention', 'true')
+      await oc('channels.wecom.groupChat.mentionPatterns', '["@"]')
+      await ocUnset('channels.wecom.mode')
+      await ocUnset('channels.wecom.requireMention')
+
+      if (wecom.agentConfigured) {
+        await oc('channels.wecom.agent.corpId', JSON.stringify(wecom.corpId))
+        await oc('channels.wecom.agent.corpSecret', JSON.stringify(wecom.corpSecret))
+        await oc('channels.wecom.agent.agentId', String(wecom.agentId))
+        if (wecom.replyFormat) {
+          await oc('channels.wecom.agent.replyFormat', JSON.stringify(wecom.replyFormat))
+        } else {
+          await ocUnset('channels.wecom.agent.replyFormat')
+        }
+      } else {
+        await ocUnset('channels.wecom.agent.corpId')
+        await ocUnset('channels.wecom.agent.corpSecret')
+        await ocUnset('channels.wecom.agent.agentId')
+        await ocUnset('channels.wecom.agent.replyFormat')
+      }
+
+      if (wecom.callbackConfigured && wecom.agentConfigured) {
+        await oc('channels.wecom.agent.callback.token', JSON.stringify(wecom.callbackToken))
+        await oc('channels.wecom.agent.callback.encodingAESKey', JSON.stringify(wecom.encodingAESKey))
+        await oc('channels.wecom.agent.callback.path', JSON.stringify(wecom.callbackPath))
+      } else {
+        await ocUnset('channels.wecom.agent.callback.token')
+        await ocUnset('channels.wecom.agent.callback.encodingAESKey')
+        await ocUnset('channels.wecom.agent.callback.path')
+      }
       break
     }
 
@@ -1900,6 +2227,9 @@ function handleGetConfig(res) {
     const config = JSON.parse(raw)
     if (config?.channels?.dingtalk && typeof config.channels.dingtalk === 'object') {
       config.channels.dingtalk = enrichDingtalkChannelForUi(config.channels.dingtalk)
+    }
+    if (config?.channels?.wecom && typeof config.channels.wecom === 'object') {
+      config.channels.wecom = enrichWecomChannelForUi(config.channels.wecom)
     }
     sendJson(res, 200, config)
   } catch (e) {
@@ -1993,6 +2323,9 @@ function handleGetChannels(res) {
     const channels = config.channels ?? {}
     if (channels?.dingtalk && typeof channels.dingtalk === 'object') {
       channels.dingtalk = enrichDingtalkChannelForUi(channels.dingtalk)
+    }
+    if (channels?.wecom && typeof channels.wecom === 'object') {
+      channels.wecom = enrichWecomChannelForUi(channels.wecom)
     }
     sendJson(res, 200, channels)
   } catch (e) {
@@ -2107,11 +2440,11 @@ async function handleUpdateChannel(res, body) {
   const errors = []
 
   if (body?.type === 'wecom' && body?.enabled !== false) {
-    const botId = String(body?.botId ?? '').trim()
-    if (botId && !isLikelyWecomBotId(botId)) {
+    const inputErrors = collectWecomInputErrors(body).errors
+    if (inputErrors.length > 0) {
       sendJson(res, 400, {
         ok: false,
-        errors: ['企业微信 Bot ID 格式疑似错误，请填写智能机器人（API+长连接）生成的 Bot ID（通常以 aib 或 aib_ 开头）'],
+        errors: inputErrors,
       })
       return
     }
@@ -2615,7 +2948,7 @@ function openBrowser(url) {
 
 async function startServer() {
   try {
-    const allowErrors = await ensurePluginsAllowIncludes(['channels'])
+    const allowErrors = await ensurePluginsAllowIncludes([DINGTALK_PLUGIN_ID, WECOM_PLUGIN_ID])
     if (allowErrors.length > 0) {
       console.log(`[plugins] ${allowErrors.join('; ')}`)
     }
