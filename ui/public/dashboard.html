@@ -266,13 +266,96 @@
       border-bottom: 1px solid #E0EEFF;
     }
 
-    /* ===== Blue divider ===== */
-    .gold-divider {
-      height: 2px;
-      background: linear-gradient(90deg, transparent, #1677FF, transparent);
-      border: none;
-      margin: 16px 0;
+    /* ===== Skill Store ===== */
+    .skill-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 14px;
+      border-radius: 10px;
+      border: 1px solid #E0EEFF;
+      background: white;
+      transition: background 0.15s, border-color 0.15s;
     }
+    .skill-row:hover { background: #F7FAFF; border-color: #C7D8F8; }
+    .skill-row.installed { background: #F0FDF4; border-color: #BBF7D0; }
+
+    .skill-install-btn {
+      background: linear-gradient(135deg, #60A5FA, #1677FF);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      padding: 4px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .skill-install-btn:hover:not(:disabled) {
+      background: linear-gradient(135deg, #1677FF, #0958D9);
+      transform: translateY(-1px);
+    }
+    .skill-install-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+    .skill-uninstall-btn {
+      background: white;
+      color: #DC2626;
+      border: 1.5px solid #FCA5A5;
+      border-radius: 6px;
+      padding: 4px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .skill-uninstall-btn:hover:not(:disabled) { background: #FEF2F2; border-color: #F87171; }
+    .skill-uninstall-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .skill-category-tag {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 20px;
+      background: #E0EEFF;
+      color: #0958D9;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .skill-store-search {
+      background: white;
+      border: 1.5px solid #E0EEFF;
+      border-radius: 8px;
+      padding: 8px 14px;
+      color: #1D2B4E;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .skill-store-search:focus {
+      border-color: #1677FF;
+      box-shadow: 0 0 0 3px rgba(22, 119, 255, 0.12);
+    }
+    .skill-store-search::placeholder { color: #6B7A99; }
+
+    .skill-page-btn {
+      background: white;
+      border: 1.5px solid #E0EEFF;
+      color: #1677FF;
+      border-radius: 6px;
+      padding: 5px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .skill-page-btn:hover:not(:disabled) { background: #EBF3FF; border-color: #1677FF; }
+    .skill-page-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
   </style>
 </head>
 <body class="min-h-screen" x-data="dashboard()" x-init="init()">
@@ -702,6 +785,158 @@
       </div>
     </div>
 
+    <!-- Tab 4: Skill Store -->
+    <div x-show="activeTab === 'skills'" x-cloak class="tab-content space-y-4">
+
+      <!-- Search + Filter bar -->
+      <div class="glass-card rounded-2xl p-5 card-animate">
+        <div class="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
+          <div class="flex-1 relative">
+            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-lg">🔍</span>
+            <input
+              type="text"
+              x-model="skillSearch"
+              @input="onSkillSearchInput()"
+              placeholder="搜索 Skill 名称…"
+              class="skill-store-search w-full"
+              style="padding-left:36px"
+            />
+          </div>
+          <select
+            x-model="skillCategory"
+            @change="onSkillCategoryChange()"
+            class="skill-store-search"
+            style="min-width:140px;cursor:pointer"
+          >
+            <template x-for="cat in skillCategories" :key="cat.key">
+              <option :value="cat.key" x-text="cat.label"></option>
+            </template>
+          </select>
+          <button
+            @click="loadSkills()"
+            class="blue-btn flex items-center justify-center gap-1"
+            style="white-space:nowrap;padding:8px 18px"
+          >
+            <span x-show="skillLoading" class="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+            <span x-show="!skillLoading">🔄</span>
+            刷新
+          </button>
+        </div>
+      </div>
+
+      <!-- Stats bar -->
+      <div class="glass-card rounded-2xl px-5 py-3 card-animate flex items-center gap-3" style="margin-bottom:0">
+        <span class="text-lg">📦</span>
+        <span class="text-sm font-medium" style="color:#1D2B4E">
+          已安装：<strong x-text="skillInstalled" style="color:#1677FF"></strong>
+          /
+          <strong x-text="skillTotal"></strong>
+          个 Skill
+        </span>
+        <span x-show="skillLoading" class="ml-auto text-xs" style="color:#6B7A99">加载中…</span>
+      </div>
+
+      <!-- Skill list -->
+      <div class="glass-card rounded-2xl p-4 card-animate">
+
+        <!-- Empty state -->
+        <div x-show="!skillLoading && skillList.length === 0" class="py-16 text-center">
+          <div class="text-5xl mb-3">🧩</div>
+          <p class="font-medium" style="color:#6B7A99">
+            <span x-show="skillSearch || skillCategory">没有匹配的 Skill</span>
+            <span x-show="!skillSearch && !skillCategory">暂无 Skill 数据，请点击「刷新」加载</span>
+          </p>
+        </div>
+
+        <!-- Loading spinner -->
+        <div x-show="skillLoading && skillList.length === 0" class="py-16 flex items-center justify-center gap-3">
+          <span class="inline-block w-6 h-6 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></span>
+          <span class="text-sm" style="color:#6B7A99">正在加载 Skill 列表…</span>
+        </div>
+
+        <!-- Skill rows -->
+        <div class="space-y-2">
+          <template x-for="skill in skillList" :key="skillKey(skill)">
+            <div
+              class="skill-row"
+              :class="skill.installed ? 'installed' : ''"
+            >
+              <!-- Installed indicator -->
+              <span class="text-base flex-shrink-0" x-text="skill.installed ? '✅' : '⬜'"></span>
+
+              <!-- Name -->
+              <span
+                class="flex-1 min-w-0 text-sm font-medium truncate"
+                style="color:#1D2B4E"
+                :title="skillKey(skill)"
+                x-text="skill.name"
+              ></span>
+
+              <!-- Category tag -->
+              <span
+                x-show="skill.category"
+                class="skill-category-tag"
+                x-text="skill.category"
+              ></span>
+
+              <!-- Description -->
+              <span
+                class="hidden sm:block text-xs truncate"
+                style="color:#6B7A99;max-width:220px;flex-shrink:1"
+                :title="skill.description"
+                x-text="skill.description || '—'"
+              ></span>
+
+              <!-- Action button -->
+              <template x-if="skill.installed">
+                <button
+                  @click="uninstallSkill(skill)"
+                  :disabled="skillActionLoading[skillKey(skill)]"
+                  class="skill-uninstall-btn"
+                >
+                  <span x-show="skillActionLoading[skillKey(skill)]" class="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin mr-1"></span>
+                  卸载
+                </button>
+              </template>
+              <template x-if="!skill.installed">
+                <button
+                  @click="installSkill(skill)"
+                  :disabled="skillActionLoading[skillKey(skill)]"
+                  class="skill-install-btn"
+                >
+                  <span x-show="skillActionLoading[skillKey(skill)]" class="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin mr-1"></span>
+                  安装
+                </button>
+              </template>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <!-- Pagination -->
+      <div x-show="skillTotal > 0" class="flex items-center justify-center gap-4 py-2">
+        <button
+          @click="skillPrevPage()"
+          :disabled="skillPage <= 1 || skillLoading"
+          class="skill-page-btn"
+        >
+          ← 上一页
+        </button>
+        <span class="text-sm font-medium" style="color:#1D2B4E">
+          第 <strong x-text="skillPage"></strong> /
+          <strong x-text="skillTotalPages()"></strong> 页
+        </span>
+        <button
+          @click="skillNextPage()"
+          :disabled="skillPage >= skillTotalPages() || skillLoading"
+          class="skill-page-btn"
+        >
+          下一页 →
+        </button>
+      </div>
+
+    </div>
+
   </main>
 
   <script>
@@ -713,6 +948,7 @@
           { key: 'status',   label: '服务状态' },
           { key: 'channels', label: '渠道配置' },
           { key: 'api',      label: 'API 配置' },
+          { key: 'skills',   label: '🧩 Skill 商店' },
         ],
         version: '—',
 
@@ -778,6 +1014,27 @@
         apiSaving: false,
         showApiKey: false,
 
+        // Skill Store Tab
+        skillList: [],
+        skillTotal: 0,
+        skillInstalled: 0,
+        skillSearch: '',
+        skillCategory: '',
+        skillPage: 1,
+        skillPageSize: 50,
+        skillLoading: false,
+        skillCategories: [
+          { key: '',           label: '全部分类' },
+          { key: 'Business',   label: '商业' },
+          { key: 'Education',  label: '教育' },
+          { key: 'Finance',    label: '金融' },
+          { key: 'Government', label: '政务' },
+          { key: 'Healthcare', label: '医疗' },
+          { key: 'Utilities',  label: '工具' },
+        ],
+        skillActionLoading: {},  // { 'category/filename': true }
+        _skillSearchTimer: null,
+
         // Modal
         modal: {
           open: false,
@@ -810,6 +1067,7 @@
         switchTab(key) {
           this.activeTab = key;
           this.$nextTick(() => this._animateCards());
+          if (key === 'skills') this.loadSkills();
         },
 
         _animateCards() {
@@ -1237,6 +1495,121 @@
             this.showToast('无法连接到服务', 'error');
           } finally {
             this.modal.saving = false;
+          }
+        },
+
+        // ─── Skill Store ─────────────────────────────────────────────
+
+        async loadSkills() {
+          this.skillLoading = true;
+          try {
+            const params = new URLSearchParams({
+              page: this.skillPage,
+              pageSize: this.skillPageSize,
+            });
+            if (this.skillCategory) params.set('category', this.skillCategory);
+            if (this.skillSearch.trim()) params.set('search', this.skillSearch.trim());
+
+            const res = await this.fetchWithTimeout(`/api/skills/list?${params}`, {}, 15000);
+            if (!res.ok) {
+              this.showToast('加载 Skill 列表失败', 'error');
+              return;
+            }
+            const data = await res.json();
+            this.skillList      = Array.isArray(data.skills) ? data.skills : [];
+            this.skillTotal     = data.total     || 0;
+            this.skillInstalled = data.installed || 0;
+          } catch (e) {
+            this.showToast('无法连接到服务：' + e.message, 'error');
+          } finally {
+            this.skillLoading = false;
+          }
+        },
+
+        skillTotalPages() {
+          return Math.max(1, Math.ceil(this.skillTotal / this.skillPageSize));
+        },
+
+        onSkillSearchInput() {
+          clearTimeout(this._skillSearchTimer);
+          this._skillSearchTimer = setTimeout(() => {
+            this.skillPage = 1;
+            this.loadSkills();
+          }, 350);
+        },
+
+        onSkillCategoryChange() {
+          this.skillPage = 1;
+          this.loadSkills();
+        },
+
+        skillPrevPage() {
+          if (this.skillPage > 1) {
+            this.skillPage--;
+            this.loadSkills();
+          }
+        },
+
+        skillNextPage() {
+          if (this.skillPage < this.skillTotalPages()) {
+            this.skillPage++;
+            this.loadSkills();
+          }
+        },
+
+        skillKey(skill) {
+          return (skill.category ? skill.category + '/' : '') + skill.name;
+        },
+
+        async installSkill(skill) {
+          const key = this.skillKey(skill);
+          this.skillActionLoading = { ...this.skillActionLoading, [key]: true };
+          try {
+            const res = await this.fetchWithTimeout('/api/skills/install', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ skill: key }),
+            }, 30000);
+            if (res.ok) {
+              skill.installed = true;
+              this.skillInstalled++;
+              this.showToast(`已安装：${skill.name}`);
+            } else {
+              const err = await res.json().catch(() => ({}));
+              this.showToast(err.message || '安装失败', 'error');
+            }
+          } catch (e) {
+            this.showToast('无法连接到服务：' + e.message, 'error');
+          } finally {
+            const updated = { ...this.skillActionLoading };
+            delete updated[key];
+            this.skillActionLoading = updated;
+          }
+        },
+
+        async uninstallSkill(skill) {
+          const key = this.skillKey(skill);
+          this.skillActionLoading = { ...this.skillActionLoading, [key]: true };
+          try {
+            const res = await this.fetchWithTimeout('/api/skills/uninstall', {
+              method: 'DELETE',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ skill: key }),
+            }, 30000);
+            if (res.ok) {
+              skill.installed = false;
+              this.skillInstalled = Math.max(0, this.skillInstalled - 1);
+              this.showToast(`已卸载：${skill.name}`);
+            } else {
+              const err = await res.json().catch(() => ({}));
+              this.showToast(err.message || '卸载失败', 'error');
+            }
+          } catch (e) {
+            this.showToast('无法连接到服务：' + e.message, 'error');
+          } finally {
+            const updated = { ...this.skillActionLoading };
+            delete updated[key];
+            this.skillActionLoading = updated;
           }
         },
 

@@ -1579,7 +1579,7 @@ function sendJson(res, status, data) {
     'Content-Type': 'application/json',
     'Content-Length': Buffer.byteLength(body),
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
   })
   res.end(body)
@@ -1654,11 +1654,10 @@ function copyDirRecursive(src, dest) {
 
 /**
  * Copy bundled superpowers skills to user's Claude and Codex skill directories.
- * Also copies selected industry skill categories from INDUSTRY_SKILLS_SRC.
- * @param {string[]} selectedCategories - industry skill category names to install
+ * Industry skills are NOT installed here — use the Skill Store APIs instead.
  * @returns {Promise<string[]>} list of error messages (empty if all OK)
  */
-async function installSkills(selectedCategories = []) {
+async function installSkills() {
   const errors = []
 
   // Check if source skills directory exists
@@ -1680,27 +1679,9 @@ async function installSkills(selectedCategories = []) {
     }
   }
 
-  // Install selected industry skill categories
-  if (Array.isArray(selectedCategories) && selectedCategories.length > 0) {
-    if (fs.existsSync(INDUSTRY_SKILLS_SRC)) {
-      for (const category of selectedCategories) {
-        const categorySrc = path.join(INDUSTRY_SKILLS_SRC, category)
-        if (!fs.existsSync(categorySrc)) {
-          errors.push(`industry skills category not found: ${category}`)
-          continue
-        }
-        for (const dest of INDUSTRY_SKILL_TARGETS) {
-          const categoryDest = path.join(dest, category)
-          try {
-            fs.mkdirSync(categoryDest, { recursive: true })
-            copyDirRecursive(categorySrc, categoryDest)
-          } catch (e) {
-            errors.push(`industry skills copy (${category}) to ${categoryDest} failed: ${e.message}`)
-          }
-        }
-      }
-    }
-  }
+  // NOTE: Industry skills (My_Skills) are no longer bulk-installed during setup.
+  // Use GET /api/skills/list, POST /api/skills/install, DELETE /api/skills/uninstall
+  // to manage individual industry skills via the Skill Store.
 
   return errors
 }
@@ -1878,7 +1859,8 @@ async function handleInstall(res, body) {
   const baseUrl = normalizeOpenAIBaseUrl(baseUrlRaw)
   const apiKey = typeof api.apiKey === 'string' ? api.apiKey.trim() : ''
   const model = typeof api.model === 'string' && api.model.trim() ? api.model.trim() : DEFAULT_MODEL
-  const selectedSkillCategories = Array.isArray(body?.selectedSkillCategories) ? body.selectedSkillCategories : []
+  // NOTE: selectedSkillCategories removed — industry skills are no longer bulk-installed.
+  // Use Skill Store APIs (/api/skills/install, /api/skills/uninstall) instead.
 
   const errors = []
   const warnings = []
@@ -1941,9 +1923,9 @@ async function handleInstall(res, body) {
     }
   }
 
-  // Step 0: Install bundled superpowers skills + industry skills
+  // Step 0: Install bundled superpowers skills (industry skills skipped — use Skill Store)
   {
-    const skillErrors = await installSkills(selectedSkillCategories)
+    const skillErrors = await installSkills()
     errors.push(...skillErrors)
   }
 
@@ -2435,6 +2417,239 @@ function handleGetSkillStatus(res) {
   })
 }
 
+// ---------------------------------------------------------------------------
+// Skill Store — in-memory cache
+// ---------------------------------------------------------------------------
+
+/**
+ * Cached skill list. Invalidated by install/uninstall operations.
+ * Structure: { skills: Array, categories: Array, total: number, builtAt: number }
+ * @type {{ skills: Array<{name:string,category:string,path:string,size:number}>, categories: Array<{key:string,count:number}>, total: number, builtAt: number } | null}
+ */
+let _skillsCache = null
+
+/**
+ * Invalidate the in-memory skills cache.
+ * Call after any install or uninstall operation.
+ */
+function invalidateSkillsCache() {
+  _skillsCache = null
+}
+
+/**
+ * Build (or return cached) full skill list from INDUSTRY_SKILLS_SRC.
+ * Scans all category subdirectories and their immediate files.
+ * @returns {{ skills: Array, categories: Array, total: number, builtAt: number }}
+ */
+function getSkillsCache() {
+  if (_skillsCache) return _skillsCache
+
+  const skills = []
+  const categoryMap = new Map() // key -> count
+
+  if (!fs.existsSync(INDUSTRY_SKILLS_SRC)) {
+    _skillsCache = { skills: [], categories: [], total: 0, builtAt: Date.now() }
+    return _skillsCache
+  }
+
+  try {
+    const categoryEntries = fs.readdirSync(INDUSTRY_SKILLS_SRC, { withFileTypes: true })
+    for (const catEntry of categoryEntries) {
+      if (!catEntry.isDirectory()) continue
+      const category = catEntry.name
+      const categoryDir = path.join(INDUSTRY_SKILLS_SRC, category)
+      let catCount = 0
+
+      try {
+        const fileEntries = fs.readdirSync(categoryDir, { withFileTypes: true })
+        for (const fileEntry of fileEntries) {
+          if (!fileEntry.isFile()) continue
+          const name = fileEntry.name
+          const filePath = path.join(categoryDir, name)
+          let size = 0
+          try {
+            size = fs.statSync(filePath).size
+          } catch (_) {}
+          skills.push({
+            name,
+            category,
+            path: `${category}/${name}`,
+            size,
+          })
+          catCount++
+        }
+      } catch (_) {
+        // ignore unreadable category directory
+      }
+
+      categoryMap.set(category, catCount)
+    }
+  } catch (e) {
+    // If top-level scan fails, return empty
+    _skillsCache = { skills: [], categories: [], total: 0, builtAt: Date.now() }
+    return _skillsCache
+  }
+
+  const categories = Array.from(categoryMap.entries()).map(([key, count]) => ({ key, count }))
+  categories.sort((a, b) => a.key.localeCompare(b.key, 'zh-CN'))
+
+  _skillsCache = { skills, categories, total: skills.length, builtAt: Date.now() }
+  return _skillsCache
+}
+
+/**
+ * GET /api/skills/list?category=xxx&search=yyy&page=1&pageSize=50
+ * List available industry skills with pagination, search, and category filter.
+ * "installed" flag is checked against the first INDUSTRY_SKILL_TARGETS entry.
+ */
+function handleSkillsList(res, searchParams) {
+  const categoryFilter = (searchParams.get('category') ?? '').trim()
+  const searchQuery    = (searchParams.get('search') ?? '').trim().toLowerCase()
+  const page     = Math.max(1, parseInt(searchParams.get('page')     ?? '1',  10) || 1)
+  const pageSize = Math.max(1, parseInt(searchParams.get('pageSize') ?? '50', 10) || 50)
+
+  const cache = getSkillsCache()
+  const installBase = INDUSTRY_SKILL_TARGETS[0]
+
+  // Filter skills
+  let filtered = cache.skills
+  if (categoryFilter) {
+    filtered = filtered.filter(s => s.category === categoryFilter)
+  }
+  if (searchQuery) {
+    filtered = filtered.filter(s => s.name.toLowerCase().includes(searchQuery))
+  }
+
+  const total = filtered.length
+  const totalPages = Math.ceil(total / pageSize) || 1
+  const offset = (page - 1) * pageSize
+  const paged = filtered.slice(offset, offset + pageSize)
+
+  // Annotate with installed flag
+  const skills = paged.map(s => {
+    const installedPath = path.join(installBase, s.category, s.name)
+    const installed = fs.existsSync(installedPath)
+    return { ...s, installed }
+  })
+
+  // Count total installed skills across all categories
+  let installedCount = 0
+  try {
+    if (fs.existsSync(installBase)) {
+      const catDirs = fs.readdirSync(installBase, { withFileTypes: true })
+      for (const catDir of catDirs) {
+        if (!catDir.isDirectory()) continue
+        try {
+          const files = fs.readdirSync(path.join(installBase, catDir.name))
+          installedCount += files.filter(f => {
+            try {
+              return fs.statSync(path.join(installBase, catDir.name, f)).isFile()
+            } catch (_) { return false }
+          }).length
+        } catch (_) {}
+      }
+    }
+  } catch (_) {}
+
+  sendJson(res, 200, {
+    skills,
+    total,
+    page,
+    pageSize,
+    totalPages,
+    categories: cache.categories,
+    installedCount,
+  })
+}
+
+/**
+ * POST /api/skills/install
+ * Body: { "skill": "category/filename.md" }
+ * Install a single skill file from INDUSTRY_SKILLS_SRC to all INDUSTRY_SKILL_TARGETS.
+ */
+async function handleSkillInstall(res, body) {
+  const skillPath = typeof body?.skill === 'string' ? body.skill.trim() : ''
+  if (!skillPath) {
+    sendJson(res, 400, { ok: false, error: '缺少 skill 字段，格式: "category/filename"' })
+    return
+  }
+
+  // Safely parse "category/filename" — reject traversal attempts
+  const parts = skillPath.split('/')
+  if (parts.length !== 2 || parts.some(p => !p || p.includes('..') || p.includes('\\'))) {
+    sendJson(res, 400, { ok: false, error: 'skill 格式无效，需为 "category/filename"（不含路径穿越字符）' })
+    return
+  }
+  const [category, filename] = parts
+
+  const srcFile = path.join(INDUSTRY_SKILLS_SRC, category, filename)
+  if (!fs.existsSync(srcFile)) {
+    sendJson(res, 404, { ok: false, error: `源文件不存在: ${skillPath}` })
+    return
+  }
+
+  const copyErrors = []
+  for (const targetBase of INDUSTRY_SKILL_TARGETS) {
+    const destDir  = path.join(targetBase, category)
+    const destFile = path.join(destDir, filename)
+    try {
+      fs.mkdirSync(destDir, { recursive: true })
+      fs.copyFileSync(srcFile, destFile)
+    } catch (e) {
+      copyErrors.push(`copy to ${destFile} failed: ${e.message}`)
+    }
+  }
+
+  if (copyErrors.length > 0) {
+    sendJson(res, 500, { ok: false, error: copyErrors.join('; ') })
+    return
+  }
+
+  invalidateSkillsCache()
+  sendJson(res, 200, { ok: true, message: `已安装: ${skillPath}` })
+}
+
+/**
+ * DELETE /api/skills/uninstall
+ * Body: { "skill": "category/filename.md" }
+ * Remove a single skill file from all INDUSTRY_SKILL_TARGETS (idempotent).
+ */
+async function handleSkillUninstall(res, body) {
+  const skillPath = typeof body?.skill === 'string' ? body.skill.trim() : ''
+  if (!skillPath) {
+    sendJson(res, 400, { ok: false, error: '缺少 skill 字段，格式: "category/filename"' })
+    return
+  }
+
+  const parts = skillPath.split('/')
+  if (parts.length !== 2 || parts.some(p => !p || p.includes('..') || p.includes('\\'))) {
+    sendJson(res, 400, { ok: false, error: 'skill 格式无效，需为 "category/filename"（不含路径穿越字符）' })
+    return
+  }
+  const [category, filename] = parts
+
+  const deleteErrors = []
+  for (const targetBase of INDUSTRY_SKILL_TARGETS) {
+    const destFile = path.join(targetBase, category, filename)
+    try {
+      if (fs.existsSync(destFile)) {
+        fs.unlinkSync(destFile)
+      }
+      // Idempotent: no error if file doesn't exist
+    } catch (e) {
+      deleteErrors.push(`delete ${destFile} failed: ${e.message}`)
+    }
+  }
+
+  if (deleteErrors.length > 0) {
+    sendJson(res, 500, { ok: false, error: deleteErrors.join('; ') })
+    return
+  }
+
+  invalidateSkillsCache()
+  sendJson(res, 200, { ok: true, message: `已卸载: ${skillPath}` })
+}
+
 /** POST /api/config/channels */
 async function handleUpdateChannel(res, body) {
   const errors = []
@@ -2791,7 +3006,7 @@ async function requestHandler(req, res) {
   if (method === 'OPTIONS') {
     res.writeHead(204, {
       'Access-Control-Allow-Origin':  '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type',
     })
     res.end()
@@ -2899,6 +3114,23 @@ async function requestHandler(req, res) {
 
     if (method === 'GET' && pathname === '/api/skill-status') {
       handleGetSkillStatus(res)
+      return
+    }
+
+    if (method === 'GET' && pathname === '/api/skills/list') {
+      handleSkillsList(res, parsedUrl.searchParams)
+      return
+    }
+
+    if (method === 'POST' && pathname === '/api/skills/install') {
+      const body = await readBody(req)
+      await handleSkillInstall(res, body)
+      return
+    }
+
+    if (method === 'DELETE' && pathname === '/api/skills/uninstall') {
+      const body = await readBody(req)
+      await handleSkillUninstall(res, body)
       return
     }
 

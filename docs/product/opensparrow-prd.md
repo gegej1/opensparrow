@@ -381,6 +381,41 @@ Month 2：
 
 ---
 
+#### FR-006.5: Skill 商店与细粒度安装
+
+**功能描述**：用户可以在 Dashboard 中按需浏览、搜索、安装、卸载单个 Skill，而不是在安装向导中批量安装整个分类。
+
+**业务价值**：
+- 简化安装向导（从 5 步减少到 3 步）
+- 减少初始安装时间（从 ~2 分钟减少到 ~30 秒）
+- 用户可以按需安装 Skill，避免安装不需要的功能
+- 支持动态管理 Skill（安装后可增删）
+
+**验收标准**：
+- [ ] 安装向导简化为 3 步（渠道 + 凭证 + API），移除 Skill 选择步骤
+- [ ] 默认仅安装 superpowers/ 核心 Skill（~264KB）
+- [ ] Dashboard 新增"Skill 商店" Tab
+- [ ] 展示所有可用 Skill（从 skills/My_Skills/ 扫描）
+- [ ] 支持按分类筛选（6 个分类）
+- [ ] 支持按名称搜索
+- [ ] 每个 Skill 显示：名称、描述、分类、状态（已安装/未安装）
+- [ ] 点击"安装"按钮 → 复制单个 Skill 文件到 ~/.openclaw/skills/
+- [ ] 点击"卸载"按钮 → 删除 Skill 文件
+- [ ] 安装/卸载后状态实时更新
+
+**当前状态**：📝 Planning（spec-012）
+
+**技术实现**：
+- 前端：dashboard.html 新增 Skill 商店组件
+- 后端：新增 API `/api/skills/list`, `/api/skills/install`, `/api/skills/uninstall`
+- 元数据：扫描 skills/My_Skills/ 提取 Skill 信息
+
+**参考资料**：
+- spec-012: Skill 商店与细粒度安装
+- docs/skill-pack-inventory.md: Skill 清点报告
+
+---
+
 #### FR-007: Docker 容器化部署
 
 **功能描述**：提供 Docker 镜像，支持服务器部署。

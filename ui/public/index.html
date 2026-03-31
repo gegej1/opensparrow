@@ -536,58 +536,8 @@
           </div>
         </div>
 
-        <!-- Step 4: Skill Categories -->
+        <!-- Step 4: Install Progress -->
         <div x-show="currentStep === 4" x-cloak class="p-8 animate__animated animate__fadeInUp">
-          <h2 class="text-xl font-bold mb-1" style="color:#1D2B4E">选择 AI 技能包</h2>
-          <p class="text-sm mb-6" style="color:#6B7A99">superpowers 基础包已默认包含，以下行业包可按需安装</p>
-
-          <div class="grid grid-cols-2 gap-3">
-            <template x-for="cat in skillCategories" :key="cat.key">
-              <div
-                @click="toggleSkillCategory(cat.key)"
-                class="relative cursor-pointer rounded-xl border-2 p-4 transition-all duration-200"
-                :class="selectedSkillCategories.includes(cat.key)
-                  ? 'border-blue-500 bg-blue-50 shadow-md'
-                  : 'border-gray-200 bg-white hover:border-blue-300 hover:shadow-sm'"
-                :style="selectedSkillCategories.includes(cat.key)
-                  ? 'border-color:#1677FF; background:rgba(22,119,255,0.06)'
-                  : ''"
-              >
-                <div class="flex items-start gap-3">
-                  <span class="text-2xl" x-text="cat.icon"></span>
-                  <div class="flex-1 min-w-0">
-                    <div class="flex items-center gap-2">
-                      <span class="font-semibold text-sm" style="color:#1D2B4E" x-text="cat.name"></span>
-                      <span class="text-xs px-1.5 py-0.5 rounded-full"
-                            style="background:#F0F6FF; color:#1677FF"
-                            x-show="cat.count > 0"
-                            x-text="cat.count + ' skills'"></span>
-                    </div>
-                    <p class="text-xs mt-1" style="color:#6B7A99" x-text="cat.desc"></p>
-                  </div>
-                  <div class="flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center transition-all"
-                       :class="selectedSkillCategories.includes(cat.key)
-                         ? 'border-blue-500 bg-blue-500'
-                         : 'border-gray-300'"
-                       :style="selectedSkillCategories.includes(cat.key)
-                         ? 'border-color:#1677FF; background:#1677FF'
-                         : ''">
-                    <svg x-show="selectedSkillCategories.includes(cat.key)" class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path>
-                    </svg>
-                  </div>
-                </div>
-              </div>
-            </template>
-          </div>
-
-          <div class="info-box mt-4" style="font-size:12px">
-            💡 每个行业包约 1 万个 Skill，安装时间约 1-2 分钟。不勾选则只安装 superpowers 基础包。
-          </div>
-        </div>
-
-        <!-- Step 5: Install Progress -->
-        <div x-show="currentStep === 5" x-cloak class="p-8 animate__animated animate__fadeInUp">
           <h2 class="text-xl font-bold mb-1" style="color:#1D2B4E">安装</h2>
           <p class="text-sm mb-6" style="color:#6B7A99">确认配置信息，点击开始安装</p>
 
@@ -606,10 +556,6 @@
               <div class="flex items-start gap-2 text-sm">
                 <span class="w-20 flex-shrink-0" style="color:#6B7A99">模型</span>
                 <span class="font-medium" style="color:#1D2B4E" x-text="apiConfig.model || 'gpt-4o-mini'"></span>
-              </div>
-              <div class="flex items-start gap-2 text-sm">
-                <span class="w-20 flex-shrink-0" style="color:#6B7A99">技能包</span>
-                <span class="font-medium" style="color:#1D2B4E" x-text="selectedSkillCategories.length === 0 ? 'superpowers 基础包' : selectedSkillCategories.join('、') + ' + superpowers 基础包'"></span>
               </div>
             </div>
 
@@ -702,7 +648,7 @@
         </div>
 
         <!-- Navigation Buttons -->
-        <div class="px-8 pb-8 flex justify-between gap-4" x-show="!(currentStep === 5 && installDone)">
+        <div class="px-8 pb-8 flex justify-between gap-4" x-show="!(currentStep === 4 && installDone)">
           <button
             @click="prevStep()"
             x-show="currentStep > 1 && !installStarted"
@@ -712,7 +658,7 @@
           </button>
           <div x-show="currentStep === 1 || installStarted" class="flex-1"></div>
           <button
-            x-show="currentStep < 5"
+            x-show="currentStep < 4"
             @click="nextStep()"
             class="blue-btn flex-1"
             style="padding:10px 20px;font-size:14px"
@@ -733,7 +679,7 @@
     function wizard() {
       return {
         currentStep: 1,
-        steps: ['选择渠道', '填写凭证', 'API 配置', '技能包', '安装'],
+        steps: ['选择渠道', '填写凭证', 'API 配置', '安装'],
 
         channelOptions: [
           { key: 'feishu',   icon: '🐦', name: '飞书 / Lark', desc: '飞书/Lark 机器人，国内最完善' },
@@ -766,18 +712,6 @@
           apiKey: '',
           model: 'gpt-4o-mini',
         },
-
-        // Skill categories
-        selectedSkillCategories: [],
-        skillCategories: [
-          { key: 'Business',   icon: '💼', name: '商业', desc: '营销、管理、运营相关', count: 0 },
-          { key: 'Education',  icon: '📚', name: '教育', desc: '教学、培训、学习相关', count: 0 },
-          { key: 'Finance',    icon: '📊', name: '金融', desc: '投资、财务、风控相关', count: 0 },
-          { key: 'Government', icon: '🏛️', name: '政务', desc: '公文、政策、行政相关', count: 0 },
-          { key: 'Healthcare', icon: '🏥', name: '医疗', desc: '医学、健康、诊断相关', count: 0 },
-          { key: 'Utilities',  icon: '🔧', name: '工具', desc: '通用工具、效率提升',   count: 0 },
-        ],
-        skillCategoriesLoaded: false,
 
         // Install state
         installStarted: false,
@@ -835,39 +769,10 @@
           }
         },
 
-        toggleSkillCategory(key) {
-          const idx = this.selectedSkillCategories.indexOf(key);
-          if (idx === -1) {
-            this.selectedSkillCategories.push(key);
-          } else {
-            this.selectedSkillCategories.splice(idx, 1);
-          }
-        },
-
-        async loadSkillCategories() {
-          if (this.skillCategoriesLoaded) return;
-          try {
-            const res = await this.fetchWithTimeout('/api/skill-categories', {}, 10000);
-            if (res.ok) {
-              const data = await res.json();
-              if (Array.isArray(data.categories)) {
-                data.categories.forEach(cat => {
-                  const found = this.skillCategories.find(c => c.key === cat.key);
-                  if (found) found.count = cat.count || 0;
-                });
-              }
-              this.skillCategoriesLoaded = true;
-            }
-          } catch (_) {
-            // API not available, use defaults
-          }
-        },
-
         nextStep() {
-          if (this.currentStep < 5) this.currentStep++;
+          if (this.currentStep < 4) this.currentStep++;
           this.$nextTick(() => {
-            if (this.currentStep === 4) this.loadSkillCategories();
-            if (this.currentStep === 5 && this.installStarted) {
+            if (this.currentStep === 4 && this.installStarted) {
               this._animateTasks();
             }
           });
@@ -1020,7 +925,6 @@
           this.$nextTick(() => this._animateTasks());
 
           const body = {
-            selectedSkillCategories: this.selectedSkillCategories,
             channels: this.selectedChannels.map(key => ({
               ...(key === 'wecom'
                 ? (() => {
