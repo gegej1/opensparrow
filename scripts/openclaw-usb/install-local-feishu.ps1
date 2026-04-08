@@ -52,8 +52,9 @@ $ProfileWorkspaceDir = Join-Path $ProfileStateDir 'workspace'
 $ProfileAgentDir = Join-Path $ProfileStateDir (Join-Path 'agents' (Join-Path $Agent 'agent'))
 $AuthProfilesFile = Join-Path $ProfileAgentDir 'auth-profiles.json'
 $InstallLogFile = Join-Path $LogDir ('install-{0}-{1}.log' -f $Profile, (Get-Date -Format 'yyyyMMdd-HHmmss'))
-$BundledNodeCmd = Join-Path $RuntimeRoot 'node\node.exe'
-$BundledOpenClawEntry = Join-Path $RuntimeRoot 'openclaw\openclaw.mjs'
+$BundledNodeCmd = $null
+$BundledNpmCmd = $null
+$BundledOpenClawEntry = $null
 $script:NodeCmd = $null
 $script:NpmCmd = $null
 $script:OpenClawMode = 'none'
@@ -104,11 +105,32 @@ function Resolve-Runtime {
   $script:OpenClawCmd = $null
   $script:OpenClawMode = 'none'
 
+  $bundledNodeCandidates = @(
+    (Join-Path $RuntimeRoot 'node\node.exe'),
+    (Join-Path $RuntimeRoot 'node.exe'),
+    (Join-Path $RuntimeRoot 'bin\node.exe'),
+    (Join-Path $RuntimeRoot 'bin\node')
+  )
+  $bundledNpmCandidates = @(
+    (Join-Path $RuntimeRoot 'node\npm.cmd'),
+    (Join-Path $RuntimeRoot 'npm.cmd'),
+    (Join-Path $RuntimeRoot 'bin\npm.cmd')
+  )
+  $bundledOpenClawCandidates = @(
+    (Join-Path $RuntimeRoot 'openclaw\openclaw.mjs'),
+    (Join-Path $RuntimeRoot 'node_modules\openclaw\openclaw.mjs'),
+    (Join-Path $RuntimeRoot 'bin\node_modules\openclaw\openclaw.mjs'),
+    (Join-Path $RuntimeRoot 'lib\node_modules\openclaw\openclaw.mjs')
+  )
+
+  $BundledNodeCmd = $bundledNodeCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+  $BundledNpmCmd = $bundledNpmCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+  $BundledOpenClawEntry = $bundledOpenClawCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+
   if (Test-Path $BundledNodeCmd) {
     $script:NodeCmd = (Resolve-Path $BundledNodeCmd).Path
-    $bundledNpm = Join-Path $RuntimeRoot 'node\npm.cmd'
-    if (Test-Path $bundledNpm) {
-      $script:NpmCmd = (Resolve-Path $bundledNpm).Path
+    if ($BundledNpmCmd -and (Test-Path $BundledNpmCmd)) {
+      $script:NpmCmd = (Resolve-Path $BundledNpmCmd).Path
     }
   }
   else {
@@ -138,7 +160,7 @@ function Resolve-Runtime {
 
 function Require-Node {
   if (-not $script:NodeCmd) {
-    Fail 'Node runtime not found. Install Node.js or provide runtime\node\node.exe in the package.'
+    Fail 'Node runtime not found. Install Node.js or provide a bundled runtime under runtime/ or vendor/windows-openclaw/.'
   }
 }
 
@@ -261,7 +283,7 @@ function Ensure-OpenClawAvailable {
     }
     'none' {
       if (-not $script:NpmCmd) {
-        Fail 'npm not found. Install npm or provide bundled OpenClaw runtime under runtime\openclaw\.'
+        Fail 'npm not found. Install npm or provide a bundled OpenClaw runtime under runtime/ or vendor/windows-openclaw/.'
       }
       Write-Log 'INFO' 'openclaw not found, installing with npm -g'
       & $script:NpmCmd install -g openclaw

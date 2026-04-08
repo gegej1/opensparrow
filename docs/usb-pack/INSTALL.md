@@ -54,6 +54,12 @@
 7. 安装成功后，页面会自动跳转到 Dashboard。
 8. 在 Dashboard 中查看 Bot 状态是否为正常运行。
 
+### 从 GitHub 下载源码仓库时
+
+- 直接进入仓库根目录，双击 `one-click-deploy.cmd`。
+- 当前仓库已随源码跟踪 Windows runtime：`vendor/windows-openclaw/`。
+- 顶层 `My_Skills/` / `superpowers/` 之类本机技能大包不包含在 GitHub 直跑范围内。
+
 ## 五、AI 技能包选择
 
 安装过程中，你会看到“选择 AI 技能包”界面。

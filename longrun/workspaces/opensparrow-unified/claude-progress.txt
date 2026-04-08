@@ -286,3 +286,31 @@
 - Next follow-up:
   - 在 Windows VM 中执行 `platforms\windows\wrappers\one-click-deploy.ps1`，分别验证当前用户 HOME、提权启动、以及历史 profile 自动发现三种场景。
 - Progress snapshot: 15/16 passing
+
+## Session 10 (F-018 GitHub Windows direct-run runtime closure)
+- Date: 2026-04-08
+- Goal: 让用户从 GitHub 直接下载 `opensparrow` 源码仓库后，在 Windows 上无需额外安装 Node.js / OpenClaw，也能直接双击 `CMD` 入口启动安装 / 部署流程。
+- Selected feature id: `F-018`
+- Root cause:
+  - `platforms/windows/wrappers/one-click-deploy.ps1` 的 repo-root 模式要求 `vendor/windows-openclaw/` 存在，但该目录此前被 `.gitignore` 整体排除，GitHub ZIP 下载天然缺 runtime。
+  - `platforms/windows/wrappers/run-openclaw-usb.cmd` 虽然会把 `USB_RUNTIME_ROOT` 指向 `vendor/windows-openclaw/`，但 `scripts/openclaw-usb/install-local-feishu.ps1` 只识别 handoff `runtime/node/node.exe` + `runtime/openclaw/openclaw.mjs` 布局，repo 模式下无法直接命中 bundled runtime。
+  - 仓库根目录缺少直接给 GitHub ZIP 用户双击的 Windows `CMD` 入口；同时本机 `My_Skills/` 大目录又不应跟着进 GitHub。
+- Changes made:
+  - `.gitignore`：改为默认忽略 `vendor/*`，仅放行 `vendor/windows-openclaw/`；同时新增顶层 `My_Skills/` 忽略规则，避免本机技能大包误入库。
+  - `one-click-deploy.cmd`：新增根级 Windows 双击入口，桥接到 `platforms/windows/wrappers/one-click-deploy.cmd`。
+  - `scripts/openclaw-usb/install-local-feishu.ps1`：bundled runtime 探测改为同时兼容 handoff `runtime/` 布局与 repo-root `vendor/windows-openclaw/` 布局，支持直接识别 `node.exe`、`npm.cmd` 和 `node_modules/openclaw/openclaw.mjs`。
+  - `docs/usb-pack/windows-native-delivery.md`、`docs/usb-pack/SOP.md`、`docs/usb-pack/INSTALL.md`：补充 GitHub 源码仓 Windows 直跑说明与技能包边界说明。
+  - `specs/012-github-windows-direct-run/`：新增本次需求的 `spec.md`、`plan.md`、`tasks.md`。
+  - `longrun/workspaces/opensparrow-unified/feature_list.json`：新增 `F-018` 条目。
+- Validation:
+  - `git check-ignore -v vendor/windows-openclaw/node.exe vendor/windows-openclaw/node_modules/openclaw/openclaw.mjs` → 命中 `!vendor/windows-openclaw/**` 放行规则。
+  - `git check-ignore -v -n My_Skills/ skills/My_Skills/ superpowers/` → 顶层 `My_Skills/`、`skills/My_Skills/`、`superpowers/` 均保持忽略。
+  - `rg -n 'vendor/windows-openclaw|node_modules\\openclaw\\openclaw.mjs|one-click-deploy.cmd' scripts/openclaw-usb/install-local-feishu.ps1 docs/usb-pack/windows-native-delivery.md docs/usb-pack/SOP.md docs/usb-pack/INSTALL.md one-click-deploy.cmd` → 命中 repo 直跑相关路径。
+  - 在 clean worktree 中补齐本地验证所需的忽略目录（`vendor/mac-openclaw/`、`vendor/linux-openclaw/`、`dist/` 与 frozen 目录占位）后执行 `./longrun/workspaces/opensparrow-unified/init.sh` → PASS
+- Current status:
+  - GitHub 源码仓已具备把 Windows bundled runtime 正式纳入版本控制的边界定义。
+  - Windows repo-mode 两个主要入口（`one-click-deploy` / `run-openclaw-usb`）都已具备识别 `vendor/windows-openclaw/` 的实现基础。
+  - `vendor/windows-openclaw/` 已加入 Git 暂存区，可直接随本次提交推送到 GitHub。
+- Next follow-up:
+  - 推送到 `origin/main` 后，建议在真实 Windows 主机上重新下载 GitHub ZIP，并验证根目录 `one-click-deploy.cmd` 的双击链路。
+- Progress snapshot: 16/17 passing

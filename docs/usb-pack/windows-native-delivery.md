@@ -20,10 +20,11 @@
   - 实际执行：`windows/install-local-feishu.ps1`
   - 主逻辑：`scripts/openclaw-usb/install-local-feishu.ps1`
   - 历史 UI 配置重放入口：`one-click-deploy.ps1`（对应 canonical 真源：`platforms/windows/wrappers/one-click-deploy.ps1`）
+  - GitHub 源码仓库直跑入口：根目录 `one-click-deploy.cmd`（桥接到 canonical wrapper）
   - UI 服务：`ui/server.mjs`
   - bundled runtime：
-    - `runtime/node/node.exe`
-    - `runtime/openclaw/openclaw.mjs`
+    - handoff copy：`runtime/node/node.exe` + `runtime/openclaw/openclaw.mjs`
+    - GitHub / repo-root：`vendor/windows-openclaw/node.exe` + `vendor/windows-openclaw/node_modules/openclaw/openclaw.mjs`
 - 默认隔离：
   - profile：`usb-portable`
   - state：`%USERPROFILE%\.openclaw-usb-portable\`
@@ -57,6 +58,16 @@
         - `OPENAI_BASE_URL`（可选）
      4. 等待脚本完成。
      5. 联调后运行 `windows/harden-openclaw-usb.cmd` 收口权限。
+
+2.1 从 GitHub 源码仓库直接运行（Windows）
+
+   ```cmd
+   cmd /c one-click-deploy.cmd
+   ```
+
+   - 适用场景：用户从 GitHub 下载 `opensparrow` 源码 ZIP，希望不安装 Node.js / npm，直接启动 Windows UI 安装入口。
+   - 前提：源码目录中已包含 `vendor/windows-openclaw/`。
+   - 边界：本模式只补齐 Windows runtime；顶层 `My_Skills/` 之类本机技能镜像不随仓库分发。
 
 3. 重放历史 UI 配置（DingTalk / WeCom / auth profile）
 

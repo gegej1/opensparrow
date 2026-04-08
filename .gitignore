@@ -69,9 +69,11 @@ openclaw-*.log
 .tmp-*
 
 # =============================================
-# Vendor runtime binaries (too large for git; consider Git LFS later)
+# Vendor runtime binaries (default ignore; Windows direct-run runtime is tracked)
 # =============================================
-vendor/
+vendor/*
+!vendor/windows-openclaw/
+!vendor/windows-openclaw/**
 
 # =============================================
 # Large binary artifacts
@@ -81,6 +83,7 @@ opensparrow-win-full.tar.gz
 # =============================================
 # Local skills / superpowers (managed per-machine, see skills/README.md)
 # =============================================
+My_Skills/
 superpowers/
 skills/My_Skills/
 

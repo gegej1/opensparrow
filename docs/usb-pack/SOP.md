@@ -36,7 +36,7 @@
 
 - 目标机器前置条件：
   1. 已联网。
-  2. 若直接从仓库/staging 运行，目标机需有 Node.js 和 npm；若使用 handoff copy，平台运行时已随包提供。
+  2. 若直接从仓库/staging 运行：Windows 源码仓模式可直接复用仓内 `vendor/windows-openclaw/`；macOS / Linux 仍需本机 Node.js 和 npm。若使用 handoff copy，平台运行时已随包提供。
   3. 可访问模型 API（官方或可用中转）。
   4. 飞书应用已开通消息权限并启用 WebSocket 事件方式。
   5. Windows 机器仅需可运行 PowerShell，不再依赖 Git Bash。

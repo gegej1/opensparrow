@@ -385,5 +385,29 @@
     "evidence_hint": "one-click-deploy.ps1 diff + docs/usb-pack/windows-native-delivery.md note + longrun entry",
     "risk": "medium",
     "passes": true
+  },
+  {
+    "id": "F-018",
+    "priority": 1,
+    "category": "release",
+    "component": "github-windows-direct-run-runtime",
+    "description": "GitHub source downloads include the Windows bundled runtime and repo-mode Windows entrypoints can boot directly without requiring a preinstalled Node.js/OpenClaw environment.",
+    "depends_on": [
+      "F-008",
+      "F-016"
+    ],
+    "acceptance_criteria": [
+      "`vendor/windows-openclaw/` is tracked in Git while local skill mega-packs remain ignored.",
+      "Repo-root `one-click-deploy.cmd` forwards to the canonical Windows wrapper so GitHub ZIP users have a direct entrypoint.",
+      "`scripts/openclaw-usb/install-local-feishu.ps1` recognizes both handoff `runtime/` and repo `vendor/windows-openclaw/` layouts."
+    ],
+    "steps": [
+      "Track the Windows bundled runtime in Git without opening other vendor or skill directories.",
+      "Add a repo-root Windows launch bridge for GitHub ZIP downloads.",
+      "Make repo-mode installer runtime detection accept vendor layout and sync the Windows docs."
+    ],
+    "evidence_hint": "git check-ignore / git ls-files on vendor + docs update + installer runtime path diff",
+    "risk": "medium",
+    "passes": true
   }
 ]
