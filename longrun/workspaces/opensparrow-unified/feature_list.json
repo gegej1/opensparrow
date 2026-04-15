@@ -294,7 +294,9 @@
     "category": "validation",
     "component": "windows-env-verification",
     "description": "Windows environment verification on UTM ARM VM: UI accessibility, gateway stability, daemon status consistency, plugin install retry.",
-    "depends_on": ["F-012"],
+    "depends_on": [
+      "F-012"
+    ],
     "acceptance_criteria": [
       "USB mode starts successfully on Windows (<30s).",
       "Dashboard status matches actual gateway process state.",
@@ -319,7 +321,9 @@
     "category": "channel",
     "component": "wecom-channel-integration",
     "description": "WeCom (企业微信) channel integration using community plugin @sunnoy/wecom. M3 milestone.",
-    "depends_on": ["F-012"],
+    "depends_on": [
+      "F-012"
+    ],
     "acceptance_criteria": [
       "WeCom plugin installable via ClawHub or bundled.",
       "UI setup wizard includes WeCom tab with Bot ID + Secret fields.",
@@ -383,6 +387,263 @@
       "Sync Windows delivery docs and unified progress records."
     ],
     "evidence_hint": "one-click-deploy.ps1 diff + docs/usb-pack/windows-native-delivery.md note + longrun entry",
+    "risk": "medium",
+    "passes": true
+  },
+  {
+    "id": "F-017",
+    "priority": 2,
+    "category": "ui",
+    "component": "public-static-asset-hardening",
+    "description": "Unify OpenSparrow UI public asset routing so dashboard images and future nested static files load consistently and safely.",
+    "depends_on": [
+      "F-015"
+    ],
+    "acceptance_criteria": [
+      "`ui/public/dashboard.html` references `logo.png` instead of an oversized inline data URL.",
+      "`ui/server.mjs` serves public assets through a shared MIME/extension contract with path traversal protection.",
+      "Static GET/HEAD requests for `logo.png` return `200` and direct file-open validation shows the image renders correctly."
+    ],
+    "steps": [
+      "Extract dashboard logo into a standalone public PNG file.",
+      "Unify public asset MIME and route handling in the UI server.",
+      "Add safe public path resolution with traversal checks.",
+      "Validate HTTP and direct-file rendering paths."
+    ],
+    "evidence_hint": "`curl -I /logo.png` + direct `dashboard.html` browser check",
+    "risk": "low",
+    "passes": true
+  },
+  {
+    "id": "F-018",
+    "priority": 1,
+    "category": "maintenance",
+    "component": "openai-compatible-provider-hardening",
+    "description": "Custom OpenAI-compatible provider setup now writes provider-level api metadata, auto-corrects `/v1` when the raw custom path chat route is unreachable, and keeps Dashboard API saves aligned with the active runtime model.",
+    "depends_on": [
+      "F-012"
+    ],
+    "acceptance_criteria": [
+      "`ui/server.mjs` writes `models.providers.openai.api = \"openai-completions\"` during install and Dashboard API saves.",
+      "`POST /api/config/api` follows provider config writes with `models set`, preventing model drift between the form and runtime.",
+      "Custom non-root OpenAI-compatible URLs get a conservative `/v1` fallback probe and surface compatibility warnings in install/Dashboard success responses.",
+      "Shared Bash / PowerShell install scripts also write provider-level `api` metadata."
+    ],
+    "steps": [
+      "Extract and test OpenAI provider config helpers.",
+      "Wire install/save flows to provider probing, provider-level api writes, and models set synchronization.",
+      "Expose compatibility warnings in the dashboard and sync shared installer scripts."
+    ],
+    "evidence_hint": "helper unit tests + isolated /api/config/api smoke + dashboard/script diffs",
+    "risk": "medium",
+    "passes": true
+  },
+  {
+    "id": "F-019",
+    "priority": 1,
+    "category": "planning",
+    "component": "commander-orchestration-governance",
+    "description": "Record a long-term Commander operating model with a fixed 5-agent roster, optional 1-3 temporary specialists, and explicit dispatch / review / handoff rules for the unified repo.",
+    "depends_on": [
+      "F-004"
+    ],
+    "acceptance_criteria": [
+      "`specs/013-commander-orchestration-governance/` contains `spec.md`, `plan.md`, and `tasks.md`.",
+      "`docs/runbooks/F-019-commander-orchestration-governance.md` records the fixed roster, dispatch patterns, temporary expansion triggers, and conflict-avoidance rules.",
+      "`longrun/workspaces/opensparrow-unified/feature_list.json` and `claude-progress.txt` both mention the Commander governance baseline and note that this round did not modify runtime code."
+    ],
+    "steps": [
+      "Write the governance spec, implementation plan, and task breakdown.",
+      "Create a Commander runbook for role cards, dispatch modes, and escalation rules.",
+      "Sync the new governance baseline into unified longrun records and verify the persistence workflow still runs."
+    ],
+    "evidence_hint": "new spec suite + runbook + progress_report output + unified init pass",
+    "risk": "low",
+    "passes": true
+  },
+  {
+    "id": "F-020",
+    "priority": 1,
+    "category": "packaging",
+    "component": "mac-arm64-installer-hardening",
+    "description": "Harden the macOS arm64 UI package so bundled superpowers copy recursively, DingTalk/WeCom install from bundled plugin archives instead of ClawHub-first resolution, and plugin-backed channel config is skipped unless the plugin is ready.",
+    "depends_on": [
+      "F-012",
+      "F-019"
+    ],
+    "acceptance_criteria": [
+      "`ui/install-helpers.mjs` plus `ui/tests/install-helpers.test.mjs` cover recursive skill copy and bundled plugin archive resolution.",
+      "`ui/server.mjs` prefers packaged `.tgz` plugin archives, skips DingTalk/WeCom channel config when plugin install fails, and uses a longer plugin install timeout suitable for WeCom local archive installs.",
+      "A fresh arm64 package exists at `dist/handoff/opensparrow-mac-ui-full-arm64-20260414-162747.zip` and its bundled `vendor/mac-openclaw/bin/node` reports `arm64`.",
+      "Smoke evidence shows local `.tgz` plugin install works for DingTalk and WeCom, and package launch still reaches the UI listening state."
+    ],
+    "steps": [
+      "Add pure install helpers and a focused node:test regression for recursive skill copy and plugin archive discovery.",
+      "Wire UI install and channel-update flows to local plugin archives, plugin-ready gating, corrected OpenClaw entry preference, and a longer plugin install timeout.",
+      "Rebuild the mac arm64 UI package, bundle local DingTalk/WeCom plugin archives, validate launch, and retain only the latest good ZIP."
+    ],
+    "evidence_hint": "`node --test ui/tests/install-helpers.test.mjs` + local `.tgz` plugin smoke + `FINAL_ENTRY_SMOKE=PASS` + final zip path",
+    "risk": "medium",
+    "passes": true
+  },
+  {
+    "id": "F-021",
+    "priority": 1,
+    "category": "maintenance",
+    "component": "codespec-template-ingestion",
+    "description": "Mirror curated codeSPEC cleanup templates into the unified repo, keep the source project untouched, and clarify the boundary between imported references and local authority surfaces.",
+    "depends_on": [
+      "F-006",
+      "F-019"
+    ],
+    "acceptance_criteria": [
+      "`specs/015-codespec-template-ingestion/` contains `spec.md`, `plan.md`, and `tasks.md`.",
+      "`scripts/import-codespec-template.sh` plus `scripts/tests/import-codespec-template.test.mjs` prove the import is whitelist-based and does not overwrite local reference docs.",
+      "`docs/reference/codeSPEC-template/` contains local scope docs plus an upstream `UnifiedFramework` snapshot imported from `codeSPEC` without modifying the source repo.",
+      "`longrun/README.md`, `longrun/CHECKLIST.md`, and `longrun/METHOD.zh-CN.md` clearly position longrun as project memory rather than feature or execution authority.",
+      "`README.md`, `longrun/workspaces/opensparrow-unified/feature_list.json`, and `longrun/workspaces/opensparrow-unified/claude-progress.txt` all mention the new reference surface and its authority boundary."
+    ],
+    "steps": [
+      "Write the migration spec, plan, and tasks for curated codeSPEC template ingestion.",
+      "Add a tested import script that rebuilds a local reference snapshot from a whitelist of `UnifiedFramework` files.",
+      "Create reference docs and runbook entries that explain imported scope, skipped assets, and why current repo authority stays local.",
+      "Sync the longrun boundary notes and unified project-memory records after the import succeeds."
+    ],
+    "evidence_hint": "`node --test scripts/tests/import-codespec-template.test.mjs` + `bash -n scripts/import-codespec-template.sh` + import manifest + unified init/progress report",
+    "risk": "low",
+    "passes": true
+  },
+  {
+    "id": "F-022",
+    "priority": 1,
+    "category": "governance",
+    "component": "codespec-framework-adaptation",
+    "description": "Adapt codeSPEC into OpenSparrow's active development framework by wiring local governance docs, longrun scaffolds, authority order, and curated upstream reference sync into one usable底座.",
+    "depends_on": [
+      "F-019",
+      "F-021"
+    ],
+    "acceptance_criteria": [
+      "`docs/governance/` contains an active local governance surface: framework stack, project onboarding SOP, dispatch templates, and quick reference.",
+      "`AGENTS.md`, `.specify/memory/constitution.md`, `docs/项目持久化说明.md`, and `README.md` all point to the new framework entry and share the same authority order.",
+      "`longrun/templates/initializer_prompt.template.md` and `longrun/templates/coding_prompt.template.md` clearly position longrun as project memory scaffolding instead of feature or execution authority.",
+      "`scripts/import-codespec-template.sh` plus `scripts/tests/import-codespec-template.test.mjs` mirror the expanded curated whitelist (`UnifiedFramework` + `AgentTeam`) without modifying the source repo or overwriting local reference docs.",
+      "`claude-progress.txt` records that the framework底座 is ready and future product work should build on this adapted stack."
+    ],
+    "steps": [
+      "Create active local governance docs that adapt codeSPEC's UnifiedFramework and AgentTeam concepts to OpenSparrow paths and rules.",
+      "Wire the new governance stack into AGENTS, constitution, project persistence docs, README, and longrun prompt scaffolds.",
+      "Expand curated reference import coverage to include AgentTeam onboarding/dispatch templates and the execution bridge document.",
+      "Validate the updated stack with import tests, real reference sync, unified init, and progress reporting."
+    ],
+    "evidence_hint": "`docs/governance/` + `node --test scripts/tests/import-codespec-template.test.mjs` + import manifest + unified init/progress report",
+    "risk": "low",
+    "passes": true
+  },
+  {
+    "id": "F-023",
+    "priority": 1,
+    "category": "governance",
+    "component": "commander-mode-hardening",
+    "description": "Harden Commander Mode boundaries across the constitution, plan template, and coding prompt scaffold so commander activation stays explicit, execution ownership stays serialized, and closeout remains non-authoritative.",
+    "depends_on": [
+      "F-019",
+      "F-022"
+    ],
+    "acceptance_criteria": [
+      "`.specify/memory/constitution.md` records explicit Commander Mode activation, role boundaries, commander contract, ownership serialization, and non-authoritative closeout rules.",
+      "`.specify/templates/plan-template.md` makes packetization the default dispatch scaffold with required packet fields, independent reviewer/verifier roles, stop rules, and separate integration-packet wording.",
+      "`longrun/templates/coding_prompt.template.md` states that commander mode does not make the main thread the default implementation owner, that longrun closeout remains non-authoritative, and that `passes: true` still requires traceable acceptance evidence.",
+      "Cross-surface wording for `PKT-017-A/B/C/D` is backed by existing `Batch Reviewer: APPROVED` and `Batch Verifier: PASS` evidence and no further integration is required for this round."
+    ],
+    "steps": [
+      "Harden the constitution wording for explicit commander activation, role boundaries, commander contract, and serialized ownership.",
+      "Upgrade the plan template so packet fields, ownership guards, reviewer/verifier separation, and stop rules are dispatch defaults.",
+      "Harden the coding prompt scaffold so continuation notes stay non-authoritative and `passes: true` remains evidence-gated.",
+      "Align the cross-surface wording and close the round only from existing reviewed and verified evidence."
+    ],
+    "evidence_hint": "`Batch Reviewer: APPROVED` + `Batch Verifier: PASS` for `PKT-017-A/B/C/D` + key anchors in `.specify/memory/constitution.md`, `.specify/templates/plan-template.md`, and `longrun/templates/coding_prompt.template.md`",
+    "risk": "low",
+    "passes": true
+  },
+  {
+    "id": "F-025",
+    "priority": 1,
+    "category": "runtime",
+    "component": "model-routing-proxy",
+    "description": "Integrate ClawRouter standalone proxy into the repo through a dedicated `clawrouter` provider, profile-local runtime management, and macOS enable/disable/status entrypoints without upgrading OpenClaw core.",
+    "depends_on": [
+      "F-012",
+      "F-018"
+    ],
+    "acceptance_criteria": [
+      "`specs/025-openclaw-model-routing-proxy/` contains `spec.md`, `plan.md`, and `tasks.md`.",
+      "`scripts/model-routing/` provides `manage-clawrouter.mjs` plus enable/disable/status shell wrappers.",
+      "`platforms/mac/wrappers/02-开启模型智能路由.command`, `03-关闭模型智能路由.command`, and `04-检查模型智能路由.command` exist and invoke the new model-routing scripts.",
+      "A temporary profile verification proves enable → status → disable can install ClawRouter `0.12.149`, switch primary to `clawrouter/blockrun/auto`, preserve fallbacks, and restore the original model chain."
+    ],
+    "steps": [
+      "Write the F-025 spec, plan, and tasks for standalone model routing proxy integration.",
+      "Add tested model-routing helper logic plus a profile-local ClawRouter manager and shell/mac wrappers.",
+      "Validate unit logic, shell syntax, and a real temporary-profile enable/status/disable round-trip before syncing longrun records."
+    ],
+    "evidence_hint": "`node --test scripts/tests/model-routing.test.mjs` + `node --check scripts/model-routing/manage-clawrouter.mjs` + `bash -n scripts/model-routing/*.sh` + temporary-profile enable/status/disable evidence",
+    "risk": "medium",
+    "passes": true
+  },
+  {
+    "id": "F-026",
+    "priority": 1,
+    "category": "runtime",
+    "component": "openclaw-model-routing-plugin",
+    "description": "Upgrade the isolated model-routing lab to a plugin-capable OpenClaw runtime and wire the official @blockrun/clawrouter plugin as the usable model intelligent routing path.",
+    "depends_on": [
+      "F-012",
+      "F-025"
+    ],
+    "acceptance_criteria": [
+      "`specs/026-openclaw-model-routing-plugin/` contains `spec.md`, `plan.md`, and `tasks.md`.",
+      "`scripts/model-routing/manage-clawrouter-plugin.mjs` plus the related shell/mac wrappers expose `install-runtime`, `enable`, `disable`, `status`, `test`, and raw OpenClaw CLI entrypoints inside the repo-local `dist/model-running-lab/`.",
+      "The lab can load `@blockrun/clawrouter` on `OpenClaw 2026.4.14`, and `status` reports `pluginStatus=loaded`, `pluginActivated=true`, `primaryModel=blockrun/auto`, and `hasBlockrunProvider=true`.",
+      "Validation shows three prompt classes route to `SIMPLE`, `MEDIUM`, and `REASONING`, while the CLI probe resolves `provider=blockrun` and `model=auto` through a dedicated probe agent/session instead of reusing the main session.",
+      "`disable` removes the staged plugin directory and sanitizes injected BlockRun config from the isolated lab without touching the real user home.",
+      "The staged plugin tolerates non-ASCII prompts by sanitizing `x-clawrouter-reasoning`, so Chinese prompts no longer fail with `Invalid character in header content`."
+    ],
+    "steps": [
+      "Prepare or reuse a compatible `OpenClaw 2026.4.14` runtime inside the isolated lab and skip bundled plugin postinstall during upgrade.",
+      "Stage the official ClawRouter plugin into the lab extension directory, install its production dependencies, and expose shell/mac wrappers for enable, disable, status, test, and direct OpenClaw CLI access.",
+      "Harden validation by forcing dedicated probe session ids and waiting for the current gateway log to emit the proxy-ready marker before sending proxy requests.",
+      "Record the plugin workflow, verification evidence, and fallback boundary against `F-025` in the runbook and unified project memory.",
+      "Patch the staged official plugin dist in the isolated lab so debug reasoning headers become ASCII-safe and no longer break Chinese prompt verification."
+    ],
+    "evidence_hint": "`node --test scripts/tests/model-routing-plugin.test.mjs` + `node --check scripts/model-routing/manage-clawrouter-plugin.mjs` + `manage-clawrouter-plugin.mjs test` JSON + enable/disable/status output + manual x402 proxy check with `x-clawrouter-tier`/`x-clawrouter-reasoning` on Chinese prompts",
+    "risk": "medium",
+    "passes": true
+  },
+  {
+    "id": "F-027",
+    "priority": 1,
+    "category": "runtime",
+    "component": "custom-model-routing-plugin",
+    "description": "Build a repo-local OpenClaw model-routing plugin that reuses ClawRouter tiering but executes against user-supplied OpenAI-compatible upstreams, plus a real dual-terminal demo surface.",
+    "depends_on": [
+      "F-012",
+      "F-025",
+      "F-026"
+    ],
+    "acceptance_criteria": [
+      "`specs/027-custom-model-routing-plugin/` contains `spec.md`, `plan.md`, and `tasks.md`.",
+      "`scripts/model-routing/custom-plugin/` contains the repo-local OpenClaw plugin source and reuses `@blockrun/clawrouter` route logic.",
+      "`scripts/model-routing/manage-custom-routing-plugin.mjs` plus related shell/mac wrappers can stage, enable, disable, inspect, and run the isolated custom plugin lab without touching `vendor/`.",
+      "The isolated lab can load `opensparrow-router`, expose `opensparrow-router/auto`, and route natural-language requests to different upstream models through the user-provided OpenAI-compatible `baseUrl + apiKey`.",
+      "A real dual-terminal demo exists where terminal A shows plugin routing logs and terminal B accepts natural-language input through the plugin-owned local chat surface."
+    ],
+    "steps": [
+      "Create the F-027 spec set and repo-local plugin source that swaps official wallet execution for custom OpenAI-compatible upstream execution.",
+      "Add tested routing helpers, plugin staging scripts, runtime entrypoints, and a stable dual-terminal demo launcher for macOS.",
+      "Document the stable demo surface and the current `tui/agent` boundary, then sync unified longrun memory."
+    ],
+    "evidence_hint": "`node --test scripts/tests/custom-model-routing-plugin.test.mjs` + `node --check scripts/model-routing/custom-plugin/src/index.mjs scripts/model-routing/manage-custom-routing-plugin.mjs` + `bash -n scripts/model-routing/watch-custom-routing-plugin-log.sh scripts/model-routing/open-custom-routing-demo-terminals.sh` + real gateway/plugin status + dual-terminal demo evidence",
     "risk": "medium",
     "passes": true
   }

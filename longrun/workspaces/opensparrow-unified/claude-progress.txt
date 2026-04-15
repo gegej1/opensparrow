@@ -286,3 +286,461 @@
 - Next follow-up:
   - 在 Windows VM 中执行 `platforms\windows\wrappers\one-click-deploy.ps1`，分别验证当前用户 HOME、提权启动、以及历史 profile 自动发现三种场景。
 - Progress snapshot: 15/16 passing
+
+## Session 10 (F-017 Dashboard logo static asset hardening)
+- Date: 2026-04-03
+- Goal: 修复 dashboard 顶部 logo 在 HTTP 场景下空白的问题，并把 UI 公共静态资源服务能力收口到统一实现。
+- Selected feature id: `F-017`
+- Root cause:
+  - `ui/public/dashboard.html` 原先把 logo 以内联 `data:image/png;base64,...` 写在单行属性里，浏览器侧存在 URL 解析失败风险。
+  - 当 logo 改成相对路径 `logo.png` 后，`ui/server.mjs` 的静态路由仍只放行 `.css/.js/.mjs`，导致 `GET /logo.png` 无法返回。
+  - 静态路由白名单与 `sendFile()` 的 MIME 支持分叉，后续新增 `.png/.svg/.ico/.json` 或子目录资源时容易重复出错。
+- Changes made:
+  - `ui/public/logo.png`：从 dashboard 原始 base64 数据提取为独立 PNG 文件。
+  - `ui/public/dashboard.html`：仅将顶部 logo 的 `src` 改为 `logo.png`，其余属性保持不变。
+  - `ui/server.mjs`：新增 `PUBLIC_FILE_MIME_MAP` / `PUBLIC_ASSET_EXTENSIONS`，把静态扩展名与 MIME 映射统一到同一份定义。
+  - `ui/server.mjs`：新增 `resolvePublicAssetPath()` 与 `isPathInside()`，支持 `ui/public/` 下安全的相对路径解析、真实路径校验与路径穿越防护。
+  - `ui/server.mjs`：静态资源请求从“仅 basename + css/js/mjs”升级为统一的 `GET/HEAD` 公共资源服务。
+  - `longrun/workspaces/opensparrow-unified/feature_list.json`：新增 `F-017` 条目。
+- Validation:
+  - `node --check ui/server.mjs` → PASS
+  - `file ui/public/logo.png` → `PNG image data, 115 x 120, 8-bit/color RGBA, non-interlaced`
+  - `curl -I http://127.0.0.1:19111/logo.png` → `200 OK`, `Content-Type: image/png`
+  - `curl -I http://127.0.0.1:19111/dashboard` → `200 OK`
+  - `curl http://127.0.0.1:19111/dashboard` 命中 `<img src="logo.png" ... alt="Open Sparrow">`
+  - `curl http://127.0.0.1:19111/../package.json` → `404`（路径穿越拦截）
+  - Headless Chrome 直接打开 `file:///Users/eduardogan/Desktop/GHJProject/opensparrow/ui/public/dashboard.html`：`currentSrc=file:///.../ui/public/logo.png`，`naturalWidth=115`，`naturalHeight=120`
+  - `./longrun/workspaces/opensparrow-unified/init.sh` → PASS
+- Current status:
+  - dashboard logo 在源码直开与 HTTP 静态服务两条路径上都能被正确解析。
+  - UI 公共静态资源服务已改为统一收口实现，后续新增图片、图标、JSON 或子目录资源不需要再单独补路由。
+- Next follow-up:
+  - 若后续需要分发新版交付包，应同步重建 `dist`，避免源码与打包产物的静态资源能力再次漂移。
+- Progress snapshot: 16/17 passing
+
+## Session 11 (Bug investigation: custom OpenAI endpoint compatibility + model drift)
+- Date: 2026-04-08
+- Goal: 只读定位“自定义 OpenAI 兼容地址 + Qwen3-32B”链路中的 404/500 报错，并把模型错位问题落盘为 bug 记录。
+- Scope: 调查与文档落盘；本轮未修改运行时代码。
+- Findings:
+  - `ui/server.mjs` 的 `normalizeOpenAIBaseUrl()` 对 `https://llm.wtsht.cn/mosuanguichao/qwen3-32b-api` 不会自动补 `/v1`。
+  - 实测同一 provider 仅支持 `/v1/chat/completions`、`/v1/completions` 与 `/v1/chat/completions?stream=true`，不支持裸路径 `chat/completions`，也不完整支持 `/v1/responses`。
+  - 真实会话日志同时出现过 `openai-completions -> 404 status code (no body)` 与 `openai-responses -> 500 not implemented`。
+  - Dashboard 保存 API 的后端路径只更新 `models.providers.openai`，不会同步执行 `models set`，导致 `/api/config` 表单配置与 `openclaw models list` 当前激活模型发生漂移。
+- Evidence recorded:
+  - 新增 `specs/010-openclaw-runtime-upgrade/BUG-001-custom-openai-endpoint-and-model-drift.md`
+- Current status:
+  - 该问题已形成可复现 bug 记录，尚未进入修复实现。
+- Suggested next step:
+  - 如需修复，优先做：`/api/config/api` 同步 `models set`，以及 install/save 前的 provider 兼容性预检。
+
+## Session 12 (F-018 OpenAI-compatible provider hardening)
+- Date: 2026-04-08
+- Goal: 以最小改动修复自定义 OpenAI-compatible provider 的 `/v1` 路由兼容、provider API 默认值和 Dashboard 模型漂移问题。
+- Selected feature id: `F-018`
+- Root cause:
+  - OpenClaw runtime 在 provider 级 `api` 缺失时会回退到 `openai-responses`，而当前安装/保存逻辑只写了 model 级 `api`。
+  - Dashboard `POST /api/config/api` 只更新 `models.providers.openai`，不会同步执行 `models set`，导致表单配置与实际激活模型漂移。
+  - 对自定义非根路径 provider，当前 UI 归一化逻辑不会在需要时自动收敛到带 `/v1` 的可用 base URL。
+- Changes made:
+  - 新增 `specs/012-custom-openai-provider-hardening/{spec,plan,tasks}.md`，补齐本轮 bugfix 的 spec 流程。
+  - 新增 `ui/lib/openai-provider.mjs` 与 `ui/lib/openai-provider.test.mjs`，抽出 OpenAI base URL 归一化、`/v1` 候选生成、provider config builder，并补了 5 个聚焦测试。
+  - `ui/server.mjs`：安装与 Dashboard API 保存统一走 OpenAI provider helper，写入 provider 级 `api: "openai-completions"`，并在保存后同步 `models set`。
+  - `ui/server.mjs`：新增保守型 provider probe；当原始自定义路径的 `chat/completions` 不可达而 `/v1` 候选可达时，自动切换到带 `/v1` 的 base URL，并把兼容性告警透传给前端。
+  - `ui/server.mjs`：Dashboard 保存 API 时，空 `apiKey` 不再覆盖已有 auth profile；仅在用户明确填写新 key 时才重写 `auth-profiles.json`。
+  - `ui/public/dashboard.html`：保存 API 成功 toast 现在会拼接后端返回的 warnings。
+  - `scripts/openclaw-usb/install-local-feishu.sh` 与 `scripts/openclaw-usb/install-local-feishu.ps1`：同步写入 provider 级 `api: "openai-completions"`。
+- Validation:
+  - `node --test ui/lib/openai-provider.test.mjs` → PASS (5/5)
+  - `node --check ui/server.mjs` → PASS
+  - `bash -n scripts/openclaw-usb/install-local-feishu.sh` → PASS
+  - 隔离 smoke：`OPENCLAW_HOME=$(mktemp -d) ... POST /api/config/api` 后，`openclaw.json` 已包含 provider 顶层 `api: "openai-completions"`，且 `openclaw models list` 显示 `openai/Qwen3-32B ... default,configured`
+  - `pwsh` 当前环境不可用，因此 `install-local-feishu.ps1` 仅完成静态差异审查，待 Windows / pwsh 环境补语法解析。
+- Current status:
+  - 安装与 Dashboard API 保存路径都已固定 provider 级 `openai-completions`，并在保存后同步当前激活模型。
+  - 自定义 OpenAI-compatible base URL 现在具备保守型 `/v1` 探测与 warnings 透传能力。
+- Next follow-up:
+  - 用真实第三方 provider 再做一次端到端 smoke，确认 `https://llm.wtsht.cn/mosuanguichao/qwen3-32b-api` 在 UI 保存后最终落为 `.../v1`，并验证聊天链路恢复。
+- Progress snapshot: 18/18 passing
+
+## Session 13 (F-019 Commander orchestration governance)
+- Date: 2026-04-09
+- Goal: 把“总司令 + 固定 5 子 Agent + 可临时扩编”的长期协作制度正式落盘到 unified repo，作为后续会话默认执行基线。
+- Selected feature id: `F-019`
+- Scope:
+  - 本轮只做治理文档、runbook 与 longrun 记录同步。
+  - 本轮未修改 `ui/`、`platforms/`、`scripts/`、`vendor/` 等运行时代码。
+- Changes made:
+  - 新增 `specs/013-commander-orchestration-governance/{spec,plan,tasks}.md`，明确固定 5 人编制、总司令职责边界、默认派工模式、扩编规则与冲突规避要求。
+  - 新增 `docs/runbooks/F-019-commander-orchestration-governance.md`，把角色职责卡、派单模板、总司令 SOP、收口动作与升级路径写成可执行手册。
+  - 更新 `longrun/workspaces/opensparrow-unified/feature_list.json`，新增 `F-019` 条目。
+  - 补充“总司令是会话级角色，不绑定历史特定 Agent 身份；若用户重新指定，以当前用户指令为准”的口径，避免旧上下文对新会话造成误导。
+- Validation:
+  - `python3 -m json.tool longrun/workspaces/opensparrow-unified/feature_list.json >/dev/null` → PASS
+  - `./longrun/workspaces/opensparrow-unified/init.sh` → PASS
+  - `python3 longrun/scripts/progress_report.py longrun/workspaces/opensparrow-unified/feature_list.json` → PASS
+- Current status:
+  - unified repo 已拥有一套长期固定的 Commander 调度制度，可直接指导后续 feature 的拆解、派工、审阅与收口。
+  - 后续新任务默认沿用“固定 5 人 + 按需临时扩编”的工作方式，除非用户另行指定。
+- Next follow-up:
+  - 下一轮真实 feature 开工时，按本 runbook 执行一次完整派工，验证这套制度在实战中的节奏与边界是否仍需微调。
+- Progress snapshot: 18/19 passing
+
+## Session 14 (F-020 Mac arm64 installer hardening)
+- Date: 2026-04-14
+- Goal: 修复 macOS arm64 UI 包首次安装时的 skill 复制失败与 DingTalk/WeCom 插件安装级联报错，并重新导出唯一保留的最新好包。
+- Selected feature id: `F-020`
+- Root cause:
+  - `ui/server.mjs` 的 `installSkills()` 把 `skills/superpowers/` 顶层条目一律当普通文件复制；当遇到 `agents/`、`commands/` 等目录时会触发 `copyfile ENOTSUP`，导致 `~/.claude/skills/superpowers` / `~/.codex/skills/superpowers` 安装中断。
+  - UI 安装流程对 DingTalk / WeCom 仍调用 bare npm spec，OpenClaw 2026.3.23 会先尝试 ClawHub；当 ClawHub 返回 `429` 时不会回退 npm，因此插件安装失败。
+  - 即使插件安装失败，旧逻辑仍继续写 `channels.dingtalk/*` / `channels.wecom/*`，于是又触发 `unknown channel id` 二次报错。
+  - `ui/server.mjs` 的 OpenClaw entry 解析顺序优先落到 `vendor/mac-openclaw/bin/node_modules/openclaw`（2026.3.12），而不是 `lib/node_modules/openclaw`（2026.3.23），存在继续跑旧版 runtime 代码的风险。
+- Changes made:
+  - 新增 `specs/014-mac-arm64-installer-hardening/{spec,plan,tasks}.md`，补齐这轮 bugfix 的 spec 流程。
+  - 新增 `ui/install-helpers.mjs` 与 `ui/tests/install-helpers.test.mjs`，覆盖递归 skill 复制与 bundled plugin archive 发现逻辑。
+  - `ui/server.mjs`：
+    - `installSkills()` 改为递归复制 `skills/superpowers/`；
+    - 优先从包内 `plugins/*.tgz` 安装 DingTalk / WeCom，而非直接走 ClawHub-first 解析；
+    - 当 DingTalk / WeCom 插件未就绪时，跳过对应 `channels.*` 配置写入，避免 `unknown channel id` 级联报错；
+    - `handleUpdateChannel()` 同步复用插件就绪检查；
+    - `resolveOpenClawEntry()` 调整为优先选择 `lib/node_modules/openclaw/openclaw.mjs`；
+    - `OC_TIMEOUT.PLUGIN_INSTALL` 从 `180000` 提升到 `300000`，覆盖企微本地归档安装耗时。
+  - `scripts/build-usb-pack.sh`：
+    - 补齐 `superpowers/ -> skills/superpowers/` 的 canonical 复制；
+    - 新增 `bundle_plugin_archives()`，把 `@openclaw-china/channels` 与 `@sunnoy/wecom@3.0.0` 打成 `.tgz` 放入包内 `plugins/`。
+  - 更新 `docs/runbooks/release-process.md` 与 `docs/release-checklist.md`，把本地 `.tgz` 插件归档与“不得出现 unknown channel id 级联报错”写入发布核对项。
+  - 重建并收口最终交付物：仅保留 `dist/handoff/opensparrow-mac-ui-full-arm64-20260414-162747/` 与 `dist/handoff/opensparrow-mac-ui-full-arm64-20260414-162747.zip`。
+- Validation:
+  - `vendor/mac-openclaw/bin/node --test ui/tests/install-helpers.test.mjs` → PASS (2/2)
+  - `vendor/mac-openclaw/bin/node --check ui/server.mjs` → PASS
+  - `bash -n scripts/build-usb-pack.sh` → PASS
+  - DingTalk local archive smoke：本地 `openclaw-china-channels-2026.3.29.tgz` 安装成功，随后 `config set channels.dingtalk.enabled true --strict-json` → PASS
+  - WeCom local archive smoke：本地 `sunnoy-wecom-3.0.0.tgz` 安装成功，随后 `config set channels.wecom.enabled true --strict-json` → PASS
+  - Final package checks：
+    - `file dist/handoff/opensparrow-mac-ui-full-arm64-20260414-162747/opensparrow-0.1.0-alpha-mac-ui-arm64/vendor/mac-openclaw/bin/node` → `Mach-O 64-bit executable arm64`
+    - final package launch smoke on port `19128` → `FINAL_ENTRY_SMOKE=PASS`
+- Current status:
+  - 新 mac 上的两条核心失败链路都已被收口：superpowers 目录型 skill 可正常复制；DingTalk / WeCom 不再依赖 ClawHub 首次解析成功，也不会在插件失败时继续写无效 channel config。
+  - 当前 `dist/handoff/` 下仅保留唯一最新的 mac arm64 UI 交付物，便于直接迁移。
+- Next follow-up:
+  - 在真实目标 Mac 上用最终 ZIP 再做一次带企微凭据的完整 UI 安装，观察企微插件安装实际耗时是否稳定低于 300 秒；若仍接近上限，可考虑把插件依赖进一步预热到离线缓存层。
+- Progress snapshot: 19/20 passing
+
+## Session 15 (F-021 codeSPEC template ingestion)
+- Date: 2026-04-14
+- Goal: 参考 `/Users/eduardogan/Desktop/GHJProject/codeSPEC`，把适合当前 unified repo 清洗/重整使用的模板资产安全迁入当前仓，同时明确 reference 层与本地 authority 层边界，且不修改 source 项目。
+- Selected feature id: `F-021`
+- Scope:
+  - 本轮新增一个可重复执行的 `codeSPEC` 模板导入脚本与自动化测试。
+  - 本轮建立 `docs/reference/codeSPEC-template/` 作为 reference 镜像层，仅镜像策展后的 `UnifiedFramework` 白名单文件。
+  - 本轮把 `codeSPEC` 中更清晰的 `longrun` 边界说明吸收到当前仓活跃文档。
+  - 本轮未修改 `codeSPEC` source 项目，也未改动 OpenSparrow 运行时代码行为。
+- Changes made:
+  - 新增 `specs/015-codespec-template-ingestion/{spec,plan,tasks}.md`，定义导入边界、白名单、跳过清单与验证链。
+  - 新增 `scripts/tests/import-codespec-template.test.mjs`，以 TDD 方式覆盖“只同步白名单文件、且不覆盖本地 reference 说明文档”两项行为。
+  - 新增 `scripts/import-codespec-template.sh`，默认从 `/Users/eduardogan/Desktop/GHJProject/codeSPEC` 读取 source，并重建 `docs/reference/codeSPEC-template/upstream/`。
+  - 新增 `docs/reference/codeSPEC-template/README.md` 与 `docs/reference/codeSPEC-template/IMPORT_SCOPE.md`，说明 reference 定位、映射关系、跳过项与刷新命令。
+  - 运行导入脚本后，生成 `docs/reference/codeSPEC-template/upstream/UnifiedFramework/` 与 `docs/reference/codeSPEC-template/upstream/IMPORT_MANIFEST.md`。
+  - 新增 `docs/runbooks/F-021-codespec-template-ingestion.md`，记录刷新动作、验证命令与风险边界。
+  - 更新 `README.md`，增加 `codeSPEC` 模板参考入口。
+  - 更新 `longrun/README.md`、`longrun/CHECKLIST.md`、`longrun/METHOD.zh-CN.md`，明确 `longrun` 是项目记忆层而非 feature / execution authority。
+  - 更新 `longrun/workspaces/opensparrow-unified/feature_list.json`，新增 `F-021` 条目并标记通过。
+- Validation:
+  - `node --test scripts/tests/import-codespec-template.test.mjs` → PASS (2/2)
+  - `bash -n scripts/import-codespec-template.sh` → PASS
+  - `./scripts/import-codespec-template.sh /Users/eduardogan/Desktop/GHJProject/codeSPEC` → PASS
+  - `python3 -m json.tool longrun/workspaces/opensparrow-unified/feature_list.json >/dev/null` → PASS
+  - `./longrun/workspaces/opensparrow-unified/init.sh` → PASS
+  - `python3 longrun/scripts/progress_report.py longrun/workspaces/opensparrow-unified/feature_list.json` → PASS (`20/21` passing)
+- Current status:
+  - 当前仓已经拥有独立的 `codeSPEC` 参考镜像层，可直接支持后续清洗 / 重整工作，而不会把 source 项目 authoring 面或实验残留混进统一仓权威面。
+  - `longrun` 的边界在当前仓已被明确收紧：它只承接项目事实与 workspace contract，不再与 `specs/` 或 `superpowers` 争夺 authority。
+- Next follow-up:
+  - 如后续需要继续吸收 `codeSPEC/AgentTeam` 的 onboarding / dispatch 模板，建议单独新开 feature，在当前仓语境下本地化改写后再迁入，避免与 `F-019` 治理基线形成双轨。
+- Progress snapshot: 20/21 passing
+
+## Session 16 (F-022 codeSPEC framework full adaptation)
+- Date: 2026-04-14
+- Goal: 把 `codeSPEC` 从“上游参考模板”升级为 OpenSparrow 当前仓正在使用的底层开发框架来源，完成治理面、本地 authority wiring、longrun scaffold 与 reference import 的适配闭环。
+- Selected feature id: `F-022`
+- Scope:
+  - 本轮新增当前仓活跃治理文档目录 `docs/governance/`。
+  - 本轮把 `AgentTeam` 的 onboarding / dispatch / quick-reference 模板本地化改写为 OpenSparrow 语境。
+  - 本轮继续扩展 `codeSPEC` reference import，让 `AgentTeam` 高价值模板与 `UnifiedFramework/12-Superpower-Execution-Bridge.md` 一并被镜像。
+  - 本轮更新 `AGENTS.md`、constitution、`README.md`、`docs/项目持久化说明.md`、`longrun/templates/*prompt*`，统一 authority order。
+  - 本轮未修改 `codeSPEC` source 项目，也未修改 OpenSparrow 运行时代码行为。
+- Changes made:
+  - 新增 `specs/016-codespec-framework-adaptation/{spec,plan,tasks}.md`，明确本轮是“底层框架适配完成”，而非仅做 reference 镜像。
+  - 新增 `docs/governance/README.md`、`docs/governance/framework-stack.md`、`docs/governance/project-onboarding-sop.md`、`docs/governance/dispatch-templates.md`、`docs/governance/quick-reference.md`。
+  - 新增 `docs/runbooks/F-022-codespec-framework-adaptation.md`，记录底层框架适配的使用方式与验证命令。
+  - 更新 `AGENTS.md`，把治理入口加入必读清单，并显式声明当前底层框架五层结构。
+  - 更新 `.specify/memory/constitution.md`，新增“框架栈与 Authority Order”章节。
+  - 更新 `README.md` 与 `docs/项目持久化说明.md`，把治理入口挂入仓库首页与项目持久化说明。
+  - 更新 `longrun/templates/initializer_prompt.template.md` 与 `longrun/templates/coding_prompt.template.md`，把它们收紧为 project-memory compatibility scaffold。
+  - 扩展 `scripts/tests/import-codespec-template.test.mjs` 与 `scripts/import-codespec-template.sh`，新增 `AgentTeam/{README,02,03,04}` 和 `UnifiedFramework/12-Superpower-Execution-Bridge.md` 的白名单镜像。
+  - 更新 `docs/reference/codeSPEC-template/README.md` 与 `IMPORT_SCOPE.md`，同步新的 reference 范围与治理映射关系。
+  - 运行真实导入后，`docs/reference/codeSPEC-template/upstream/` 现已包含 `UnifiedFramework/` + `AgentTeam/` 两块白名单快照。
+  - 清理了上一步卡住脚本误生成的空壳目录 `specs/017-codespec-framework-adaptation/`，避免污染 feature 序列。
+  - 更新 `longrun/workspaces/opensparrow-unified/feature_list.json`，新增 `F-022` 条目并标记通过。
+- Validation:
+  - `node --test scripts/tests/import-codespec-template.test.mjs` → PASS (2/2)
+  - `bash -n scripts/import-codespec-template.sh` → PASS
+  - `./scripts/import-codespec-template.sh /Users/eduardogan/Desktop/GHJProject/codeSPEC` → PASS（13 个 curated files）
+  - `python3 -m json.tool longrun/workspaces/opensparrow-unified/feature_list.json >/dev/null` → PASS
+  - `./longrun/workspaces/opensparrow-unified/init.sh` → PASS
+  - `python3 longrun/scripts/progress_report.py longrun/workspaces/opensparrow-unified/feature_list.json` → PASS（`21/22` passing）
+- Current status:
+  - 当前仓已经具备可直接使用的底层开发框架：规则层、feature 交付层、项目记忆层、执行方法层、协作治理层已全部显式接线。
+  - `codeSPEC` 现在在 OpenSparrow 中既有上游 reference 镜像，也有本地化后的活跃治理文档与 scaffold，对后续产品改造已经足够作为开发底座使用。
+- Next follow-up:
+  - 下一轮可以不再继续做框架迁移，直接基于这套底座选定一个产品 feature，开始“优雅化”改造当前项目；建议优先从 `F-014` 或一个新的 UI / 配置收敛 feature 开始。
+- Progress snapshot: 21/22 passing
+
+## Session 17 (F-014 WeCom channel integration hardening)
+- Date: 2026-04-14
+- Goal: 以当前已适配好的框架底座为起点，优先收口 unified repo 唯一未通过项 `F-014`，先把企业微信渠道从“半落地、难维护”推进到“有 spec、有测试、有 runbook、代码结构更优雅”的状态。
+- Selected feature id: `F-014`
+- Scope:
+  - 本轮补齐 `specs/011-wecom-channel-integration/{spec,plan,tasks}.md`。
+  - 本轮把企微纯逻辑从 `ui/server.mjs` 提取到独立 helper 模块并补 node:test。
+  - 本轮新增企微 runbook，明确自动验证范围与真实凭据 E2E 待补边界。
+  - 本轮不伪造真实企业微信凭据 E2E 通过证据。
+- Changes made:
+  - 进一步优雅化浏览器端企微逻辑：新增 `ui/public/wecom-helpers.js` 与 `ui/public/wecom-helpers.test.mjs`，让安装向导与 Dashboard 共用同一套企微字段校验规则。
+  - 覆盖 `specs/011-wecom-channel-integration/spec.md`，并新增 `plan.md`、`tasks.md`，把 `F-014` 从空模板状态补成可执行 feature。
+  - 新增 `ui/lib/wecom.mjs`，集中承载 `isLikelyWecomBotId`、`normalizeWecomCredentials`、`collectWecomInputErrors`、`enrichWecomChannelForUi`。
+  - 新增 `ui/lib/wecom.test.mjs`，通过 TDD 覆盖 Bot ID 判断、字段归一化、输入校验和 UI 扁平化。
+  - 更新 `ui/server.mjs`，改为导入 `ui/lib/wecom.mjs`，不再在超长 server 文件内内联企微纯逻辑。
+  - 新增 `docs/runbooks/F-014-wecom-channel-integration.md`，区分“已自动验证链路”与“仍需真实企业微信凭据补证的 E2E”。
+- Validation:
+  - `node --test ui/lib/wecom.test.mjs` → PASS (4/4)
+  - `node --test ui/public/wecom-helpers.test.mjs` → PASS (2/2)
+  - `node --check ui/server.mjs` → PASS
+  - 既有企微插件本地归档链路证据继续有效：`sunnoy-wecom-3.0.0.tgz` 安装成功且 `config set channels.wecom.enabled true --strict-json` 曾在 F-020 收口中验证通过
+- Current status:
+  - `F-014` 的代码结构与文档完整度已经明显提升，后续再做企微真机 / 真凭据 E2E 时，不需要继续在 `ui/server.mjs` 中盲改。
+  - 当前仍缺少“带真实企业微信凭据的一次完整 UI 安装 + 消息/回调链路”证据，因此本轮不把 `F-014` 改为通过。
+- Next follow-up:
+  - 准备一套真实企业微信 Bot ID / Secret（以及如需回调的 CorpId / CorpSecret / AgentId / Callback 参数），按 `docs/runbooks/F-014-wecom-channel-integration.md` 进行人工补证；证据齐全后再把 `F-014` 写成 passing。
+- Progress snapshot: 21/22 passing
+
+## Session 18 (F-014 WeCom browser dedupe follow-up)
+- Date: 2026-04-14
+- Goal: 在不扩大回归面的前提下，继续把 `F-014` 浏览器端企微表单默认值与 helper 调用收敛得更优雅，减少安装向导 / Dashboard 间的薄重复。
+- Selected feature id: `F-014`
+- Scope:
+  - 本轮只处理浏览器端企微默认字段工厂与 helper 调用去重。
+  - 本轮不改 `F-014` 的验收口径，也不伪造真实企业微信 E2E 通过证据。
+- Changes made:
+  - 更新 `ui/public/wecom-helpers.js`，新增 `createEmptyWecomFields()`，统一产出企微表单默认字段结构。
+  - 更新 `ui/public/index.html`，改为使用 `window.OpenSparrowWecom.createEmptyWecomFields()` 初始化 `credentials.wecom`，并直接调用共享 helper，不再保留页面内薄包装方法。
+  - 更新 `ui/public/dashboard.html`，改为使用 `window.OpenSparrowWecom.createEmptyWecomFields()` 初始化企微卡片字段，并直接调用共享 helper，不再保留页面内薄包装方法。
+  - 更新 `ui/public/wecom-helpers.test.mjs`，补充“默认字段工厂返回新对象”的测试，确保不会把 Alpine 状态变成共享引用。
+  - 更新 `specs/011-wecom-channel-integration/tasks.md`，把当前 hardening 范围内已完成的任务与验证项勾选落盘。
+- Validation:
+  - `node --test ui/public/wecom-helpers.test.mjs` → PASS (3/3)
+  - `node --test ui/lib/wecom.test.mjs` → PASS (4/4)
+  - `node --test ui/tests/install-helpers.test.mjs` → PASS (2/2)
+  - `node --check ui/server.mjs` → PASS
+- Current status:
+  - 浏览器端企微默认字段结构与校验入口已经进一步统一，安装向导和 Dashboard 继续共用同一套 helper 契约，后续再做 UI 收敛时不需要重复维护默认字段字面量。
+  - `F-014` 仍然缺少“真实企业微信凭据的一次完整 UI 安装 + 消息/回调链路”证据，因此本轮仍不把它改为 passing。
+- Next follow-up:
+  - 若拿到真实企业微信 Bot ID / Secret（以及如需回调的 CorpId / CorpSecret / AgentId / Callback 参数），按 `docs/runbooks/F-014-wecom-channel-integration.md` 走一次人工补证；补证完成后再更新 `feature_list.json` 的 `passes`。
+  - 如果短期内拿不到真实凭据，下一轮可基于这套底座继续选择另一个可本地闭环的 UI / 配置优雅化 feature。
+- Progress snapshot: 21/22 passing
+
+## Session 19 (F-023 Commander Mode hardening verified closeout)
+- Date: 2026-04-14
+- Goal: 基于已经完成的 review + verification 证据，把 Commander Mode hardening 正式写回统一项目记忆层，并完成最小必要 closeout。
+- Selected feature id: `F-023`
+- Scope:
+  - 本轮只做 verified closeout 写回：更新 `feature_list.json`、`claude-progress.txt`，并仅在证据充分时同步勾选 `specs/017-commander-mode-hardening/tasks.md`。
+  - 本轮不改 `docs/governance/*`、不改运行时代码、不重写 spec / plan，也不新增验证结论。
+- Evidence basis:
+  - 本轮 close 直接依赖既有 verified evidence，而不是基于 summary 推断：`Batch Reviewer: APPROVED`、`Batch Verifier: PASS`。
+  - 已验证范围限定为 `PKT-017-A/B/C/D`；关键落点包括 `.specify/memory/constitution.md:96`、`.specify/templates/plan-template.md:38`、`.specify/templates/plan-template.md:77`、`.specify/templates/plan-template.md:85`、`longrun/templates/coding_prompt.template.md:9`、`longrun/templates/coding_prompt.template.md:14`、`longrun/templates/coding_prompt.template.md:47`、`longrun/templates/coding_prompt.template.md:84`。
+- Packet closeout recorded:
+  - `PKT-017-A`：`.specify/memory/constitution.md` 已明确 Commander Mode 激活条件、角色边界、Commander contract、ownership 串行化，以及 closeout / summary non-authoritative 边界。
+  - `PKT-017-B`：`.specify/templates/plan-template.md` 已把 packet 结构固化为默认 dispatch scaffold，并模板化必填字段、Reviewer / Verifier 分离、Stop rule 与 integration packet 约束。
+  - `PKT-017-C`：`longrun/templates/coding_prompt.template.md` 已明确 continuation scaffold 不能替代 `specs/` / `superpowers` / verified truth，Commander 默认不承担 implementation，`passes: true` 仍需 traceable acceptance evidence。
+  - `PKT-017-D`：cross-surface wording integration 已有 review + verification 证据支撑，本轮无需继续 integration。
+- Longrun updates:
+  - 在 `feature_list.json` 新增 `F-023`，定位为对 `F-019` commander governance 的 hardening；`passes: true` 只因为已有 reviewer / verifier 通过证据支撑。
+  - 在 `specs/017-commander-mode-hardening/tasks.md` 仅勾选被上述 review + verification 证据直接覆盖的实现 / review / verification / acceptance 项；未被证据覆盖的 scope freeze、assignment、integration-owner 过程项与 stop-rule 过程项保持未勾。
+  - 明确保留 `F-014` 现状不变；本轮没有改写其状态。
+- Why this round can close:
+  - closeout 只是在 longrun 中索引“已被 spec / 文本落点 / reviewer / verifier evidence 支撑”的事实，不提升 authority，不覆盖 governance / spec / code / tests，也不把 longrun summary 升格为 truth。
+- Validation:
+  - `python3 -m json.tool longrun/workspaces/opensparrow-unified/feature_list.json >/dev/null` → PASS
+  - `python3 longrun/scripts/progress_report.py longrun/workspaces/opensparrow-unified/feature_list.json` → PASS
+  - `specs/017-commander-mode-hardening/tasks.md` 已做最小文本检查：close gate / checklist 结构保持完整
+- Current status:
+  - `Commander Mode hardening` 已完成 verified closeout 落账；当前结论来自既有 reviewer / verifier evidence，不来自 longrun summary 自我升级。
+  - `F-014` 仍保持未通过；本轮未改动其验收状态。
+- Next follow-up:
+  - 若后续继续扩 Commander governance，应从 `specs/017-commander-mode-hardening/` 继续切 packet / spec 驱动推进，而不是把 longrun 当作 authority 面继续扩写。
+- Progress snapshot: 22/23 passing
+
+## Session 20 (F-025 Model routing proxy integration)
+- Date: 2026-04-14
+- Goal: 在不升级 OpenClaw core、也不改 `vendor/` 的前提下，把 `ClawRouter standalone/proxy` 作为外部模型智能路由层接进当前副本工作区，并做成可启用 / 可关闭 / 可恢复的本地链路。
+- Selected feature id: `F-025`
+- Scope:
+  - 本轮只做模型智能路由，不做 Agent 智能路由。
+  - 本轮默认路线是 `ClawRouter standalone/proxy + OpenClaw custom provider`。
+  - 本轮新增 profile-local runtime/state/log 管理、shell/mac 入口、runbook 和 spec，不改 `vendor/`、不升级 OpenClaw。
+- Changes made:
+  - 新增 `specs/025-openclaw-model-routing-proxy/{spec,plan,tasks}.md`，冻结本轮边界：仅做模型路由代理接入，不扩到 plugin/core upgrade/agent routing。
+  - 新增 `scripts/model-routing/lib/model-routing.mjs`，集中承载 `clawrouter` provider config、fallback merge、auth merge/remove、state snapshot 等纯逻辑。
+  - 新增 `scripts/tests/model-routing.test.mjs`，用 TDD 覆盖 provider/fallback/auth 纯逻辑。
+  - 新增 `scripts/model-routing/manage-clawrouter.mjs`，实现 `enable` / `disable` / `status` / `start-proxy` / `stop-proxy`，并把 ClawRouter 安装到 `~/.openclaw-<profile>/model-routing/clawrouter-runtime/`。
+  - 新增 `scripts/model-routing/{enable,disable,status}-clawrouter.sh` 与 `platforms/mac/wrappers/02-开启模型智能路由.command`、`03-关闭模型智能路由.command`、`04-检查模型智能路由.command`，提供最短 mac 本地入口。
+  - 新增 `docs/runbooks/F-025-model-routing-proxy.md`，记录最短使用链路、环境变量和回退策略。
+  - 启用逻辑使用独立 `clawrouter` provider，不覆盖现有 `openai` provider；OpenClaw primary 切到 `clawrouter/blockrun/auto`，同时保留并增强原有 fallback 链。
+- Validation:
+  - `node --test scripts/tests/model-routing.test.mjs` → PASS (4/4)
+  - `node --check scripts/model-routing/manage-clawrouter.mjs` → PASS
+  - `bash -n scripts/model-routing/enable-clawrouter.sh` → PASS
+  - `bash -n scripts/model-routing/disable-clawrouter.sh` → PASS
+  - `bash -n scripts/model-routing/status-clawrouter.sh` → PASS
+  - 真实临时 profile 验证：`enable -> status -> disable` → PASS
+    - 安装 `@blockrun/clawrouter@0.12.149` 成功
+    - primary model 成功切到 `clawrouter/blockrun/auto`
+    - fallback 保留原 `openai/gpt-4.1-nano`，并自动追加启用前 primary `openai/gpt-4o-mini`
+    - disable 后 provider/auth/fallback/primary 均恢复，且不再残留 `clawrouter` provider / alias
+- Current status:
+  - 当前副本工作区已经具备可运行的模型智能路由接法；默认不依赖 OpenClaw plugin 模式，也不要求 core upgrade。
+  - 用户现在可以通过 shell 或 mac `.command` 入口在当前仓里开启 / 关闭 / 检查模型智能路由。
+- Next follow-up:
+  - 若后续需要把入口进一步收进 UI Dashboard，可在 `ui/server.mjs` 上追加一个很薄的 `/api/model-routing/*` 包装层；但这不是本轮必需。
+  - 若后续确认必须走 ClawRouter plugin 模式，再单独论证 OpenClaw 升级必要性并征得用户确认。
+- Progress snapshot: 23/24 passing
+
+## Session 21 (F-026 Model routing plugin integration)
+- Date: 2026-04-15
+- Goal: 把官方 `@blockrun/clawrouter` plugin 作为当前工作区的主模型智能路由方案接进隔离 lab，并在允许升级 OpenClaw 的前提下做成可启用 / 可关闭 / 可验证的本地链路。
+- Selected feature id: `F-026`
+- Scope:
+  - 本轮主路线从 `F-025` 备用 proxy 切换为官方 plugin；只做模型智能路由，不扩到 Agent routing / 渠道绑定 / UI 改造。
+  - 允许升级隔离 lab 内的 OpenClaw runtime，但不改 `vendor/` 二进制，也不污染真实 `HOME`。
+  - 继续保留 `F-025` 作为“自定义 URL + API Key”场景的 fallback 路线。
+- Changes made:
+  - 新增 `specs/026-openclaw-model-routing-plugin/{spec,plan,tasks}.md`，冻结边界：官方 plugin、兼容 runtime、隔离 lab、CLI 验证。
+  - 新增 `scripts/model-routing/lib/plugin-routing.mjs` 纯逻辑，覆盖依赖 spec、lab layout、plugin cleanup，以及 probe session / gateway-ready 判定 helper。
+  - 新增 `scripts/tests/model-routing-plugin.test.mjs`，用 TDD 覆盖 cleanup、layout、probe args、probe session id、gateway-ready marker。
+  - 新增 `scripts/model-routing/manage-clawrouter-plugin.mjs` 与 `scripts/model-routing/{enable,disable,status,test,run-openclaw}-clawrouter-plugin.sh`，实现 runtime bootstrap、plugin stage/install、enable/disable/status/test、隔离 lab OpenClaw 入口。
+  - 新增 `platforms/mac/wrappers/02-开启模型智能路由.command`、`03-关闭模型智能路由.command`、`04-检查模型智能路由.command`、`05-验证模型智能路由.command`。
+  - 新增 `docs/runbooks/F-026-model-routing-plugin.md`，说明官方 plugin 路线、lab 隔离、wallet 限制、与 `F-025` 的分工。
+  - 修复脚本化验证的三个稳定性问题：agent probe 改为专用 `clawrouter-probe` agent + 显式随机 `session-id`；gateway readiness 改为清空旧日志并等待当前 run 的 `BlockRun x402 proxy listening on port 8402` 标记，避免旧 run / 旧端口误判；plugin enable/disable 现在会主动清理 `clawrouter.stage-*` 残留，避免 duplicate plugin id。
+- Validation:
+  - `node --test scripts/tests/model-routing-plugin.test.mjs` → PASS (7/7)
+  - `node --check scripts/model-routing/manage-clawrouter-plugin.mjs` → PASS
+  - `bash -n scripts/model-routing/enable-clawrouter-plugin.sh scripts/model-routing/disable-clawrouter-plugin.sh scripts/model-routing/status-clawrouter-plugin.sh scripts/model-routing/test-clawrouter-plugin.sh scripts/model-routing/run-openclaw-plugin.sh platforms/mac/wrappers/*.command` → PASS
+  - `bash scripts/model-routing/enable-clawrouter-plugin.sh` → PASS
+    - `status` 证据：`runtimeVersion=2026.4.14`、`pluginStatus=loaded`、`pluginActivated=true`、`primaryModel=blockrun/auto`、`hasBlockrunProvider=true`
+  - `node scripts/model-routing/manage-clawrouter-plugin.mjs test` → PASS
+    - proxy tier 证据：`simple -> SIMPLE`、`medium -> MEDIUM`、`reasoning -> REASONING`
+    - CLI probe 证据：`agent.provider=blockrun`、`agent.model=auto`、`agentId=clawrouter-probe`
+    - 因钱包余额为 `0`，实际执行统一 fallback 到 `free/gpt-oss-120b`，但这不影响“智能路由决策已生效”的判断。
+  - `bash scripts/model-routing/disable-clawrouter-plugin.sh` + `bash scripts/model-routing/status-clawrouter-plugin.sh` → PASS
+    - `pluginInstalled=false`、`pluginEnabled=false`、`primaryModel=null`、`hasBlockrunProvider=false`
+- Current status:
+  - 当前副本工作区已经具备官方 plugin 版模型智能路由链路；用户可以在 `dist/model-running-lab/` 这套隔离 lab 中直接开启、检查、验证、关闭。
+  - `F-025` 继续保留为自定义 OpenAI-compatible `URL + API Key` 场景的备用方案；`F-026` 是面向官方 ClawRouter plugin 的主链路。
+- Next follow-up:
+  - 若后续需要“首次 enable 不依赖在线 runtime bootstrap”，可再补一个 repo-local runtime cache / artifact 收口步骤；当前版本已经可用，但首次准备兼容 runtime 仍可能耗时数分钟。
+  - 若后续需要演示更明显的“强模型真正执行”，需要给 BlockRun wallet 充值；当前 `$0.00` 余额下只能证明路由 tier 与 provider/model 解析，不会真正执行付费强模型。
+- Progress snapshot: 24/25 passing
+
+## Session 22 (F-025 dual-terminal DMX router demo)
+- Date: 2026-04-15
+- Goal: 在不做 fake 的前提下，为 `F-025` 增加一套可现场演示的双终端真实链路：终端 A 跑本地 router，终端 B 发任务，A 端实时打印 tier / classifier / selected model / provider model。
+- Selected feature id: `F-025`
+- Changes made:
+  - 新增 `scripts/model-routing/dmx-router-demo.mjs`，提供本地 OpenAI-compatible demo 服务，监听 `POST /v1/chat/completions` 与 `GET /health`。
+  - 新增 `scripts/model-routing/run-dmx-router-demo.sh` 与 `scripts/model-routing/send-dmx-router-demo.sh`，分别用于启动 demo 服务和从第二终端发送 `simple / medium / reasoning / custom` 任务。
+  - 新增 `scripts/model-routing/lib/dmx-demo-routing.mjs` 与 `scripts/tests/model-routing-dmx-demo.test.mjs`，收口 tier->model 映射、prompt 提取和 demo 任务预设。
+  - 更新 `docs/runbooks/F-025-model-routing-proxy.md`，补充“双终端真实 Demo”章节。
+- Validation:
+  - `node --test scripts/tests/model-routing-dmx-demo.test.mjs` → PASS (4/4)
+  - `node --check scripts/model-routing/dmx-router-demo.mjs` → PASS
+  - `bash -n scripts/model-routing/run-dmx-router-demo.sh scripts/model-routing/send-dmx-router-demo.sh` → PASS
+  - 真实双终端验证 → PASS
+    - 终端 A：`run-dmx-router-demo.sh` 实时打印 `SIMPLE -> gemini-2.0-flash-ssvip`、`MEDIUM -> kimi-k2-0711-preview`、`REASONING -> deepseek-r1-250528`
+    - 终端 B：三档请求分别收到来自 `gemini-2.0-flash`、`Kimi-K2`、`deepseek-r1-250528` 的真实响应
+- Current status:
+  - 当前仓库已经具备一套可直接现场展示的 `F-025` 双终端 demo，且真实使用用户提供的 OpenAI-compatible `URL + API Key`。
+- Next follow-up:
+  - 若后续需要把第二终端从 `curl`/shell 升级为 OpenClaw CLI，可再给 demo router 补一层 profile-local provider 自动配置脚本。
+- Progress snapshot: 25/26 passing
+
+## Session 23 (F-026 plugin non-ASCII header hardening)
+- Date: 2026-04-15
+- Goal: 把 `F-026` 官方 ClawRouter plugin 路线真正跑通到中文 prompt 场景，修掉 `x-clawrouter-reasoning` 导致的真实 `502`。
+- Selected feature id: `F-026`
+- Root cause:
+  - 官方 plugin 在 x402 proxy 的非 streaming 返回里，会把 `routingDecision.reasoning` 原样写入 `x-clawrouter-reasoning` header。
+  - 当 prompt 是中文时，reasoning 会包含 `翻译`、`类`、`设计`、`生成`、`推导` 等非 ASCII 字符；Node 在 `res.writeHead()` 阶段因此抛出 `Invalid character in header content ["x-clawrouter-reasoning"]`，最终返回 `502`。
+- Changes made:
+  - `scripts/model-routing/lib/plugin-routing.mjs`：新增 `sanitizeAsciiHttpHeaderValue()` 与 `patchClawRouterReasoningHeaderSource()`，用 TDD 固化 header 清洗与 dist patch 逻辑。
+  - `scripts/model-routing/manage-clawrouter-plugin.mjs`：在解压官方 plugin tarball 后、安装依赖前，自动 patch `dist/index.js` / `dist/cli.js`，把 `x-clawrouter-reasoning` 改为 ASCII-safe 文本。
+  - `scripts/tests/model-routing-plugin.test.mjs`：新增失败用例，覆盖中文 / 换行 header 清洗和 patch 产物内容，防止再次把非法正则或非法 header 写回 plugin dist。
+  - `docs/runbooks/F-026-model-routing-plugin.md`：补记这个真实边界与修复策略。
+- Validation:
+  - `node --test scripts/tests/model-routing-plugin.test.mjs` → PASS (10/10)
+  - `node --check scripts/model-routing/manage-clawrouter-plugin.mjs` → PASS
+  - `node --check scripts/model-routing/lib/plugin-routing.mjs` → PASS
+  - `bash -n scripts/model-routing/enable-clawrouter-plugin.sh scripts/model-routing/disable-clawrouter-plugin.sh scripts/model-routing/status-clawrouter-plugin.sh scripts/model-routing/test-clawrouter-plugin.sh scripts/model-routing/run-openclaw-plugin.sh` → PASS
+  - `bash scripts/model-routing/enable-clawrouter-plugin.sh` → PASS
+    - 证据：输出 `patched non-ascii debug header bug in dist/index.js, dist/cli.js`
+    - `status` 证据：`pluginStatus=loaded`、`pluginActivated=true`、`primaryModel=blockrun/auto`
+  - 真实 plugin gateway 验证 → PASS
+    - `run-openclaw-plugin.sh gateway run ...` 日志出现：`BlockRun x402 proxy listening on port 8402`
+    - 三类中文/推理请求直接打到 `http://127.0.0.1:8402/v1/chat/completions`，结果为：`SIMPLE` / `MEDIUM` / `REASONING`
+    - `x-clawrouter-reasoning` 已变成 ASCII-safe 文本，不再触发 `502`
+    - 由于 wallet 余额为 `0.00`，实际执行统一 fallback 到 `free/gpt-oss-120b`，但 tier 判定仍由官方 plugin 给出
+  - 真实 `openclaw agent` CLI 验证 → PASS
+    - `agent=clawrouter-probe` 返回 `provider=blockrun`、`model=auto`
+- Current status:
+  - 当前 `F-026` 已经不是“纸面 plugin 集成”，而是能在隔离 lab 里真实处理中文 prompt 的官方 plugin 路线。
+  - `F-025` 仍是自定义 `URL + API Key` 的备用链路；这次没有再混用它来证明 plugin 能力。
+- Next follow-up:
+  - 若要展示“强模型真的执行”，仍需要给 BlockRun wallet 充值；当前余额只够证明智能 tier 路由和 provider/model 解析，不能证明付费模型真正出结果。
+- Progress snapshot: 26/26 passing
+
+## Session 24 (F-027 custom model-routing plugin)
+- Date: 2026-04-15
+- Goal: 基于官方 `ClawRouter` 路由逻辑做一份 repo-local OpenClaw custom plugin，执行层改走用户自己的 OpenAI-compatible `URL + API Key`，并给出真实双终端演示。
+- Selected feature id: `F-027`
+- Root cause:
+  - 官方 `F-026` plugin 路线默认绑定 BlockRun wallet / x402，不满足“直接复用用户自己的 `URL + API Key`”这个目标。
+  - 第一版 custom plugin 只覆盖了非流式 JSON happy path；当 OpenClaw 走 streaming chat completions 时，需要透传 `stream:true` 与 SSE，而不是重建成简化的非流式请求。
+  - 同时，provider model 条目缺少 `cost` 结构，OpenClaw 在 usage 归一化阶段会崩溃。
+- Changes made:
+  - 新增 `specs/027-custom-model-routing-plugin/{spec,plan,tasks}.md`，冻结边界：只做模型智能路由，不扩到 Agent routing / 渠道绑定 / UI 大改。
+  - 新增 `scripts/model-routing/custom-plugin/`，实现 repo-local `opensparrow-router` plugin；路由内核真实复用 `@blockrun/clawrouter` 的 `route()` / `DEFAULT_ROUTING_CONFIG`，执行层改走用户自定义 OpenAI-compatible 上游。
+  - 新增 `scripts/model-routing/lib/custom-plugin-routing.mjs` 与 `scripts/tests/custom-model-routing-plugin.test.mjs`，用 TDD 固化 provider config、tier map、ASCII-safe debug header、streaming curl 参数等纯逻辑。
+  - `scripts/model-routing/custom-plugin/src/index.mjs`：把上游执行层改为真实透传 streaming/non-streaming chat completions，请求体只覆写 `model`，不再丢失 `stream` / `stream_options` / tools 等字段；同时补上 provider cost 结构，避免 usage 归一化崩溃。
+  - `scripts/model-routing/manage-custom-routing-plugin.mjs`：收口 runtime 安装、plugin stage/enable/disable/status；`enable` 不再卡在额外的 CLI enable/inspect 上；再次启动时可回读隔离 profile 里已有的 plugin config，不会因为没 export env 而把配置冲掉。
+  - 新增 `scripts/model-routing/watch-custom-routing-plugin-log.sh`、`wait-chat-custom-routing-plugin.sh`、`open-custom-routing-demo-terminals.sh` 与 `platforms/mac/wrappers/06-模型智能路由双终端演示.command`，提供稳定双终端演示入口。
+  - 新增 `docs/runbooks/F-027-custom-model-routing-plugin.md`，记录最短启停链路、双终端演示命令、推荐测试问题和当前边界。
+- Validation:
+  - `node --test scripts/tests/custom-model-routing-plugin.test.mjs` → PASS (7/7)
+  - `node --check scripts/model-routing/lib/custom-plugin-routing.mjs` → PASS
+  - `node --check scripts/model-routing/custom-plugin/src/lib.mjs` → PASS
+  - `node --check scripts/model-routing/custom-plugin/src/index.mjs` → PASS
+  - `node --check scripts/model-routing/manage-custom-routing-plugin.mjs` → PASS
+  - `bash -n scripts/model-routing/run-openclaw-custom-plugin.sh scripts/model-routing/watch-custom-routing-plugin-log.sh scripts/model-routing/wait-chat-custom-routing-plugin.sh scripts/model-routing/open-custom-routing-demo-terminals.sh` → PASS
+  - `bash scripts/model-routing/status-custom-routing-plugin.sh` → PASS
+    - 证据：`runtimeVersion=2026.4.14`、`pluginInstalled=true`、`pluginEnabled=true`、`pluginTrusted=true`
+  - 真实 gateway/plugin 验证 → PASS
+    - `run-openclaw-custom-plugin.sh gateway run ...` 日志出现：`OpenSparrow custom router proxy listening on port 8412`
+    - `agent model: opensparrow-router/auto`
+    - plugin route log能打印 `[opensparrow-router] [SIMPLE|MEDIUM|...] ...`
+- Current status:
+  - 当前仓库已经具备一套真实的 OpenClaw custom plugin 模型智能路由实现，且执行层直接复用用户提供的 OpenAI-compatible `URL + API Key`。
+  - 当前最稳定的现场展示入口是：终端 A 跑 `watch-custom-routing-plugin-log.sh`，终端 B 跑 `chat-custom-routing-plugin.sh`；二者都建立在 OpenClaw 已加载 `opensparrow-router` plugin 的前提上，不是 standalone fake demo。
+- Next follow-up:
+  - 若后续必须把 `openclaw tui` / `openclaw agent` 也收口成稳定演示，需要继续处理 OpenClaw agent reply payload 协议与当前通用模型输出之间的兼容问题；这不影响本轮“真实 plugin 模型路由 + 双终端演示”交付。
+- Progress snapshot: 27/27 passing

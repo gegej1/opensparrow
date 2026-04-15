@@ -1,0 +1,37 @@
+{
+  "id": "opensparrow-router",
+  "name": "OpenSparrow Router",
+  "description": "OpenClaw plugin with ClawRouter tiering and custom OpenAI-compatible upstream execution.",
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "baseUrl": {
+        "type": "string",
+        "description": "OpenAI-compatible base URL, for example https://www.dmxapi.cn/v1"
+      },
+      "apiKey": {
+        "type": "string",
+        "description": "Upstream API key"
+      },
+      "tierModelMap": {
+        "type": "object",
+        "description": "Tier to model mapping: SIMPLE/MEDIUM/COMPLEX/REASONING"
+      },
+      "routing": {
+        "type": "object",
+        "description": "Optional override for ClawRouter DEFAULT_ROUTING_CONFIG"
+      }
+    }
+  },
+  "uiHints": {
+    "apiKey": {
+      "label": "Upstream API Key",
+      "sensitive": true,
+      "placeholder": "sk-..."
+    },
+    "baseUrl": {
+      "label": "OpenAI-Compatible Base URL",
+      "placeholder": "https://www.dmxapi.cn/v1"
+    }
+  }
+}

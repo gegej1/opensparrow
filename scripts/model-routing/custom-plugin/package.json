@@ -1,0 +1,30 @@
+{
+  "name": "@opensparrow/custom-routing-plugin",
+  "version": "0.1.0",
+  "description": "Custom OpenClaw model-routing plugin using ClawRouter routing logic with external OpenAI-compatible upstreams.",
+  "type": "module",
+  "main": "./src/index.mjs",
+  "openclaw": {
+    "extensions": [
+      "./src/index.mjs"
+    ],
+    "compat": {
+      "pluginApiRange": ">=2026.3.24",
+      "minGatewayVersion": "2026.4.5"
+    }
+  },
+  "dependencies": {
+    "@blockrun/clawrouter": "0.12.149"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2025.1.0"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
