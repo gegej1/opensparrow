@@ -146,6 +146,7 @@ copy_common() {
     log_step "Copying common files"
 
     # a. VERSION and README.md → staging root
+    # README.md may be overwritten later with a packaged release-facing version.
     log_info "Copying VERSION and README.md"
     cp "${PROJECT_ROOT}/VERSION"    "${STAGING_DIR}/VERSION"
     cp "${PROJECT_ROOT}/README.md"  "${STAGING_DIR}/README.md"
@@ -159,6 +160,11 @@ copy_common() {
     # c. docs/usb-pack/ → docs/
     log_info "Copying docs/usb-pack/ → docs/"
     rsyncp "${PROJECT_ROOT}/docs/usb-pack" "${STAGING_DIR}/docs"
+
+    if [[ -f "${PROJECT_ROOT}/docs/release-checklist.md" ]]; then
+        log_info "Copying docs/release-checklist.md → docs/release-checklist.md"
+        cp "${PROJECT_ROOT}/docs/release-checklist.md" "${STAGING_DIR}/docs/release-checklist.md"
+    fi
 
     # d. docs/runbooks/ → runbooks/
     log_info "Copying docs/runbooks/ → runbooks/"
@@ -181,6 +187,15 @@ copy_common() {
     log_info "Copying skills/README.md"
     mkdir -p "${STAGING_DIR}/skills"
     cp "${PROJECT_ROOT}/skills/README.md" "${STAGING_DIR}/skills/README.md"
+
+    # h. repo-root superpowers/ → skills/superpowers/
+    local superpowers_src="${PROJECT_ROOT}/superpowers"
+    if [[ -d "$superpowers_src" ]]; then
+        log_info "Copying superpowers/ → skills/superpowers/"
+        rsyncp "$superpowers_src" "${STAGING_DIR}/skills/superpowers"
+    else
+        log_warn "superpowers/ not found — skipping"
+    fi
 
     log_done "Common files copied"
 }
@@ -223,6 +238,50 @@ copy_skills() {
     fi
 
     log_done "skills/My_Skills copied"
+}
+
+# ---------------------------------------------------------------------------
+# Step: Bundle plugin archives for offline / rate-limit-safe install
+# ---------------------------------------------------------------------------
+resolve_npm_bin() {
+    if command -v npm >/dev/null 2>&1; then
+        command -v npm
+        return 0
+    fi
+    local candidates=(
+        "${PROJECT_ROOT}/vendor/mac-openclaw/bin/npm"
+        "${PROJECT_ROOT}/vendor/linux-openclaw/bin/npm"
+    )
+    local candidate
+    for candidate in "${candidates[@]}"; do
+        if [[ -x "$candidate" ]]; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
+bundle_plugin_archives() {
+    log_step "Bundling offline channel plugin archives"
+
+    local plugins_dst="${STAGING_DIR}/plugins"
+    local npm_bin
+    if ! npm_bin="$(resolve_npm_bin)"; then
+        log_error "npm not found; cannot bundle offline channel plugins"
+        exit 1
+    fi
+
+    mkdir -p "$plugins_dst"
+    rm -f "$plugins_dst"/openclaw-china-channels-*.tgz "$plugins_dst"/sunnoy-wecom-*.tgz
+
+    (
+        cd "$plugins_dst"
+        "$npm_bin" pack @openclaw-china/channels >/dev/null
+        "$npm_bin" pack @sunnoy/wecom@3.0.0 >/dev/null
+    )
+
+    log_done "Offline plugin archives bundled"
 }
 
 # ---------------------------------------------------------------------------
@@ -325,7 +384,48 @@ fix_permissions() {
 generate_readme_txt() {
     log_step "Generating README.txt"
 
-    cat > "${STAGING_DIR}/README.txt" << 'EOF'
+    if [[ "$PLATFORM" == "mac" ]]; then
+        cat > "${STAGING_DIR}/README.txt" << 'EOF'
+========================================================================
+  OpenSparrow — Mac UI-first Deployment Pack
+  Version: __VERSION__
+========================================================================
+
+TONIGHT'S OFFICIAL SUPPORT SURFACE
+  • Platform: macOS
+  • Official first-click path: root "01-开始部署.command"
+  • Supported channels tonight: Feishu / DingTalk
+  • WeCom is NOT part of tonight's packaged support promise
+  • Companion is NOT part of tonight's official support surface
+
+QUICK START — macOS
+  1. Open the package root.
+  2. Double-click "01-开始部署.command".
+  3. If macOS shows a security warning, open it from:
+       System Settings → Privacy & Security → Open Anyway
+  4. Follow the UI installer in your browser.
+  5. Finish setup in Dashboard.
+
+ADVANCED COMPATIBILITY / HANDOFF
+  • mac/run-openclaw-usb.command
+  • mac/harden-openclaw-usb.command
+  These files remain shipped, but they are NOT the primary install path.
+  They must hand off back to root "01-开始部署.command".
+
+DOCUMENTATION
+  • README.md
+  • docs/INSTALL.md
+  • docs/SOP.md
+  • runbooks/F-005-ui-install-reset.md
+
+SUPPORT BOUNDARY
+  • Do not treat Windows paths as part of tonight's package surface.
+  • Do not treat WeCom as tonight-ready packaged support.
+
+========================================================================
+EOF
+    else
+        cat > "${STAGING_DIR}/README.txt" << 'EOF'
 ========================================================================
   OpenSparrow — USB AI Bot Deployment Pack
   Version: __VERSION__
@@ -374,6 +474,7 @@ SUPPORT
 
 ========================================================================
 EOF
+    fi
 
     # Substitute the actual version string into the file
     # (heredoc variable expansion is disabled above to avoid shell interpretation)
@@ -383,6 +484,61 @@ EOF
     fi
 
     log_done "README.txt written"
+}
+
+# ---------------------------------------------------------------------------
+# Step: Generate README.md for packaged release-facing surface
+# ---------------------------------------------------------------------------
+generate_readme_md() {
+    if [[ "$PLATFORM" != "mac" ]]; then
+        return
+    fi
+
+    log_step "Generating packaged README.md"
+
+    cat > "${STAGING_DIR}/README.md" << 'EOF'
+# OpenSparrow Mac UI-first Deployment Pack
+
+Version: `__VERSION__`
+
+## Tonight's official support surface
+
+- Platform: `macOS`
+- Official first-click path: root `01-开始部署.command`
+- Supported channels tonight: `飞书`、`钉钉`
+- `mac/run-openclaw-usb.command` and `mac/harden-openclaw-usb.command` are retained only as advanced compatibility / handoff surfaces
+- WeCom is not part of tonight's packaged support promise
+- Companion is not part of tonight's official support surface
+
+## Start here
+
+1. Open the package root.
+2. Double-click `01-开始部署.command`.
+3. Complete installation in the browser wizard.
+4. Finish operations in Dashboard.
+
+## Important boundary notes
+
+- Do not treat Windows paths as part of tonight's package surface.
+- Do not treat the advanced compatibility wrappers as the main install path.
+- Do not treat WeCom as tonight-ready packaged support.
+
+## Included docs
+
+- `README.txt`
+- `docs/INSTALL.md`
+- `docs/SOP.md`
+- `runbooks/F-005-ui-install-reset.md`
+- `runbooks/release-process.md`
+- `docs/release-checklist.md`
+EOF
+
+    if command -v sed &>/dev/null; then
+        sed -i.bak "s/__VERSION__/${VERSION}/g" "${STAGING_DIR}/README.md"
+        rm -f "${STAGING_DIR}/README.md.bak"
+    fi
+
+    log_done "Packaged README.md written"
 }
 
 # ---------------------------------------------------------------------------
@@ -434,6 +590,7 @@ main() {
     prepare_staging
     copy_common
     copy_skills
+    bundle_plugin_archives
 
     case "$PLATFORM" in
         mac)
@@ -450,6 +607,7 @@ main() {
 
     fix_permissions
     generate_readme_txt
+    generate_readme_md
 
     # All done — disable the cleanup trap (success path)
     trap - EXIT

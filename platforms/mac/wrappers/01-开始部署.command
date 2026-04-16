@@ -42,8 +42,8 @@ server_file="$pack_root/ui/server.mjs"
 runtime_root=""
 node_bin=""
 for runtime_candidate in \
-  "$pack_root/vendor/mac-openclaw" \
-  "$pack_root/runtime"; do
+  "$pack_root/runtime" \
+  "$pack_root/vendor/mac-openclaw"; do
   if [[ -d "$runtime_candidate" ]] && node_bin="$(resolve_node_bin "$runtime_candidate")"; then
     runtime_root="$runtime_candidate"
     break
@@ -52,7 +52,7 @@ done
 
 if [[ -z "$node_bin" || ! -x "$node_bin" ]]; then
   echo "错误：找不到 Node 运行时。" >&2
-  echo "已检查：$pack_root/vendor/mac-openclaw 和 $pack_root/runtime" >&2
+  echo "已检查：$pack_root/runtime 和 $pack_root/vendor/mac-openclaw" >&2
   read -r -p "按 Enter 关闭..." _
   exit 1
 fi

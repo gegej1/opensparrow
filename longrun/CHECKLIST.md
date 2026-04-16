@@ -22,3 +22,7 @@
 - [ ] Confirm no migration constraints were violated.
 - [ ] Ensure no known critical breakage remains.
 - [ ] Commit with descriptive message.
+
+## Boundary note
+- This checklist defines the minimum project-memory handshake for a session.
+- It does not replace the feature-delivery authority (`specs/`) or the runtime execution authority (`superpowers`).

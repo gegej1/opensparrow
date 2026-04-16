@@ -321,6 +321,7 @@ function Configure-OpenAiProvider {
 
   $providerJson = @{
     baseUrl = $BaseUrl
+    api     = 'openai-completions'
     models  = @(@{
         id   = $providerModelId
         name = $providerModelId

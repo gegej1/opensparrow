@@ -286,3 +286,546 @@
 - Next follow-up:
   - 在 Windows VM 中执行 `platforms\windows\wrappers\one-click-deploy.ps1`，分别验证当前用户 HOME、提权启动、以及历史 profile 自动发现三种场景。
 - Progress snapshot: 15/16 passing
+
+## Session 10 (F-017 Dashboard logo static asset hardening)
+- Date: 2026-04-03
+- Goal: 修复 dashboard 顶部 logo 在 HTTP 场景下空白的问题，并把 UI 公共静态资源服务能力收口到统一实现。
+- Selected feature id: `F-017`
+- Root cause:
+  - `ui/public/dashboard.html` 原先把 logo 以内联 `data:image/png;base64,...` 写在单行属性里，浏览器侧存在 URL 解析失败风险。
+  - 当 logo 改成相对路径 `logo.png` 后，`ui/server.mjs` 的静态路由仍只放行 `.css/.js/.mjs`，导致 `GET /logo.png` 无法返回。
+  - 静态路由白名单与 `sendFile()` 的 MIME 支持分叉，后续新增 `.png/.svg/.ico/.json` 或子目录资源时容易重复出错。
+- Changes made:
+  - `ui/public/logo.png`：从 dashboard 原始 base64 数据提取为独立 PNG 文件。
+  - `ui/public/dashboard.html`：仅将顶部 logo 的 `src` 改为 `logo.png`，其余属性保持不变。
+  - `ui/server.mjs`：新增 `PUBLIC_FILE_MIME_MAP` / `PUBLIC_ASSET_EXTENSIONS`，把静态扩展名与 MIME 映射统一到同一份定义。
+  - `ui/server.mjs`：新增 `resolvePublicAssetPath()` 与 `isPathInside()`，支持 `ui/public/` 下安全的相对路径解析、真实路径校验与路径穿越防护。
+  - `ui/server.mjs`：静态资源请求从“仅 basename + css/js/mjs”升级为统一的 `GET/HEAD` 公共资源服务。
+  - `longrun/workspaces/opensparrow-unified/feature_list.json`：新增 `F-017` 条目。
+- Validation:
+  - `node --check ui/server.mjs` → PASS
+  - `file ui/public/logo.png` → `PNG image data, 115 x 120, 8-bit/color RGBA, non-interlaced`
+  - `curl -I http://127.0.0.1:19111/logo.png` → `200 OK`, `Content-Type: image/png`
+  - `curl -I http://127.0.0.1:19111/dashboard` → `200 OK`
+  - `curl http://127.0.0.1:19111/dashboard` 命中 `<img src="logo.png" ... alt="Open Sparrow">`
+  - `curl http://127.0.0.1:19111/../package.json` → `404`（路径穿越拦截）
+  - Headless Chrome 直接打开 `file:///Users/eduardogan/Desktop/GHJProject/opensparrow/ui/public/dashboard.html`：`currentSrc=file:///.../ui/public/logo.png`，`naturalWidth=115`，`naturalHeight=120`
+  - `./longrun/workspaces/opensparrow-unified/init.sh` → PASS
+- Current status:
+  - dashboard logo 在源码直开与 HTTP 静态服务两条路径上都能被正确解析。
+  - UI 公共静态资源服务已改为统一收口实现，后续新增图片、图标、JSON 或子目录资源不需要再单独补路由。
+- Next follow-up:
+  - 若后续需要分发新版交付包，应同步重建 `dist`，避免源码与打包产物的静态资源能力再次漂移。
+- Progress snapshot: 16/17 passing
+
+## Session 11 (Bug investigation: custom OpenAI endpoint compatibility + model drift)
+- Date: 2026-04-08
+- Goal: 只读定位“自定义 OpenAI 兼容地址 + Qwen3-32B”链路中的 404/500 报错，并把模型错位问题落盘为 bug 记录。
+- Scope: 调查与文档落盘；本轮未修改运行时代码。
+- Findings:
+  - `ui/server.mjs` 的 `normalizeOpenAIBaseUrl()` 对 `https://llm.wtsht.cn/mosuanguichao/qwen3-32b-api` 不会自动补 `/v1`。
+  - 实测同一 provider 仅支持 `/v1/chat/completions`、`/v1/completions` 与 `/v1/chat/completions?stream=true`，不支持裸路径 `chat/completions`，也不完整支持 `/v1/responses`。
+  - 真实会话日志同时出现过 `openai-completions -> 404 status code (no body)` 与 `openai-responses -> 500 not implemented`。
+  - Dashboard 保存 API 的后端路径只更新 `models.providers.openai`，不会同步执行 `models set`，导致 `/api/config` 表单配置与 `openclaw models list` 当前激活模型发生漂移。
+- Evidence recorded:
+  - 新增 `specs/010-openclaw-runtime-upgrade/BUG-001-custom-openai-endpoint-and-model-drift.md`
+- Current status:
+  - 该问题已形成可复现 bug 记录，尚未进入修复实现。
+- Suggested next step:
+  - 如需修复，优先做：`/api/config/api` 同步 `models set`，以及 install/save 前的 provider 兼容性预检。
+
+## Session 12 (F-018 OpenAI-compatible provider hardening)
+- Date: 2026-04-08
+- Goal: 以最小改动修复自定义 OpenAI-compatible provider 的 `/v1` 路由兼容、provider API 默认值和 Dashboard 模型漂移问题。
+- Selected feature id: `F-018`
+- Root cause:
+  - OpenClaw runtime 在 provider 级 `api` 缺失时会回退到 `openai-responses`，而当前安装/保存逻辑只写了 model 级 `api`。
+  - Dashboard `POST /api/config/api` 只更新 `models.providers.openai`，不会同步执行 `models set`，导致表单配置与实际激活模型漂移。
+  - 对自定义非根路径 provider，当前 UI 归一化逻辑不会在需要时自动收敛到带 `/v1` 的可用 base URL。
+- Changes made:
+  - 新增 `specs/012-custom-openai-provider-hardening/{spec,plan,tasks}.md`，补齐本轮 bugfix 的 spec 流程。
+  - 新增 `ui/lib/openai-provider.mjs` 与 `ui/lib/openai-provider.test.mjs`，抽出 OpenAI base URL 归一化、`/v1` 候选生成、provider config builder，并补了 5 个聚焦测试。
+  - `ui/server.mjs`：安装与 Dashboard API 保存统一走 OpenAI provider helper，写入 provider 级 `api: "openai-completions"`，并在保存后同步 `models set`。
+  - `ui/server.mjs`：新增保守型 provider probe；当原始自定义路径的 `chat/completions` 不可达而 `/v1` 候选可达时，自动切换到带 `/v1` 的 base URL，并把兼容性告警透传给前端。
+  - `ui/server.mjs`：Dashboard 保存 API 时，空 `apiKey` 不再覆盖已有 auth profile；仅在用户明确填写新 key 时才重写 `auth-profiles.json`。
+  - `ui/public/dashboard.html`：保存 API 成功 toast 现在会拼接后端返回的 warnings。
+  - `scripts/openclaw-usb/install-local-feishu.sh` 与 `scripts/openclaw-usb/install-local-feishu.ps1`：同步写入 provider 级 `api: "openai-completions"`。
+- Validation:
+  - `node --test ui/lib/openai-provider.test.mjs` → PASS (5/5)
+  - `node --check ui/server.mjs` → PASS
+  - `bash -n scripts/openclaw-usb/install-local-feishu.sh` → PASS
+  - 隔离 smoke：`OPENCLAW_HOME=$(mktemp -d) ... POST /api/config/api` 后，`openclaw.json` 已包含 provider 顶层 `api: "openai-completions"`，且 `openclaw models list` 显示 `openai/Qwen3-32B ... default,configured`
+  - `pwsh` 当前环境不可用，因此 `install-local-feishu.ps1` 仅完成静态差异审查，待 Windows / pwsh 环境补语法解析。
+- Current status:
+  - 安装与 Dashboard API 保存路径都已固定 provider 级 `openai-completions`，并在保存后同步当前激活模型。
+  - 自定义 OpenAI-compatible base URL 现在具备保守型 `/v1` 探测与 warnings 透传能力。
+- Next follow-up:
+  - 用真实第三方 provider 再做一次端到端 smoke，确认 `https://llm.wtsht.cn/mosuanguichao/qwen3-32b-api` 在 UI 保存后最终落为 `.../v1`，并验证聊天链路恢复。
+- Progress snapshot: 18/18 passing
+
+## Session 13 (F-019 Commander orchestration governance)
+- Date: 2026-04-09
+- Goal: 把“总司令 + 固定 5 子 Agent + 可临时扩编”的长期协作制度正式落盘到 unified repo，作为后续会话默认执行基线。
+- Selected feature id: `F-019`
+- Scope:
+  - 本轮只做治理文档、runbook 与 longrun 记录同步。
+  - 本轮未修改 `ui/`、`platforms/`、`scripts/`、`vendor/` 等运行时代码。
+- Changes made:
+  - 新增 `specs/013-commander-orchestration-governance/{spec,plan,tasks}.md`，明确固定 5 人编制、总司令职责边界、默认派工模式、扩编规则与冲突规避要求。
+  - 新增 `docs/runbooks/F-019-commander-orchestration-governance.md`，把角色职责卡、派单模板、总司令 SOP、收口动作与升级路径写成可执行手册。
+  - 更新 `longrun/workspaces/opensparrow-unified/feature_list.json`，新增 `F-019` 条目。
+  - 补充“总司令是会话级角色，不绑定历史特定 Agent 身份；若用户重新指定，以当前用户指令为准”的口径，避免旧上下文对新会话造成误导。
+- Validation:
+  - `python3 -m json.tool longrun/workspaces/opensparrow-unified/feature_list.json >/dev/null` → PASS
+  - `./longrun/workspaces/opensparrow-unified/init.sh` → PASS
+  - `python3 longrun/scripts/progress_report.py longrun/workspaces/opensparrow-unified/feature_list.json` → PASS
+- Current status:
+  - unified repo 已拥有一套长期固定的 Commander 调度制度，可直接指导后续 feature 的拆解、派工、审阅与收口。
+  - 后续新任务默认沿用“固定 5 人 + 按需临时扩编”的工作方式，除非用户另行指定。
+- Next follow-up:
+  - 下一轮真实 feature 开工时，按本 runbook 执行一次完整派工，验证这套制度在实战中的节奏与边界是否仍需微调。
+- Progress snapshot: 18/19 passing
+
+## Session 14 (F-020 Mac arm64 installer hardening)
+- Date: 2026-04-14
+- Goal: 修复 macOS arm64 UI 包首次安装时的 skill 复制失败与 DingTalk/WeCom 插件安装级联报错，并重新导出唯一保留的最新好包。
+- Selected feature id: `F-020`
+- Root cause:
+  - `ui/server.mjs` 的 `installSkills()` 把 `skills/superpowers/` 顶层条目一律当普通文件复制；当遇到 `agents/`、`commands/` 等目录时会触发 `copyfile ENOTSUP`，导致 `~/.claude/skills/superpowers` / `~/.codex/skills/superpowers` 安装中断。
+  - UI 安装流程对 DingTalk / WeCom 仍调用 bare npm spec，OpenClaw 2026.3.23 会先尝试 ClawHub；当 ClawHub 返回 `429` 时不会回退 npm，因此插件安装失败。
+  - 即使插件安装失败，旧逻辑仍继续写 `channels.dingtalk/*` / `channels.wecom/*`，于是又触发 `unknown channel id` 二次报错。
+  - `ui/server.mjs` 的 OpenClaw entry 解析顺序优先落到 `vendor/mac-openclaw/bin/node_modules/openclaw`（2026.3.12），而不是 `lib/node_modules/openclaw`（2026.3.23），存在继续跑旧版 runtime 代码的风险。
+- Changes made:
+  - 新增 `specs/014-mac-arm64-installer-hardening/{spec,plan,tasks}.md`，补齐这轮 bugfix 的 spec 流程。
+  - 新增 `ui/install-helpers.mjs` 与 `ui/tests/install-helpers.test.mjs`，覆盖递归 skill 复制与 bundled plugin archive 发现逻辑。
+  - `ui/server.mjs`：
+    - `installSkills()` 改为递归复制 `skills/superpowers/`；
+    - 优先从包内 `plugins/*.tgz` 安装 DingTalk / WeCom，而非直接走 ClawHub-first 解析；
+    - 当 DingTalk / WeCom 插件未就绪时，跳过对应 `channels.*` 配置写入，避免 `unknown channel id` 级联报错；
+    - `handleUpdateChannel()` 同步复用插件就绪检查；
+    - `resolveOpenClawEntry()` 调整为优先选择 `lib/node_modules/openclaw/openclaw.mjs`；
+    - `OC_TIMEOUT.PLUGIN_INSTALL` 从 `180000` 提升到 `300000`，覆盖企微本地归档安装耗时。
+  - `scripts/build-usb-pack.sh`：
+    - 补齐 `superpowers/ -> skills/superpowers/` 的 canonical 复制；
+    - 新增 `bundle_plugin_archives()`，把 `@openclaw-china/channels` 与 `@sunnoy/wecom@3.0.0` 打成 `.tgz` 放入包内 `plugins/`。
+  - 更新 `docs/runbooks/release-process.md` 与 `docs/release-checklist.md`，把本地 `.tgz` 插件归档与“不得出现 unknown channel id 级联报错”写入发布核对项。
+  - 重建并收口最终交付物：仅保留 `dist/handoff/opensparrow-mac-ui-full-arm64-20260414-162747/` 与 `dist/handoff/opensparrow-mac-ui-full-arm64-20260414-162747.zip`。
+- Validation:
+  - `vendor/mac-openclaw/bin/node --test ui/tests/install-helpers.test.mjs` → PASS (2/2)
+  - `vendor/mac-openclaw/bin/node --check ui/server.mjs` → PASS
+  - `bash -n scripts/build-usb-pack.sh` → PASS
+  - DingTalk local archive smoke：本地 `openclaw-china-channels-2026.3.29.tgz` 安装成功，随后 `config set channels.dingtalk.enabled true --strict-json` → PASS
+  - WeCom local archive smoke：本地 `sunnoy-wecom-3.0.0.tgz` 安装成功，随后 `config set channels.wecom.enabled true --strict-json` → PASS
+  - Final package checks：
+    - `file dist/handoff/opensparrow-mac-ui-full-arm64-20260414-162747/opensparrow-0.1.0-alpha-mac-ui-arm64/vendor/mac-openclaw/bin/node` → `Mach-O 64-bit executable arm64`
+    - final package launch smoke on port `19128` → `FINAL_ENTRY_SMOKE=PASS`
+- Current status:
+  - 新 mac 上的两条核心失败链路都已被收口：superpowers 目录型 skill 可正常复制；DingTalk / WeCom 不再依赖 ClawHub 首次解析成功，也不会在插件失败时继续写无效 channel config。
+  - 当前 `dist/handoff/` 下仅保留唯一最新的 mac arm64 UI 交付物，便于直接迁移。
+- Next follow-up:
+  - 在真实目标 Mac 上用最终 ZIP 再做一次带企微凭据的完整 UI 安装，观察企微插件安装实际耗时是否稳定低于 300 秒；若仍接近上限，可考虑把插件依赖进一步预热到离线缓存层。
+- Progress snapshot: 19/20 passing
+
+## Session 15 (F-021 codeSPEC template ingestion)
+- Date: 2026-04-14
+- Goal: 参考 `/Users/eduardogan/Desktop/GHJProject/codeSPEC`，把适合当前 unified repo 清洗/重整使用的模板资产安全迁入当前仓，同时明确 reference 层与本地 authority 层边界，且不修改 source 项目。
+- Selected feature id: `F-021`
+- Scope:
+  - 本轮新增一个可重复执行的 `codeSPEC` 模板导入脚本与自动化测试。
+  - 本轮建立 `docs/reference/codeSPEC-template/` 作为 reference 镜像层，仅镜像策展后的 `UnifiedFramework` 白名单文件。
+  - 本轮把 `codeSPEC` 中更清晰的 `longrun` 边界说明吸收到当前仓活跃文档。
+  - 本轮未修改 `codeSPEC` source 项目，也未改动 OpenSparrow 运行时代码行为。
+- Changes made:
+  - 新增 `specs/015-codespec-template-ingestion/{spec,plan,tasks}.md`，定义导入边界、白名单、跳过清单与验证链。
+  - 新增 `scripts/tests/import-codespec-template.test.mjs`，以 TDD 方式覆盖“只同步白名单文件、且不覆盖本地 reference 说明文档”两项行为。
+  - 新增 `scripts/import-codespec-template.sh`，默认从 `/Users/eduardogan/Desktop/GHJProject/codeSPEC` 读取 source，并重建 `docs/reference/codeSPEC-template/upstream/`。
+  - 新增 `docs/reference/codeSPEC-template/README.md` 与 `docs/reference/codeSPEC-template/IMPORT_SCOPE.md`，说明 reference 定位、映射关系、跳过项与刷新命令。
+  - 运行导入脚本后，生成 `docs/reference/codeSPEC-template/upstream/UnifiedFramework/` 与 `docs/reference/codeSPEC-template/upstream/IMPORT_MANIFEST.md`。
+  - 新增 `docs/runbooks/F-021-codespec-template-ingestion.md`，记录刷新动作、验证命令与风险边界。
+  - 更新 `README.md`，增加 `codeSPEC` 模板参考入口。
+  - 更新 `longrun/README.md`、`longrun/CHECKLIST.md`、`longrun/METHOD.zh-CN.md`，明确 `longrun` 是项目记忆层而非 feature / execution authority。
+  - 更新 `longrun/workspaces/opensparrow-unified/feature_list.json`，新增 `F-021` 条目并标记通过。
+- Validation:
+  - `node --test scripts/tests/import-codespec-template.test.mjs` → PASS (2/2)
+  - `bash -n scripts/import-codespec-template.sh` → PASS
+  - `./scripts/import-codespec-template.sh /Users/eduardogan/Desktop/GHJProject/codeSPEC` → PASS
+  - `python3 -m json.tool longrun/workspaces/opensparrow-unified/feature_list.json >/dev/null` → PASS
+  - `./longrun/workspaces/opensparrow-unified/init.sh` → PASS
+  - `python3 longrun/scripts/progress_report.py longrun/workspaces/opensparrow-unified/feature_list.json` → PASS (`20/21` passing)
+- Current status:
+  - 当前仓已经拥有独立的 `codeSPEC` 参考镜像层，可直接支持后续清洗 / 重整工作，而不会把 source 项目 authoring 面或实验残留混进统一仓权威面。
+  - `longrun` 的边界在当前仓已被明确收紧：它只承接项目事实与 workspace contract，不再与 `specs/` 或 `superpowers` 争夺 authority。
+- Next follow-up:
+  - 如后续需要继续吸收 `codeSPEC/AgentTeam` 的 onboarding / dispatch 模板，建议单独新开 feature，在当前仓语境下本地化改写后再迁入，避免与 `F-019` 治理基线形成双轨。
+- Progress snapshot: 20/21 passing
+
+## Session 16 (F-022 codeSPEC framework full adaptation)
+- Date: 2026-04-14
+- Goal: 把 `codeSPEC` 从“上游参考模板”升级为 OpenSparrow 当前仓正在使用的底层开发框架来源，完成治理面、本地 authority wiring、longrun scaffold 与 reference import 的适配闭环。
+- Selected feature id: `F-022`
+- Scope:
+  - 本轮新增当前仓活跃治理文档目录 `docs/governance/`。
+  - 本轮把 `AgentTeam` 的 onboarding / dispatch / quick-reference 模板本地化改写为 OpenSparrow 语境。
+  - 本轮继续扩展 `codeSPEC` reference import，让 `AgentTeam` 高价值模板与 `UnifiedFramework/12-Superpower-Execution-Bridge.md` 一并被镜像。
+  - 本轮更新 `AGENTS.md`、constitution、`README.md`、`docs/项目持久化说明.md`、`longrun/templates/*prompt*`，统一 authority order。
+  - 本轮未修改 `codeSPEC` source 项目，也未修改 OpenSparrow 运行时代码行为。
+- Changes made:
+  - 新增 `specs/016-codespec-framework-adaptation/{spec,plan,tasks}.md`，明确本轮是“底层框架适配完成”，而非仅做 reference 镜像。
+  - 新增 `docs/governance/README.md`、`docs/governance/framework-stack.md`、`docs/governance/project-onboarding-sop.md`、`docs/governance/dispatch-templates.md`、`docs/governance/quick-reference.md`。
+  - 新增 `docs/runbooks/F-022-codespec-framework-adaptation.md`，记录底层框架适配的使用方式与验证命令。
+  - 更新 `AGENTS.md`，把治理入口加入必读清单，并显式声明当前底层框架五层结构。
+  - 更新 `.specify/memory/constitution.md`，新增“框架栈与 Authority Order”章节。
+  - 更新 `README.md` 与 `docs/项目持久化说明.md`，把治理入口挂入仓库首页与项目持久化说明。
+  - 更新 `longrun/templates/initializer_prompt.template.md` 与 `longrun/templates/coding_prompt.template.md`，把它们收紧为 project-memory compatibility scaffold。
+  - 扩展 `scripts/tests/import-codespec-template.test.mjs` 与 `scripts/import-codespec-template.sh`，新增 `AgentTeam/{README,02,03,04}` 和 `UnifiedFramework/12-Superpower-Execution-Bridge.md` 的白名单镜像。
+  - 更新 `docs/reference/codeSPEC-template/README.md` 与 `IMPORT_SCOPE.md`，同步新的 reference 范围与治理映射关系。
+  - 运行真实导入后，`docs/reference/codeSPEC-template/upstream/` 现已包含 `UnifiedFramework/` + `AgentTeam/` 两块白名单快照。
+  - 清理了上一步卡住脚本误生成的空壳目录 `specs/017-codespec-framework-adaptation/`，避免污染 feature 序列。
+  - 更新 `longrun/workspaces/opensparrow-unified/feature_list.json`，新增 `F-022` 条目并标记通过。
+- Validation:
+  - `node --test scripts/tests/import-codespec-template.test.mjs` → PASS (2/2)
+  - `bash -n scripts/import-codespec-template.sh` → PASS
+  - `./scripts/import-codespec-template.sh /Users/eduardogan/Desktop/GHJProject/codeSPEC` → PASS（13 个 curated files）
+  - `python3 -m json.tool longrun/workspaces/opensparrow-unified/feature_list.json >/dev/null` → PASS
+  - `./longrun/workspaces/opensparrow-unified/init.sh` → PASS
+  - `python3 longrun/scripts/progress_report.py longrun/workspaces/opensparrow-unified/feature_list.json` → PASS（`21/22` passing）
+- Current status:
+  - 当前仓已经具备可直接使用的底层开发框架：规则层、feature 交付层、项目记忆层、执行方法层、协作治理层已全部显式接线。
+  - `codeSPEC` 现在在 OpenSparrow 中既有上游 reference 镜像，也有本地化后的活跃治理文档与 scaffold，对后续产品改造已经足够作为开发底座使用。
+- Next follow-up:
+  - 下一轮可以不再继续做框架迁移，直接基于这套底座选定一个产品 feature，开始“优雅化”改造当前项目；建议优先从 `F-014` 或一个新的 UI / 配置收敛 feature 开始。
+- Progress snapshot: 21/22 passing
+
+## Session 17 (F-014 WeCom channel integration hardening)
+- Date: 2026-04-14
+- Goal: 以当前已适配好的框架底座为起点，优先收口 unified repo 唯一未通过项 `F-014`，先把企业微信渠道从“半落地、难维护”推进到“有 spec、有测试、有 runbook、代码结构更优雅”的状态。
+- Selected feature id: `F-014`
+- Scope:
+  - 本轮补齐 `specs/011-wecom-channel-integration/{spec,plan,tasks}.md`。
+  - 本轮把企微纯逻辑从 `ui/server.mjs` 提取到独立 helper 模块并补 node:test。
+  - 本轮新增企微 runbook，明确自动验证范围与真实凭据 E2E 待补边界。
+  - 本轮不伪造真实企业微信凭据 E2E 通过证据。
+- Changes made:
+  - 进一步优雅化浏览器端企微逻辑：新增 `ui/public/wecom-helpers.js` 与 `ui/public/wecom-helpers.test.mjs`，让安装向导与 Dashboard 共用同一套企微字段校验规则。
+  - 覆盖 `specs/011-wecom-channel-integration/spec.md`，并新增 `plan.md`、`tasks.md`，把 `F-014` 从空模板状态补成可执行 feature。
+  - 新增 `ui/lib/wecom.mjs`，集中承载 `isLikelyWecomBotId`、`normalizeWecomCredentials`、`collectWecomInputErrors`、`enrichWecomChannelForUi`。
+  - 新增 `ui/lib/wecom.test.mjs`，通过 TDD 覆盖 Bot ID 判断、字段归一化、输入校验和 UI 扁平化。
+  - 更新 `ui/server.mjs`，改为导入 `ui/lib/wecom.mjs`，不再在超长 server 文件内内联企微纯逻辑。
+  - 新增 `docs/runbooks/F-014-wecom-channel-integration.md`，区分“已自动验证链路”与“仍需真实企业微信凭据补证的 E2E”。
+- Validation:
+  - `node --test ui/lib/wecom.test.mjs` → PASS (4/4)
+  - `node --test ui/public/wecom-helpers.test.mjs` → PASS (2/2)
+  - `node --check ui/server.mjs` → PASS
+  - 既有企微插件本地归档链路证据继续有效：`sunnoy-wecom-3.0.0.tgz` 安装成功且 `config set channels.wecom.enabled true --strict-json` 曾在 F-020 收口中验证通过
+- Current status:
+  - `F-014` 的代码结构与文档完整度已经明显提升，后续再做企微真机 / 真凭据 E2E 时，不需要继续在 `ui/server.mjs` 中盲改。
+  - 当前仍缺少“带真实企业微信凭据的一次完整 UI 安装 + 消息/回调链路”证据，因此本轮不把 `F-014` 改为通过。
+- Next follow-up:
+  - 准备一套真实企业微信 Bot ID / Secret（以及如需回调的 CorpId / CorpSecret / AgentId / Callback 参数），按 `docs/runbooks/F-014-wecom-channel-integration.md` 进行人工补证；证据齐全后再把 `F-014` 写成 passing。
+- Progress snapshot: 21/22 passing
+
+## Session 18 (F-014 WeCom browser dedupe follow-up)
+- Date: 2026-04-14
+- Goal: 在不扩大回归面的前提下，继续把 `F-014` 浏览器端企微表单默认值与 helper 调用收敛得更优雅，减少安装向导 / Dashboard 间的薄重复。
+- Selected feature id: `F-014`
+- Scope:
+  - 本轮只处理浏览器端企微默认字段工厂与 helper 调用去重。
+  - 本轮不改 `F-014` 的验收口径，也不伪造真实企业微信 E2E 通过证据。
+- Changes made:
+  - 更新 `ui/public/wecom-helpers.js`，新增 `createEmptyWecomFields()`，统一产出企微表单默认字段结构。
+  - 更新 `ui/public/index.html`，改为使用 `window.OpenSparrowWecom.createEmptyWecomFields()` 初始化 `credentials.wecom`，并直接调用共享 helper，不再保留页面内薄包装方法。
+  - 更新 `ui/public/dashboard.html`，改为使用 `window.OpenSparrowWecom.createEmptyWecomFields()` 初始化企微卡片字段，并直接调用共享 helper，不再保留页面内薄包装方法。
+  - 更新 `ui/public/wecom-helpers.test.mjs`，补充“默认字段工厂返回新对象”的测试，确保不会把 Alpine 状态变成共享引用。
+  - 更新 `specs/011-wecom-channel-integration/tasks.md`，把当前 hardening 范围内已完成的任务与验证项勾选落盘。
+- Validation:
+  - `node --test ui/public/wecom-helpers.test.mjs` → PASS (3/3)
+  - `node --test ui/lib/wecom.test.mjs` → PASS (4/4)
+  - `node --test ui/tests/install-helpers.test.mjs` → PASS (2/2)
+  - `node --check ui/server.mjs` → PASS
+- Current status:
+  - 浏览器端企微默认字段结构与校验入口已经进一步统一，安装向导和 Dashboard 继续共用同一套 helper 契约，后续再做 UI 收敛时不需要重复维护默认字段字面量。
+  - `F-014` 仍然缺少“真实企业微信凭据的一次完整 UI 安装 + 消息/回调链路”证据，因此本轮仍不把它改为 passing。
+- Next follow-up:
+  - 若拿到真实企业微信 Bot ID / Secret（以及如需回调的 CorpId / CorpSecret / AgentId / Callback 参数），按 `docs/runbooks/F-014-wecom-channel-integration.md` 走一次人工补证；补证完成后再更新 `feature_list.json` 的 `passes`。
+  - 如果短期内拿不到真实凭据，下一轮可基于这套底座继续选择另一个可本地闭环的 UI / 配置优雅化 feature。
+- Progress snapshot: 21/22 passing
+
+## Session 19 (F-023 Commander Mode hardening verified closeout)
+- Date: 2026-04-14
+- Goal: 基于已经完成的 review + verification 证据，把 Commander Mode hardening 正式写回统一项目记忆层，并完成最小必要 closeout。
+- Selected feature id: `F-023`
+- Scope:
+  - 本轮只做 verified closeout 写回：更新 `feature_list.json`、`claude-progress.txt`，并仅在证据充分时同步勾选 `specs/017-commander-mode-hardening/tasks.md`。
+  - 本轮不改 `docs/governance/*`、不改运行时代码、不重写 spec / plan，也不新增验证结论。
+- Evidence basis:
+  - 本轮 close 直接依赖既有 verified evidence，而不是基于 summary 推断：`Batch Reviewer: APPROVED`、`Batch Verifier: PASS`。
+  - 已验证范围限定为 `PKT-017-A/B/C/D`；关键落点包括 `.specify/memory/constitution.md:96`、`.specify/templates/plan-template.md:38`、`.specify/templates/plan-template.md:77`、`.specify/templates/plan-template.md:85`、`longrun/templates/coding_prompt.template.md:9`、`longrun/templates/coding_prompt.template.md:14`、`longrun/templates/coding_prompt.template.md:47`、`longrun/templates/coding_prompt.template.md:84`。
+- Packet closeout recorded:
+  - `PKT-017-A`：`.specify/memory/constitution.md` 已明确 Commander Mode 激活条件、角色边界、Commander contract、ownership 串行化，以及 closeout / summary non-authoritative 边界。
+  - `PKT-017-B`：`.specify/templates/plan-template.md` 已把 packet 结构固化为默认 dispatch scaffold，并模板化必填字段、Reviewer / Verifier 分离、Stop rule 与 integration packet 约束。
+  - `PKT-017-C`：`longrun/templates/coding_prompt.template.md` 已明确 continuation scaffold 不能替代 `specs/` / `superpowers` / verified truth，Commander 默认不承担 implementation，`passes: true` 仍需 traceable acceptance evidence。
+  - `PKT-017-D`：cross-surface wording integration 已有 review + verification 证据支撑，本轮无需继续 integration。
+- Longrun updates:
+  - 在 `feature_list.json` 新增 `F-023`，定位为对 `F-019` commander governance 的 hardening；`passes: true` 只因为已有 reviewer / verifier 通过证据支撑。
+  - 在 `specs/017-commander-mode-hardening/tasks.md` 仅勾选被上述 review + verification 证据直接覆盖的实现 / review / verification / acceptance 项；未被证据覆盖的 scope freeze、assignment、integration-owner 过程项与 stop-rule 过程项保持未勾。
+  - 明确保留 `F-014` 现状不变；本轮没有改写其状态。
+- Why this round can close:
+  - closeout 只是在 longrun 中索引“已被 spec / 文本落点 / reviewer / verifier evidence 支撑”的事实，不提升 authority，不覆盖 governance / spec / code / tests，也不把 longrun summary 升格为 truth。
+- Validation:
+  - `python3 -m json.tool longrun/workspaces/opensparrow-unified/feature_list.json >/dev/null` → PASS
+  - `python3 longrun/scripts/progress_report.py longrun/workspaces/opensparrow-unified/feature_list.json` → PASS
+  - `specs/017-commander-mode-hardening/tasks.md` 已做最小文本检查：close gate / checklist 结构保持完整
+- Current status:
+  - `Commander Mode hardening` 已完成 verified closeout 落账；当前结论来自既有 reviewer / verifier evidence，不来自 longrun summary 自我升级。
+  - `F-014` 仍保持未通过；本轮未改动其验收状态。
+- Next follow-up:
+  - 若后续继续扩 Commander governance，应从 `specs/017-commander-mode-hardening/` 继续切 packet / spec 驱动推进，而不是把 longrun 当作 authority 面继续扩写。
+- Progress snapshot: 22/23 passing
+
+
+## Session 20 (F-024 unified channel contract baseline verified closeout)
+- Date: 2026-04-15
+- Goal: 基于已存在的 packet evidence 与 Commander acceptance gate，把 `F-024` 的 verified closeout 写回统一项目记忆层。
+- Selected feature id: `F-024`
+- Scope:
+  - 本轮只做 longrun 写回：更新 `longrun/workspaces/opensparrow-unified/feature_list.json` 与 `longrun/workspaces/opensparrow-unified/claude-progress.txt`。
+  - 本轮不改 `specs/024-*`、不改 `docs/*`、不改 `ui/*`，也不把 longrun 升格成 authority 或重写验收结论。
+- Evidence basis:
+  - 本轮 closeout 直接依赖既有 packet evidence 与 Commander acceptance gate，而不是 longrun 自我推断：`PKT-024-A` 已完成并通过、`PKT-024-B` 已通过、`PKT-024-C` 已通过、`PKT-024-D` 已通过、`PKT-024-E` 已通过，且 `Commander acceptance gate: PASS`。
+  - 已确认的 closeout 事实限定为 baseline：truth table / mapping closure 已冻结，server canonical handling 已落地，shared frontend helper baseline 已落地，最小 docs / live-spec / tutorial / runbook wording sync 已完成，install / dashboard / read-back baseline closure 证据充分。
+- Packet closeout recorded:
+  - `PKT-024-A`：shared core / delta / alias truth table 与 install / dashboard / server / read-back mapping closure 已冻结，可作为 F-024 baseline 的可追溯 contract 依据。
+  - `PKT-024-B`：server canonical handling 已作为 authoritative contract handling 落地，DingTalk `corpId` 保持 optional metadata，WeCom 保持 `botId + secret` core 与 nested persistence，Feishu 接入同层级 canonical boundary。
+  - `PKT-024-C`：Install 与 Dashboard 已共用 shared frontend helper baseline，normalize / validate / payload build contract 收口到同一层，DingTalk `corpId` 不再被写成 browser install blocker。
+  - `PKT-024-D`：最小直接受影响的 live-spec / tutorial / SOP / runbook wording 已同步到 baseline 口径，并明确当前 Dashboard 仍是三张渠道卡片 + modal 保存 + `enabled` toggle。
+  - `PKT-024-E`：install / dashboard / read-back baseline closure 已有验证证据，Commander 已据此通过 acceptance gate；本包保持 verification-only closeout，不回灌新实现。
+- Longrun updates:
+  - 在 `feature_list.json` 新增 `F-024`，组件名为 `unified-channel-contract-baseline`，`passes: true` 只对应 baseline canonical contract / shared helper / docs wording / closure 已通过的事实。
+  - 在 `claude-progress.txt` 追加本 session，明确 closeout 依据来自既有 packet evidence 与 Commander acceptance gate，而不是 longrun summary 自抬 authority。
+  - 明确保留 `F-014` 现状不变；本轮没有改写它的 `passes`。
+- Why this round can close:
+  - `F-024` 本轮关的是 baseline，不是“统一收口全部完成”；longrun 这里只索引已经被 acceptance gate 通过的事实。
+  - `F-024` 的 passing 不代表真实 E2E、Windows replay fidelity 或全 docs parity 已经完成。
+- Explicit carryover to `F-025`:
+  - 真实 E2E。
+  - Windows replay fidelity。
+  - 全 docs parity / broader docs parity。
+- Validation:
+  - `python3 -m json.tool longrun/workspaces/opensparrow-unified/feature_list.json >/dev/null` → PASS
+  - `python3 longrun/scripts/progress_report.py longrun/workspaces/opensparrow-unified/feature_list.json` → PASS（`23/24 passing`、`Remaining: 1`、`Blocked by dependencies: 0`）
+  - `tail -n 80 longrun/workspaces/opensparrow-unified/claude-progress.txt` → PASS（文件尾部确认上一条为 `Session 19`，本轮按顺序追加为 `Session 20`）
+  - `git diff -- longrun/workspaces/opensparrow-unified/feature_list.json longrun/workspaces/opensparrow-unified/claude-progress.txt` → PASS（diff 仅覆盖本轮目标 longrun 文件）
+- Current status:
+  - `F-024` 已在 longrun 中完成 verified closeout 落账，但该结论仍从属于既有 spec / runbook / packet evidence / Commander acceptance gate。
+  - `F-014` 仍保持未通过；下一战不是继续包装 F-024，而是按边界转入 `F-025`。
+- Next follow-up:
+  - 后续若推进 replay parity、真实 E2E 或 broader docs parity，应以 `F-025` 继续派工，而不是回头把 `F-024` 写成 full parity。
+- Progress snapshot: 23/24 passing
+
+
+## Session 21 (F-014 WeCom long-connection verified closeout)
+- Date: 2026-04-15
+- Goal: 基于既有自动验证证据与 Commander 已接受的 fresh operator evidence，把 `F-014` 正式写回 longrun，并完成 verified closeout。
+- Selected feature id: `F-014`
+- Scope:
+  - 本轮只做 longrun 写回：`feature_list.json` + `claude-progress.txt`。
+  - 本轮不改 code/spec/runbook，不新增实现，不重跑设计。
+- Evidence basis:
+  - 既有自动验证层：`node --test ui/lib/wecom.test.mjs`、`node --test ui/public/wecom-helpers.test.mjs`、`node --check ui/server.mjs` 已覆盖 bot-first、long-connection-first 冻结口径所需的 helper / server truth surface。
+  - Commander 已接受的 fresh operator evidence（最小真实入口挂载）：当前运行态已挂载真实 `WeCom Bot ID + Secret`，`channels.wecom.enabled=true`，`botId_present=true`，`secret_present=true`，且 fresh `POST /api/wecom/probe` 显示 `status=ok`、`ready=true`、`daemon=running`，summary 显示 Enterprise WeChat `enabled, configured, running, works`。
+  - Commander 已接受的 fresh operator evidence（真实消息往返）：企业微信私聊测试消息已被 OpenSparrow 实际收到，OpenSparrow 已实际回复，且企业微信客户端侧已实际看到回复；本轮证明的是 bot-first 主链真实消息闭环，不是 callback gate，也不是增强链路全量通过。
+- Closeout recorded:
+  - `F-014` 当前 bot-first 企业微信长连接主链已经具备 passing evidence，最小真实入口为 `Bot ID + Secret`。
+  - UI / Dashboard / server / probe 已支持 bot-first 主链，而 fresh operator evidence 已证明真实入口挂载成功并完成至少一轮真实消息往返闭环。
+  - callback / `CorpId` / `CorpSecret` / `AgentId` 仍属于增强链路 / 特定场景链路；本轮没有把它们写成默认 passing gate，也没有宣称它们全部通过。
+- Why this round can close:
+  - runbook 的两层 passing 条件现已齐备：既有自动验证层稳定 bot-first truth surface，Commander 接受的 fresh operator evidence 补齐最小真实入口与真实消息闭环。
+  - longrun 这里只索引被 spec/runbook/evidence/Commander acceptance gate 支撑的事实，不把 longrun 升格为 authority。
+- Validation:
+  - `python3 -m json.tool longrun/workspaces/opensparrow-unified/feature_list.json >/dev/null` → PASS
+  - `python3 longrun/scripts/progress_report.py longrun/workspaces/opensparrow-unified/feature_list.json` → PASS（`24/24 passing`、`Remaining: 0`、`Blocked by dependencies: 0`）
+  - `tail -n 80 longrun/workspaces/opensparrow-unified/claude-progress.txt` → PASS（文件尾部已出现新追加的 `Session 21`）
+  - `git diff -- longrun/workspaces/opensparrow-unified/feature_list.json longrun/workspaces/opensparrow-unified/claude-progress.txt` → PASS（diff 仅覆盖目标 pair）
+- Current status:
+  - `F-014` 已完成 verified closeout 写回。
+  - 当前 unified workspace 进度已达到 `24/24 passing`。
+- Next follow-up:
+  - 如后续需要 callback / 自建应用增强链路或 broader parity，应另行派工；不要 retroactively 扩写本轮 closeout 边界。
+- Progress snapshot: 24/24 passing
+
+## Session 22 (F-025-A replay parity verified sub-battle closeout)
+- Date: 2026-04-15
+- Goal: 基于 A1 / A2 / A3 的 fresh evidence 与 Commander final gate，把 `F-025-A` 作为 replay parity 子战写入 progress log。
+- Selected feature id: `F-025`
+- Scope:
+  - 本轮只做 `F-025-A` 子战 closeout 记录。
+  - 本轮不改 `feature_list.json`，不改 `specs/*`、`docs/*`、`ui/*`。
+  - 本轮不宣称整个 `F-025` 已完成，也不改 longrun authority order。
+- Evidence basis:
+  - `A1`：replay truth inventory 已冻结，且不反向改写 `F-024` baseline truth surface。
+  - `A2`：server / read-back parity 已成立；DingTalk stale optional `ui-meta` 值已在 authoritative server / read-back surface 关闭，WeCom 继续 `bot-first + nested persist + flat read-back`，Feishu 无额外污染。
+  - `A3`：browser replay parity 已成立；install 已能从 authoritative `/api/config` 预填，dashboard save / toggle 已具备 read-after-write，DingTalk UI wording 已切到 canonical `Client ID / Client Secret` 并保留 alias 提示。
+  - Commander 独立复核命令与结果：
+    - `node --test ui/lib/channel-canonical.test.mjs ui/lib/wecom.test.mjs` → PASS（`9 pass / 0 fail`）
+    - `node --test ui/public/channel-helpers.test.mjs ui/public/wecom-helpers.test.mjs ui/public/replay-surfaces.test.mjs` → PASS（`15 pass / 0 fail`）
+    - `node --check ui/server.mjs` → PASS
+    - `git diff --check -- ...` → PASS
+- Sub-battle closeout recorded:
+  - install replay / dashboard replay / read-back replay 已形成 replay parity baseline。
+  - directly affected UI wording 已对齐 canonical replay truth surface。
+  - DingTalk stale optional `ui-meta` 问题已关闭。
+- Why this round can close:
+  - 这是 `F-025-A` 子战收口，不是 `F-025` feature closeout。
+  - longrun 在这里仅记录被 A1 / A2 / A3 evidence 与 Commander final gate 支撑的子战事实，不提升 authority。
+- Explicit carryover:
+  - `F-025-B = Windows replay fidelity`
+  - `F-025-C = broader docs parity`
+  - callback / 自建应用增强链路、schema 全迁移、动态表单引擎、cleanup 继续排除在本轮完成结论之外。
+- Validation:
+  - `node --test ui/lib/channel-canonical.test.mjs ui/lib/wecom.test.mjs` → PASS（`9 pass / 0 fail`）
+  - `node --test ui/public/channel-helpers.test.mjs ui/public/wecom-helpers.test.mjs ui/public/replay-surfaces.test.mjs` → PASS（`15 pass / 0 fail`）
+  - `node --check ui/server.mjs` → PASS
+  - `git diff --check -- ...` → PASS
+- Current status:
+  - `F-025-A` 已完成 verified sub-battle closeout。
+  - 整个 `F-025` 仍未 closeout。
+- Next follow-up:
+  - 继续启动 `F-025-B` 或 `F-025-C`，但需另开 packet。
+- Progress snapshot:
+  - existing feature baseline remains `24/24 passing`; `F-025` remains in-progress.
+
+## Session 23 (F-026 mac-first platform parity verified closeout writeback)
+- Date: 2026-04-15
+- Goal: 基于 `spec / code / fresh evidence` 已支撑的事实，把 `F-026` verified closeout 同步到 unified workspace longrun，并把直接受影响的 `F-005` runbook 做 facts-only sync。
+- Selected feature id: `F-026`
+- Scope:
+  - 本轮只做 verified closeout writeback：更新 `longrun/workspaces/opensparrow-unified/feature_list.json`、`longrun/workspaces/opensparrow-unified/claude-progress.txt`、`docs/runbooks/F-005-ui-install-reset.md`。
+  - 本轮不改 `specs/026-*`，不改实现面，不改 longrun authority order。
+- Evidence basis:
+  - close gate 只覆盖 `MAC-DIV-001`、`MAC-DIV-002`、`MAC-DIV-003`、`MAC-DIV-006`。
+  - verified implementation facts：
+    - `platforms/mac/wrappers/01-开始部署.command` 的 runtime-root precedence 已与 `ui/server.mjs` 对齐，先看 `runtime/`，再回退 `vendor/mac-openclaw/`。
+    - `platforms/mac/wrappers/run-openclaw-usb.command` 不再收凭据/直跑 legacy installer，当前只做 UI-first handoff。
+    - `platforms/mac/wrappers/harden-openclaw-usb.command` 不再直跑 legacy harden，当前只做 canonical UI/Dashboard handoff。
+    - `ui/server.mjs` 的 `/api/status` 返回 authoritative `gatewayPort`。
+    - `ui/public/dashboard.html` 不再把服务端口写死为 `18889`，而是显示 authoritative `gatewayPort`。
+  - fresh macOS verification evidence：
+    - `bash -n platforms/mac/wrappers/01-开始部署.command` → PASS
+    - `bash -n platforms/mac/wrappers/run-openclaw-usb.command` → PASS
+    - `bash -n platforms/mac/wrappers/harden-openclaw-usb.command` → PASS
+    - fresh execution：`01-开始部署.command` 启动到 `http://localhost:19031`，runtime 日志显示 `vendor/mac-openclaw`，`/api/status.gatewayPort = 18897`
+    - fresh execution：`run-openclaw-usb.command` 启动到 `http://localhost:19032`，先打印 UI-first handoff，不再出现 `FEISHU_APP_ID` / `OPENAI_API_KEY` 提示，`/api/status.gatewayPort = 18898`
+    - fresh execution：`harden-openclaw-usb.command` 启动到 `http://localhost:19033`，先打印 canonical UI/Dashboard handoff，不再直跑 legacy harden，`/api/status.gatewayPort = 18899`
+    - fresh browser evidence：Safari 打开 `http://localhost:19031/dashboard` 时，“基本信息”卡片中的“端口”显示 `18897`，与 `/api/status.gatewayPort = 18897` 一致。
+  - negative invariants 保持成立：
+    - 没有重开 `F-003`
+    - 没有重开真正的 `F-014 = wecom-channel-integration`
+    - 没有把 `specs/014-mac-arm64-installer-hardening/` 写成 authority 里的 `F-014`
+    - 没有把 `F-025-B` 提前并入或关闭
+    - 没有把 callback 写成默认 blocking gate
+    - 没有宣称整个 mac 体系或整个 `F-025` 已完成
+- Closeout recorded:
+  - `F-026` 已有足够 fresh macOS evidence 支撑 close gate，但完成范围仅限 mac-first direct user-path parity。
+  - 本轮 verified closeout 只覆盖 `MAC-DIV-001/002/003/006`。
+  - `run-openclaw-usb.command` 与 `harden-openclaw-usb.command` 已分别稳定为 UI-first handoff 与 canonical UI/Dashboard handoff。
+  - Dashboard 服务端口显示现已来自 authoritative `gatewayPort`，不再写死 `18889`。
+- Out-of-scope / blockers retained:
+  - `MAC-DIV-004` / `MAC-DIV-005` 本轮未写成已完成。
+  - `MAC-DIV-007` 继续保留为 `F-026` 外的 packaging/runtime blocker。
+  - `F-025-B` 继续保持 `blocked on Windows-specific evidence`。
+- Why this round can close:
+  - 本轮 closeout 只搬运已被 `spec / code / fresh evidence` 支撑的事实，不新增设计、不改写 truth、不提升 longrun authority。
+  - `docs/runbooks/F-005-ui-install-reset.md` 可以承载这次直接受影响的 mac wrapper / Dashboard 事实同步，无需新建 runbook。
+- Validation:
+  - `python3 -m json.tool longrun/workspaces/opensparrow-unified/feature_list.json >/dev/null` → PASS
+  - `python3 longrun/scripts/progress_report.py longrun/workspaces/opensparrow-unified/feature_list.json` → PASS（`25/25 passing`、`Remaining: 0`、`Blocked by dependencies: 0`）
+  - `tail -n 120 longrun/workspaces/opensparrow-unified/claude-progress.txt` → PASS（文件尾部已出现新追加的 `Session 23`）
+  - `git diff -- longrun/workspaces/opensparrow-unified/feature_list.json longrun/workspaces/opensparrow-unified/claude-progress.txt docs/runbooks/F-005-ui-install-reset.md` → PASS（本轮 writeback 目标集仅包含允许 write-set）
+- Current status:
+  - `F-026` 已完成 verified closeout writeback。
+  - `F-025-B` 仍 blocked on Windows-specific evidence。
+- Next follow-up:
+  - 若要继续处理 companion `MAC-DIV-004/005`、packaging/runtime blocker `MAC-DIV-007`、或 broader docs / Windows fidelity，必须另开 packet，不能 retroactively 扩写本轮 closeout 边界。
+- Progress snapshot: `25/25 passing`; `F-025-B` remains blocked outside this closeout.
+
+## Session 24 (F-028 Mem0 project memory integration)
+- Date: 2026-04-15
+- Goal: 以 sidecar 方式把 Mem0 接入 OpenSparrow 的 Codex-first 工作流，整理 durable project memory，并在不碰 F-027 实现面的前提下完成最小可用验收。
+- Selected feature id: `F-028`
+- Scope:
+  - 本轮只改 memory/gov/tooling 面：`specs/028-*`、`AGENTS.md`、`docs/memory-setup.md`、`memory/mem0_import.json`、本机 `~/.codex/config.toml`、本机 Mem0 CLI 配置、以及最小 longrun 记账。
+  - 本轮不改 `ui/`、`platforms/`、`scripts/openclaw-usb/`、`vendor/`、Windows 线或 F-027 packaged Mac 实现写面。
+- Changes made:
+  - 新增 `specs/028-mem0-project-memory-integration/{spec,plan,tasks}.md`，冻结 sidecar scope、namespace contract、A/B/C 分类与验收要求。
+  - 在 `AGENTS.md` 新增 `Memory Operating Rules`，明确检索先行、durable-only 写入、旧事实优先 update、全文禁灌库、重要短期上下文用 `session_state`。
+  - 新增 `docs/memory-setup.md`，说明 Codex/Mem0 接入方式、A/B/C 映射、re-import、纠错与验证方法。
+  - 新增 `memory/mem0_import.json`，整理 21 条 OpenSparrow durable memories，覆盖 authority、目录职责、冻结边界、F-014/F-024/F-025/F-026/F-027 结论与项目偏好。
+  - 本机 `~/.codex/config.toml` 已新增 `mcp_servers.mem0` 与 `env_http_headers.Authorization = "MEM0_AUTH_HEADER"`。
+  - 本机已安装官方 `@mem0/cli`，并设置 `defaults.user_id = opensparrow-memory`、`defaults.app_id = opensparrow`。
+- Evidence basis:
+  - `MEM0_API_KEY` 与 `MEM0_AUTH_HEADER` 均存在；未写入 repo。
+  - `codex mcp get mem0` 显示 Mem0 HTTP MCP 已启用，且 `env_http_headers: Authorization=MEM0_AUTH_HEADER`。
+  - `mem0 status -o json` 返回 `connected=true`、`backend=platform`。
+  - 使用官方 API 同步写入一条 system test memory：`605e14ed-3b4d-41b3-8d8b-08e6d08cf2c2`。
+  - `mem0 get 605e14ed-3b4d-41b3-8d8b-08e6d08cf2c2 -o json`、`mem0 search "verification fact updated" --user-id opensparrow-memory --app-id opensparrow --keyword --threshold 0 -o json` 已验证 system test memory 可读、可搜、可更新。
+  - 使用官方 API 同步导入 `memory/mem0_import.json`，导入数 `21`；验收时 `mem0 list --user-id opensparrow-memory --app-id opensparrow -o json` 一度返回 `count = 22`（21 条项目记忆 + 1 条 system test memory），删除 system test marker 后当前稳定计数为 `21`。
+  - `mem0 search "OpenSparrow authority order" --user-id opensparrow-memory --app-id opensparrow -o json` 已命中 authority-order memory：`e2620434-bc29-4034-afb1-3af190422288`。
+  - 新 `codex exec` 会话日志 `/tmp/opensparrow-codex-exec.log` 显示 `mcp: mem0/search_memories (completed)` 与 `mcp: mem0/get_memories (completed)`，证明 agent-side 已能实际调用 Mem0 MCP 检索已导入记忆。
+- Operational findings:
+  - `mem0` CLI v0.2.3 的 `add/import` 默认走 async background event；对“必须立刻可验证”的写入，本轮改用官方 API `infer=false` + `async_mode=false`。
+  - `mem0 list/search --user-id opensparrow-memory` 在 v0.2.3 下不会自动补默认 `app_id`；若要命中当前项目命名空间，需显式追加 `--app-id opensparrow`。该差异已记录到 `docs/memory-setup.md`。
+- Validation:
+  - `python3 -m json.tool memory/mem0_import.json >/dev/null` → PASS
+  - `python3 -m json.tool longrun/workspaces/opensparrow-unified/feature_list.json >/dev/null` → PASS
+  - `mem0 status -o json` → PASS (`connected=true`, `backend=platform`)
+  - `mem0 get 605e14ed-3b4d-41b3-8d8b-08e6d08cf2c2 -o json` → PASS
+  - `mem0 delete 605e14ed-3b4d-41b3-8d8b-08e6d08cf2c2` → PASS
+  - `mem0 list --user-id opensparrow-memory --app-id opensparrow -o json` → PASS (`count=21`)
+  - `mem0 search "OpenSparrow authority order" --user-id opensparrow-memory --app-id opensparrow -o json` → PASS
+  - `codex mcp get mem0` → PASS
+- Current status:
+  - OpenSparrow 已具备可工作的 Mem0 项目长期记忆。
+  - 规则层和 durable memory 层已分开；本轮未扰动 F-027 主线实现。
+- Next follow-up:
+  - 后续 feature 完成后，按 `AGENTS.md` 的 `Memory Operating Rules` 只补 durable facts，并优先 update 旧记忆而不是新增冲突 truth。
+  - 若未来 `mem0` CLI 补齐同步写入或显式 `app_id` 默认继承，可再回收这轮同步 API workaround。
+
+## Session 25 (PKT-027-A4 facts-only closeout writeback)
+- Date: 2026-04-16
+- Goal: 只把 Commander 已接受的 `PKT-027-A3 = PASS` packaged facts 写回 unified workspace 的长期记忆层，不补实现、不补 verification、也不改写 authority。
+- Selected feature id: `F-027`
+- Scope:
+  - 本轮只更新 `longrun/workspaces/opensparrow-unified/feature_list.json` 与 `longrun/workspaces/opensparrow-unified/claude-progress.txt`。
+  - 本轮不补实现，不补 packaged docs parity，不改 `F-025-B`，不重开 `F-026`，也不把真正 `F-014` 改写成失败。
+- Evidence basis:
+  - Commander 已冻结并接受：`PKT-027-A3 verdict = PASS`。
+  - A3 唯一验证 artifact：`dist/handoff/opensparrow-mac-ui-full-arm64-20260415-235340/opensparrow-0.1.0-alpha-mac-ui-arm64`。
+  - 今晚 packaged 官方 first-click path：根目录 `01-开始部署.command`。
+  - packaged 正式支持面：`Mac-only UI-first`，且今晚 outward support 只承诺 `Feishu / DingTalk`。
+  - `mac/run-openclaw-usb.command` 与 `mac/harden-openclaw-usb.command` 只保留为 advanced compatibility / handoff，不再是主安装 / 主 hardening 路径。
+  - packaged UI / Dashboard 已按 authoritative `/api/status.gatewayPort` 工作，dashboard 不再硬编码 `18889`。
+  - packaged outward promise 已对 WeCom 做 tonight de-scope；这只是 packaged outward promise narrowing，不是真正 `F-014` 失败。
+  - companion 不纳入今晚 packaged 正式支持面。
+  - `F-025-B` 继续保持 `blocked on Windows-specific evidence`。
+- Closeout recorded:
+  - `F-027` 以 `packaged-mac-ui-first-release-readiness` 身份 close，且冻结语义只限今晚 `Mac UI-first packaged support surface`。
+  - 本轮 PASS 的核心 packaged evidence 点是：唯一 artifact 已冻结、官方 first-click path 已冻结、secondary wrappers 已冻结为 handoff only、packaged UI / Dashboard 已冻结在 authoritative `gatewayPort` read-back、outward support 已缩到 `Feishu / DingTalk`。
+  - WeCom 今晚是 packaged outward promise de-scope，不是 channel failure，也不回写真正 `F-014`。
+- Residual notes preserved:
+  - 包内仍有 residual Windows files，但它们不在今晚 outward first-click surface，也没有被写成已支持 Windows。
+  - WeCom plugin/runtime mismatch 仍是已知 packaged fact，但在今晚 de-scope 前提下只保留为 residual note，不升级为 gate-failing blocker。
+- Why this round can close:
+  - `PKT-027-A4` 只搬运 A3 已证实的 packaged facts；本轮没有通过 closeout 自我发明新结论，也没有让 longrun 越权。
+  - `F-027` 的 closeout 没有改写 `F-025-B`、没有重开 `F-026`、也没有把真正 `F-014` 写成失败。
+- Validation:
+  - `python3 -m json.tool longrun/workspaces/opensparrow-unified/feature_list.json >/dev/null` → PASS
+  - `python3 longrun/scripts/progress_report.py longrun/workspaces/opensparrow-unified/feature_list.json` → PASS（`27/27 passing`、`Remaining: 0`、`Blocked by dependencies: 0`）
+  - `tail -n 120 longrun/workspaces/opensparrow-unified/claude-progress.txt` → PASS（文件尾部已出现新追加的 `Session 25`）
+  - `git diff -- longrun/workspaces/opensparrow-unified/feature_list.json longrun/workspaces/opensparrow-unified/claude-progress.txt` → PASS（本轮 writeback 仅覆盖允许 write-set）
+- Current status:
+  - `F-027` 已完成 facts-only closeout writeback。
+  - `F-025-B` 仍 blocked on Windows-specific evidence。
+  - `F-026` 维持 verified closeout，不因 packaged closeout 被重开。
+- Next follow-up:
+  - 若后续要处理 Windows、broader packaged docs parity、companion 正式支持、或 WeCom packaged runtime/plugin 线，必须另开 packet，不能 retroactively 扩写本轮 `F-027` closeout 边界。
+- Progress snapshot: `27/27 passing`; `F-025-B` remains blocked outside `F-027`.

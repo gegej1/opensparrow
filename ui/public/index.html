@@ -8,6 +8,8 @@
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/animate.css@4.1.1/animate.min.css" />
   <script src="https://cdn.jsdelivr.net/npm/animejs@3.2.2/lib/anime.min.js"></script>
+  <script src="/wecom-helpers.js"></script>
+  <script src="/channel-helpers.js"></script>
   <style>
     [x-cloak] { display: none !important; }
 
@@ -368,7 +370,7 @@
             </div>
             <ul class="text-xs mb-3 list-disc pl-5" style="color:#6B7A99">
               <li>CorpId（企业 ID）来自开放平台应用详情页。</li>
-              <li>AppKey（Client ID）与发送接口中的 Robot Code 使用同一值。</li>
+              <li>Client ID（兼容 AppKey）与发送接口中的 Robot Code 使用同一值。</li>
               <li>机器人能力已开启，消息接收方式为 Stream。</li>
               <li>事件订阅已勾选消息接收相关事件，并已保存。</li>
               <li>后台改配置后，务必发布最新应用版本再测试。</li>
@@ -381,7 +383,7 @@
                        class="step-input" />
               </div>
               <div>
-                <label class="block text-sm font-medium mb-1" style="color:#6B7A99">AppKey（Client ID / Robot Code）</label>
+                <label class="block text-sm font-medium mb-1" style="color:#6B7A99">Client ID（兼容 AppKey / Robot Code）</label>
                 <p class="text-xs mb-1" style="color:#6B7A99">一次填写即可，系统会按同值处理 Robot Code</p>
                 <input type="text" x-model="credentials.dingtalk.clientId"
                        placeholder="dingxxxxxxxxxxxxxxxx"
@@ -389,13 +391,13 @@
               </div>
               <div>
                 <label class="block text-sm font-medium mb-1" style="color:#6B7A99">Robot Code（可单独填）</label>
-                <p class="text-xs mb-1" style="color:#6B7A99">若不填，默认复用 AppKey；若填写则优先使用该值</p>
+                <p class="text-xs mb-1" style="color:#6B7A99">若不填，默认复用 Client ID；若填写则优先使用该值</p>
                 <input type="text" x-model="credentials.dingtalk.robotCode"
                        placeholder="dingxxxxxxxxxxxxxxxx"
                        class="step-input" />
               </div>
               <div>
-                <label class="block text-sm font-medium mb-1" style="color:#6B7A99">AppSecret（Client Secret）</label>
+                <label class="block text-sm font-medium mb-1" style="color:#6B7A99">Client Secret（兼容 AppSecret）</label>
                 <input type="password" x-model="credentials.dingtalk.clientSecret"
                        placeholder="••••••••••••••••"
                        class="step-input" />
@@ -420,7 +422,7 @@
               </div>
             </div>
             <div class="info-box mb-4">
-              OpenClaw 社区企微插件 <code>@sunnoy/wecom</code> 以 <strong>Bot ID + Bot Secret</strong> 作为主链路必填；如需自建应用增强出站 / 回调入站，再补充 CorpId / CorpSecret / AgentId。
+              今晚 packaged 首发<strong>不对外承诺企业微信 ready 状态</strong>。当前页面保留社区插件入口，供后续补证 / 兼容使用；若你自行尝试，仍以 <strong>Bot ID + Bot Secret</strong> 为主链路必填，自建应用 / callback 字段只属增强项。
             </div>
             <ul class="text-xs mb-3 list-disc pl-5" style="color:#6B7A99">
               <li>机器人模式选择 API + 长连接，Bot ID 通常以 <code>aib</code> 或 <code>aib_</code> 开头。</li>
@@ -617,6 +619,53 @@
                 <p class="text-xs mb-1" style="color:#92400E" x-text="'• ' + warning"></p>
               </template>
             </div>
+            <div
+              x-show="installReports.dingtalk"
+              class="text-left rounded-xl p-4 mb-6"
+              style="background:#F7FAFF;border:1px solid #C7D8F8"
+            >
+              <div class="flex items-center justify-between gap-3 flex-wrap mb-2">
+                <div>
+                  <h4 class="text-sm font-semibold" style="color:#0958D9">钉钉安装读回</h4>
+                  <p class="text-xs mt-1" style="color:#6B7A99">用于 packaged install / read-back 对照，不代表钉钉已判 PASS。</p>
+                </div>
+                <span
+                  class="text-xs font-semibold px-2 py-1 rounded-full"
+                  :style="reportStatusStyle(installReports.dingtalk)"
+                  x-text="reportStatusLabel(installReports.dingtalk)"
+                ></span>
+              </div>
+              <p
+                x-show="installReports.dingtalk?.probe?.summary"
+                class="text-xs font-mono break-all rounded-lg p-3 mb-3"
+                style="background:white;border:1px solid #E0EEFF;color:#1D2B4E"
+                x-text="installReports.dingtalk?.probe?.summary || ''"
+              ></p>
+              <template x-if="Array.isArray(installReports.dingtalk?.checks) && installReports.dingtalk.checks.length > 0">
+                <div class="mb-2">
+                  <div class="text-xs font-semibold mb-1" style="color:#0958D9">检查项</div>
+                  <template x-for="(item, idx) in installReports.dingtalk.checks" :key="'install-check-' + idx">
+                    <p class="text-xs mb-1" style="color:#1D2B4E" x-text="'• ' + item"></p>
+                  </template>
+                </div>
+              </template>
+              <template x-if="Array.isArray(installReports.dingtalk?.warnings) && installReports.dingtalk.warnings.length > 0">
+                <div class="mb-2">
+                  <div class="text-xs font-semibold mb-1" style="color:#B45309">告警</div>
+                  <template x-for="(item, idx) in installReports.dingtalk.warnings" :key="'install-warning-' + idx">
+                    <p class="text-xs mb-1" style="color:#92400E" x-text="'• ' + item"></p>
+                  </template>
+                </div>
+              </template>
+              <template x-if="Array.isArray(installReports.dingtalk?.errors) && installReports.dingtalk.errors.length > 0">
+                <div>
+                  <div class="text-xs font-semibold mb-1" style="color:#DC2626">未闭合项</div>
+                  <template x-for="(item, idx) in installReports.dingtalk.errors" :key="'install-error-' + idx">
+                    <p class="text-xs mb-1" style="color:#B91C1C" x-text="'• ' + item"></p>
+                  </template>
+                </div>
+              </template>
+            </div>
             <a href="/dashboard"
                class="blue-btn"
                style="display:inline-block;width:auto;padding:12px 32px;text-decoration:none">
@@ -684,7 +733,7 @@
         channelOptions: [
           { key: 'feishu',   icon: '🐦', name: '飞书 / Lark', desc: '飞书/Lark 机器人，国内最完善' },
           { key: 'dingtalk', icon: '📎', name: '钉钉',         desc: '钉钉企业机器人，Stream 长连接' },
-          { key: 'wecom',    icon: '💼', name: '企业微信',     desc: '社区企微插件，Bot 必填 + 自建应用可选' },
+          { key: 'wecom',    icon: '💼', name: '企业微信',     desc: '社区企微入口保留，今晚首发不纳入正式支持面' },
         ],
 
         channelMap: { feishu: '飞书', dingtalk: '钉钉', wecom: '企业微信' },
@@ -692,19 +741,9 @@
         selectedChannels: [],
 
         credentials: {
-          feishu:   { appId: '', appSecret: '' },
-          dingtalk: { corpId: '', clientId: '', robotCode: '', clientSecret: '' },
-          wecom:    {
-            botId: '',
-            secret: '',
-            corpId: '',
-            corpSecret: '',
-            agentId: '',
-            replyFormat: '',
-            callbackToken: '',
-            encodingAESKey: '',
-            callbackPath: '',
-          },
+          feishu: window.OpenSparrowChannels.createEmptyUiFields('feishu'),
+          dingtalk: window.OpenSparrowChannels.createEmptyUiFields('dingtalk'),
+          wecom: window.OpenSparrowChannels.createEmptyUiFields('wecom'),
         },
 
         apiConfig: {
@@ -719,6 +758,9 @@
         installError: false,
         installErrorMsg: '',
         installWarnings: [],
+        installReports: {
+          dingtalk: null,
+        },
         installLoadingMessage: '部署过程通常需要 1-2 分钟，请勿关闭页面。',
 
         installTasks: [
@@ -745,18 +787,54 @@
         },
 
         async init() {
+          const forceSetup = new URLSearchParams(window.location.search).has('force') ||
+                             window.location.pathname === '/setup';
           try {
-            const forceSetup = new URLSearchParams(window.location.search).has('force') ||
-                               window.location.pathname === '/setup';
             const res = await this.fetchWithTimeout('/api/status', {}, this.requestTimeout.status);
             if (res.ok) {
               const data = await res.json();
               if (data.installed === true && data.daemon === 'running' && !forceSetup) {
                 window.location.href = '/dashboard';
+                return;
               }
             }
           } catch (_) {
             // API not available yet — stay on wizard
+          }
+
+          await this.prefillFromConfig();
+        },
+
+        async prefillFromConfig() {
+          try {
+            const res = await this.fetchWithTimeout('/api/config', {}, this.requestTimeout.status);
+            if (!res.ok) return;
+
+            const data = await res.json();
+            const channels = data?.channels && typeof data.channels === 'object'
+              ? data.channels
+              : {};
+            const nextSelected = [];
+
+            this.channelOptions.forEach((channel) => {
+              const normalized = window.OpenSparrowChannels.normalizeUiFields(channel.key, channels[channel.key] || {});
+              this.credentials[channel.key] = {
+                ...window.OpenSparrowChannels.createEmptyUiFields(channel.key),
+                ...normalized,
+              };
+
+              if (
+                (channels[channel.key] && channels[channel.key].enabled !== false) ||
+                window.OpenSparrowChannels.hasReplayValue(channel.key, normalized)
+              ) {
+                nextSelected.push(channel.key);
+              }
+            });
+
+            this.selectedChannels = nextSelected;
+
+          } catch (_) {
+            // Config not available yet — keep wizard defaults
           }
         },
 
@@ -804,64 +882,60 @@
           return parts.join('\n');
         },
 
-        isLikelyWecomBotId(value) {
-          return /^aib(?:[_-]?[A-Za-z0-9][A-Za-z0-9._-]*)$/i.test(String(value || '').trim());
-        },
-
-        validateWecomFields(fields) {
-          const botId = String(fields?.botId || '').trim();
-          const secret = String(fields?.secret || '').trim();
-          const corpId = String(fields?.corpId || '').trim();
-          const corpSecret = String(fields?.corpSecret || '').trim();
-          const agentId = String(fields?.agentId || '').trim();
-          const replyFormat = String(fields?.replyFormat || '').trim().toLowerCase();
-          const callbackToken = String(fields?.callbackToken || '').trim();
-          const encodingAESKey = String(fields?.encodingAESKey || '').trim();
-          const callbackPath = String(fields?.callbackPath || '').trim();
-          const hasAgentBasics = Boolean(corpId || corpSecret || agentId);
-          const hasCallback = Boolean(callbackToken || encodingAESKey || callbackPath);
-          const errors = [];
-
-          if (!botId) errors.push('企业微信需要填写 Bot ID');
-          if (botId && !this.isLikelyWecomBotId(botId)) {
-            errors.push('企业微信 Bot ID 格式疑似错误，请填写智能机器人（API+长连接）生成的 Bot ID（通常以 aib 或 aib_ 开头）');
-          }
-          if (!secret) errors.push('企业微信需要填写 Bot Secret');
-          if (hasAgentBasics && (!corpId || !corpSecret || !agentId)) {
-            errors.push('启用企业微信自建应用增强出站时，需要同时填写 CorpId、CorpSecret、AgentId');
-          }
-          if (agentId && !/^\d+$/.test(agentId)) {
-            errors.push('企业微信 AgentId 必须是正整数');
-          }
-          if (replyFormat && !['markdown', 'text'].includes(replyFormat)) {
-            errors.push('企业微信 Reply Format 仅支持 markdown 或 text');
-          }
-          if (hasCallback && (!callbackToken || !encodingAESKey || !callbackPath)) {
-            errors.push('启用企业微信回调入站时，需要同时填写 Callback Token、EncodingAESKey、Callback Path');
-          }
-          if (hasCallback && (!corpId || !corpSecret || !agentId)) {
-            errors.push('企业微信回调入站依赖完整的自建应用 CorpId、CorpSecret、AgentId');
-          }
-
-          return {
-            botId,
-            secret,
-            corpId,
-            corpSecret,
-            agentId,
-            replyFormat,
-            callbackToken,
-            encodingAESKey,
-            callbackPath,
-            errors,
-          };
-        },
-
         isInstallTimeoutLike(errorText) {
           const text = String(errorText || '');
           const timeoutLike = /(timed out|timeout|health\s*check)/i.test(text);
           const hardFail = /(config set|models set|plugin install|writing auth-profiles|spawn .*enoent|unknown channel type|不能为空|invalid)/i.test(text);
           return timeoutLike && !hardFail;
+        },
+
+        normalizeChannelReport(report, fallbackError = '') {
+          const raw = report && typeof report === 'object' ? report : {};
+          const errors = Array.isArray(raw.errors) ? raw.errors.slice() : [];
+          if (fallbackError && errors.length === 0) {
+            errors.push(fallbackError);
+          }
+          const probe = raw.probe && typeof raw.probe === 'object' ? raw.probe : {};
+          return {
+            status: raw.status === 'ok' || raw.status === 'warning' ? raw.status : 'error',
+            ready: raw.ready === true,
+            daemon: typeof raw.daemon === 'string' ? raw.daemon : 'unknown',
+            checks: Array.isArray(raw.checks) ? raw.checks.slice() : [],
+            warnings: Array.isArray(raw.warnings) ? raw.warnings.slice() : [],
+            errors,
+            probe: {
+              code: typeof probe.code === 'number' ? probe.code : null,
+              summary: String(probe.summary ?? '').trim(),
+            },
+          };
+        },
+
+        captureInstallReports(payload) {
+          this.installReports = {
+            dingtalk: payload?.dingtalkProbe
+              ? this.normalizeChannelReport(payload.dingtalkProbe)
+              : null,
+          };
+        },
+
+        reportStatusLabel(report) {
+          if (!report || typeof report !== 'object') return '未检测';
+          if (report.status === 'ok') return '已读回';
+          if (report.status === 'warning') return '需补 fresh live verification';
+          return '配置未闭合';
+        },
+
+        reportStatusStyle(report) {
+          if (!report || typeof report !== 'object') {
+            return 'background:#EFF6FF;color:#1D4ED8;border:1px solid #BFDBFE';
+          }
+          if (report.status === 'ok') {
+            return 'background:#ECFDF5;color:#047857;border:1px solid #A7F3D0';
+          }
+          if (report.status === 'warning') {
+            return 'background:#FFFBEB;color:#B45309;border:1px solid #FDE68A';
+          }
+          return 'background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA';
         },
 
         async waitUntilInstalled() {
@@ -887,29 +961,17 @@
         },
 
         async startInstall() {
-          if (this.selectedChannels.includes('dingtalk')) {
-            const corpId = String(this.credentials.dingtalk?.corpId || '').trim();
-            const clientId = String(this.credentials.dingtalk?.clientId || '').trim();
-            const robotCode = String(this.credentials.dingtalk?.robotCode || '').trim();
-            const clientSecret = String(this.credentials.dingtalk?.clientSecret || '').trim();
-            if (!corpId || (!clientId && !robotCode) || !clientSecret) {
-              this.installStarted = false;
-              this.installDone = false;
-              this.installError = true;
-              this.installErrorMsg = '钉钉需要填写 3 项：CorpId、AppKey（Client ID/Robot Code）、AppSecret';
-              return;
-            }
-          }
+          const preflightErrors = this.selectedChannels.flatMap((key) => {
+            const result = window.OpenSparrowChannels.validateUiFields(key, this.credentials[key]);
+            return Array.isArray(result.errors) ? result.errors : [];
+          });
 
-          if (this.selectedChannels.includes('wecom')) {
-            const result = this.validateWecomFields(this.credentials.wecom);
-            if (result.errors.length > 0) {
-              this.installStarted = false;
-              this.installDone = false;
-              this.installError = true;
-              this.installErrorMsg = result.errors.join('；');
-              return;
-            }
+          if (preflightErrors.length > 0) {
+            this.installStarted = false;
+            this.installDone = false;
+            this.installError = true;
+            this.installErrorMsg = preflightErrors.join('；');
+            return;
           }
 
           this.installStarted = true;
@@ -917,6 +979,7 @@
           this.installErrorMsg = '';
           this.installDone = false;
           this.installWarnings = [];
+          this.installReports = { dingtalk: null };
           this.installLoadingMessage = '正在部署中，通常需要 1-2 分钟，请勿关闭页面。';
 
           // Reset task statuses
@@ -925,23 +988,7 @@
           this.$nextTick(() => this._animateTasks());
 
           const body = {
-            channels: this.selectedChannels.map(key => ({
-              ...(key === 'wecom'
-                ? (() => {
-                    const { errors, ...wecomPayload } = this.validateWecomFields(this.credentials.wecom);
-                    return wecomPayload;
-                  })()
-                : {}),
-              type: key,
-              ...(key === 'wecom' ? {} : this.credentials[key]),
-              ...(key === 'dingtalk'
-                ? {
-                    corpId: this.credentials.dingtalk.corpId,
-                    clientId: this.credentials.dingtalk.clientId || this.credentials.dingtalk.robotCode,
-                    robotCode: this.credentials.dingtalk.robotCode || this.credentials.dingtalk.clientId,
-                  }
-                : {}),
-            })),
+            channels: this.selectedChannels.map(key => window.OpenSparrowChannels.buildChannelPayload(key, this.credentials[key])),
             api: this.apiConfig,
           };
 
@@ -965,6 +1012,7 @@
               body: JSON.stringify(body),
             }, this.requestTimeout.install);
             const payload = await res.json().catch(() => ({}));
+            this.captureInstallReports(payload);
 
             if (res.ok) {
               this.installWarnings = Array.isArray(payload.warnings) ? payload.warnings : [];
@@ -1027,6 +1075,7 @@
           this.installError = false;
           this.installErrorMsg = '';
           this.installWarnings = [];
+          this.installReports = { dingtalk: null };
           this.installTasks.forEach(t => t.status = 'pending');
         },
       };

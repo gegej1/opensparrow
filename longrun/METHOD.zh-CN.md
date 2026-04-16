@@ -12,6 +12,12 @@
 4. 必须做端到端验证后才能标记通过。
 5. 会话结束时保持代码库可运行、可交接。
 
+## 边界说明
+- `longrun` 是项目事实层与 workspace contract，不是 feature 交付主路径。
+- feature 交付仍应走当前项目的 `specs/` 路径（`spec -> plan -> tasks`）。
+- 运行时执行方法仍应由项目规则与 `superpowers` 工作流主导。
+- `longrun` 中的 checklist / prompt templates 应理解为项目接手与兼容性 scaffold，不应膨胀为第二套执行框架。
+
 ## 本仓库落地约定
 每个项目工作区放在：`longrun/workspaces/<project>/`
 
@@ -40,6 +46,8 @@
 说明：
 - `depends_on` 用于描述前置依赖，`next_feature.py` 会优先选择未阻塞的特性。
 - `progress_report.py` 会显示阻塞项与依赖异常，便于会话交接。
+- `steps` 保持项目级摘要即可，不替代 feature 内部的实现任务分解。
+- `passes: true` 只能在能追溯到验收证据或等价验证记录后写回。
 
 ## 会话流程
 ### 初始化会话（Session 1）

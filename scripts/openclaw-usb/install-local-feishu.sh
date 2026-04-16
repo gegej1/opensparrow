@@ -353,7 +353,7 @@ configure_openai_provider() {
     provider_model_id="${provider_model_id#openai/}"
   fi
   local provider_json
-  provider_json="$("$NODE_CMD" -e 'const [baseUrl, modelId] = process.argv.slice(1); process.stdout.write(JSON.stringify({ baseUrl, models: [{ id: modelId, name: modelId, api: "openai-completions" }] }));' "$OPENAI_BASE_URL" "$provider_model_id")"
+  provider_json="$("$NODE_CMD" -e 'const [baseUrl, modelId] = process.argv.slice(1); process.stdout.write(JSON.stringify({ baseUrl, api: "openai-completions", models: [{ id: modelId, name: modelId, api: "openai-completions" }] }));' "$OPENAI_BASE_URL" "$provider_model_id")"
   oc config set models.providers.openai "$provider_json" --strict-json
 }
 

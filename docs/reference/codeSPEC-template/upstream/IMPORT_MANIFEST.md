@@ -1,0 +1,21 @@
+# codeSPEC Import Manifest
+
+- Semantic source: `/Users/eduardogan/Desktop/GHJProject/codeSPEC`
+- Target snapshot root: `/Users/eduardogan/Desktop/GHJProject/opensparrow/docs/reference/codeSPEC-template/upstream`
+- Imported directories:
+  - `UnifiedFramework/` (9 files)
+  - `AgentTeam/` (4 files)
+- Imported files:
+  - `UnifiedFramework/README.md`
+  - `UnifiedFramework/01-Unified-Framework-Architecture.md`
+  - `UnifiedFramework/02-Pruning-Checklist.md`
+  - `UnifiedFramework/03-Interface-Contracts.md`
+  - `UnifiedFramework/04-New-Project-Integration-Flow.md`
+  - `UnifiedFramework/05-Migration-Playbook.md`
+  - `UnifiedFramework/06-Future-Extension-Policy.md`
+  - `UnifiedFramework/12-Superpower-Execution-Bridge.md`
+  - `UnifiedFramework/export-manifest.authoring.yaml`
+  - `AgentTeam/README.md`
+  - `AgentTeam/02-Project-Onboarding-SOP.md`
+  - `AgentTeam/03-Dispatch-Templates.md`
+  - `AgentTeam/04-Quick-Reference.md`

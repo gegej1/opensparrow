@@ -1,7 +1,13 @@
 # Longrun Harness Kit
 
 This directory provides a reusable, migration-friendly long-running development template.
-Use it as a standardized workspace contract across projects.
+Use it as a standardized workspace contract and project-memory layer across projects.
+
+Boundary notes:
+- `longrun` is the Project Memory Layer, not the feature-delivery authority.
+- Feature definition still belongs to the local `specs/` path (`spec -> plan -> tasks`).
+- Runtime execution behavior still belongs to project rules plus `superpowers` workflow.
+- The prompt templates in `templates/` are compatibility scaffolds, not the long-term Execution Layer authority.
 
 ## Quick start
 1. Bootstrap a workspace:
@@ -9,8 +15,8 @@ Use it as a standardized workspace contract across projects.
    ./longrun/scripts/bootstrap.sh my-first-project
    ```
 2. Fill `longrun/workspaces/my-first-project/app_spec.md`.
-3. Run Session 1 with `longrun/templates/initializer_prompt.template.md`.
-4. Run continuation sessions with `longrun/templates/coding_prompt.template.md`.
+3. Run Session 1 using the project rules + `longrun` facts as primary inputs. `longrun/templates/initializer_prompt.template.md` is an optional compatibility scaffold.
+4. Run continuation sessions with project rules, `longrun` facts, and the feature-delivery path as primary inputs. `longrun/templates/coding_prompt.template.md` is an optional compatibility scaffold.
 5. Track progress:
    ```bash
    python3 longrun/scripts/progress_report.py longrun/workspaces/my-first-project/feature_list.json
@@ -44,6 +50,10 @@ Required fields:
 Recommended fields for stronger handoff:
 - `component`, `depends_on`, `acceptance_criteria`, `evidence_hint`, `risk`
 
+Interpretation rule:
+- `steps` should stay as project-level summary steps, not as a replacement for `spec/tasks` feature breakdown.
+- `passes: true` should only be written after the corresponding feature can be traced to acceptance evidence or equivalent verification record.
+
 Compatibility rule:
 - Existing scripts remain compatible as long as required fields are present.
 
@@ -62,3 +72,5 @@ Every coding session must:
 - re-verify previously passing behavior,
 - complete one unpassed feature end-to-end,
 - update `passes`, notes, and commit.
+
+This session contract defines the minimum project-memory handshake. It does not replace the feature-delivery authority (`specs/`) or the runtime execution authority (`superpowers`).

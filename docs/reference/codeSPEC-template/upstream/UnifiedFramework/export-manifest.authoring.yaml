@@ -1,0 +1,157 @@
+manifest_version: 1
+status: frozen-preflight-control-plane
+semantic_source_repo: codeSPEC
+public_target_repo: unified-framework-kit
+sync_rule:
+  model: source-first
+  summary: Semantic meaning remains authored in codeSPEC first, then mirrored into the public repo as curated public-safe output.
+  public_snapshot_rule: The public repo root manifest is a read-only snapshot and must not be used as the authoring control plane.
+cutover_state: not-cut-over
+semantic_owner_role: UnifiedFramework semantic maintainer
+export_owner_role: Batch-2 export maintainer
+last_reviewed_at: 2026-04-12
+
+method_only_contract:
+  classification: method-only
+  authority: non-authoritative
+  rewrite_required: true
+  fallback_required: true
+  raw_prompt_scaffolds_forbidden: true
+  raw_execution_impl_forbidden: true
+  per_surface_readme_required:
+    required: true
+    required_fields:
+      - classification
+      - authority
+      - tool_specificity
+      - fallback
+      - non_goals
+  notes:
+    - Method-only payload may be exported in Batch 2 only after public-safe and productized rewrite.
+    - Method-only payload must not become execution authority, project authority, or repo-governance authority.
+    - Raw .codex prompt scaffolds and .codex/skills implementations remain forbidden.
+
+surfaces:
+  - id: spec-kit-canonical
+    kit: spec-kit
+    classification: canonical
+    source_scope:
+      - spec规范/README.md
+      - spec规范/AGENTS.md
+      - spec规范/docs/
+      - UnifiedFramework/03-Interface-Contracts.md
+      - UnifiedFramework/12-Superpower-Execution-Bridge.md
+    public_target_path: kits/spec-kit/canonical/
+    rewrite_mode: public-safe-curated-export
+    owner_role: Batch-2 export maintainer
+    status: ready-for-implementation
+    notes:
+      - Canonical export covers Feature Delivery Layer role, boundaries, main flow, feature binding, and evidence/write-back explanation.
+      - Canonical export must remain readable and adoption-facing without becoming a second truth source.
+
+  - id: spec-kit-seed
+    kit: spec-kit
+    classification: seed
+    source_scope:
+      - spec规范/AGENTS.md
+      - spec规范/.specify/memory/constitution.md
+      - spec规范/.specify/templates/
+    public_target_path: kits/spec-kit/seed/
+    rewrite_mode: seed-rename-and-curate
+    owner_role: Batch-2 export maintainer
+    status: ready-for-implementation
+    notes:
+      - Seed export may include AGENTS seed, constitution seed, and spec/plan/tasks templates.
+      - Public repo must not expose kit-local AGENTS as repo authority.
+
+  - id: spec-kit-method-only
+    kit: spec-kit
+    classification: method-only
+    source_scope:
+      - spec规范/.specify/scripts/bash/
+      - spec规范/.codex/prompts/
+      - spec规范/scripts/codex
+      - spec规范/docs/Codex 快速开始.md
+    public_target_path: kits/spec-kit/methods/
+    rewrite_mode: productized-rewrite
+    owner_role: Batch-2 export maintainer
+    status: ready-for-implementation
+    notes:
+      - Do not expose internal .specify or .codex directory layout in the public repo.
+      - Do not export raw prompt scaffolds; export public-safe method documentation or rewritten helpers only.
+      - Every methods subtree requires a local README contract as defined above.
+
+  - id: longrun-canonical
+    kit: longrun
+    classification: canonical
+    source_scope:
+      - longterm/longrun/README.md
+      - longterm/longrun/CHECKLIST.md
+      - longterm/longrun/METHOD.zh-CN.md
+      - UnifiedFramework/03-Interface-Contracts.md
+      - UnifiedFramework/12-Superpower-Execution-Bridge.md
+    public_target_path: kits/project-memory/longrun/canonical/
+    rewrite_mode: public-safe-curated-export
+    owner_role: Batch-2 export maintainer
+    status: ready-for-implementation
+    notes:
+      - Canonical export covers Project Memory Layer role, feature_list minimum contract, passes/evidence handshake, and write-back semantics.
+      - Canonical export must keep longrun positioned as Project Memory, not Feature Delivery or Execution.
+
+  - id: longrun-seed
+    kit: longrun
+    classification: seed
+    source_scope:
+      - longterm/longrun/CHECKLIST.md
+      - longterm/longrun/templates/app_spec.template.md
+      - longterm/longrun/templates/feature_list.template.json
+      - longterm/longrun/templates/claude-progress.template.txt
+      - longterm/longrun/templates/init.template.sh
+    public_target_path: kits/project-memory/longrun/seed/
+    rewrite_mode: seed-curated-export
+    owner_role: Batch-2 export maintainer
+    status: ready-for-implementation
+    notes:
+      - The real seed set converges under seed/.
+      - longrun/CHECKLIST.md may remain at kit root only as a compatibility shim and entry point.
+
+  - id: longrun-method-only
+    kit: longrun
+    classification: method-only
+    source_scope:
+      - longterm/longrun/METHOD.md
+      - longterm/longrun/METHOD.zh-CN.md
+      - longterm/longrun/scripts/bootstrap.sh
+      - longterm/longrun/scripts/progress_report.py
+      - longterm/longrun/scripts/next_feature.py
+      - longterm/longrun/scripts/session_start.sh
+    public_target_path: kits/project-memory/longrun/methods/
+    rewrite_mode: productized-rewrite
+    owner_role: Batch-2 export maintainer
+    status: ready-for-implementation
+    notes:
+      - Method-only export stays non-authoritative and must keep explicit fallback to canonical plus seed usage.
+      - longrun prompt scaffolds do not belong in Batch 2 method-only export.
+      - Every methods subtree requires a local README contract as defined above.
+
+  - id: batch-2-exclusions
+    kit: batch-2
+    classification: do-not-publish
+    source_scope:
+      - spec规范/.codex/auth.json
+      - spec规范/.codex/config.toml
+      - longterm/longrun/templates/initializer_prompt.template.md
+      - longterm/longrun/templates/coding_prompt.template.md
+      - longterm/longrun/workspaces/
+      - longterm/longrun/mcp/
+      - longterm/research/
+      - replay/trace/video/node_modules residue
+      - overlays/agent-team/
+      - formal examples
+    public_target_path: null
+    rewrite_mode: exclude
+    owner_role: Batch-2 export maintainer
+    status: frozen-exclusion
+    notes:
+      - Batch 2 does not publish overlays, formal examples, execution implementation, internal residue, or raw prompt scaffolds.
+      - Public repo remains a curated mirror and does not receive any .codex/skills implementation.

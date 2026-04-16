@@ -8,6 +8,8 @@
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/animate.css@4.1.1/animate.min.css" />
   <script src="https://cdn.jsdelivr.net/npm/animejs@3.2.2/lib/anime.min.js"></script>
+  <script src="/wecom-helpers.js"></script>
+  <script src="/channel-helpers.js"></script>
   <style>
     [x-cloak] { display: none !important; }
 
@@ -432,10 +434,10 @@
                      class="light-input" />
             </div>
             <div>
-              <label class="block text-sm font-medium mb-1" style="color:#6B7A99">AppKey（Client ID / Robot Code）</label>
+              <label class="block text-sm font-medium mb-1" style="color:#6B7A99">Client ID（兼容 AppKey / Robot Code）</label>
               <input type="text" x-model="modal.fields.clientId" placeholder="dingxxxxxxxxxxxxxxxx"
                      class="light-input" />
-              <p class="text-xs mt-1" style="color:#8AA0C5">Robot Code 与 AppKey 同值，无需单独填写。</p>
+              <p class="text-xs mt-1" style="color:#8AA0C5">Robot Code 与 Client ID 同值时，无需单独填写。</p>
             </div>
             <div>
               <label class="block text-sm font-medium mb-1" style="color:#6B7A99">Robot Code（可选单独填）</label>
@@ -443,7 +445,7 @@
                      class="light-input" />
             </div>
             <div>
-              <label class="block text-sm font-medium mb-1" style="color:#6B7A99">AppSecret（Client Secret）</label>
+              <label class="block text-sm font-medium mb-1" style="color:#6B7A99">Client Secret（兼容 AppSecret）</label>
               <input type="password" x-model="modal.fields.clientSecret" placeholder="••••••••••••••••"
                      class="light-input" />
             </div>
@@ -540,7 +542,7 @@
       <div class="flex items-center justify-between py-3 gap-4 flex-wrap">
         <!-- Logo -->
         <div class="flex items-center gap-2 select-none flex-shrink-0 min-w-0">
-          <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAHMAAAB4CAYAAADBhM0lAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAc6ADAAQAAAABAAAAeAAAAAC9aEH0AABAAElEQVR4Ae19B5iex3HeXO+994I7tEMnKkmwgFVdtCRLsiRaoWTZT1xS7NiOHye24xTnSeIi2Yml2JKcSIqoRkoUKYIUQQos6L0dDgdc7733u7zv7Lf/V/7/vwMhJtETe4H/K1tmZ2dmZ2dmd7+LWV5aXJGYWPGGGLysaESMxOBlZcW8+fJoPGJw1/yhLCxjX2IiliUcA9eUZ2UKwxvPTJ6g+ZkLuKAGFHHqYEEEc4tQnwXs5AlhBoDedhE+oShcm4lR3uCB5Y12G4NY2zCb176zgNaBewC+NwvzmGwB/ALFQmUIi2UQEbO8vLzCh38IP4sUcDh1m6j5u+RtFvr7nS3Qre6IGLcL4+11sn9g5ttmxtsjcGTw7wSMcMjKTDP+3I603E6e8EosfO8YFZ6LMXcGPzIsf2xojPVHe95up+7bzbNWvkjpkeI86Onj6nmUmWvLyWpAmAZSwTCxTAuiYODTMFqtJpaOnm5hR8bEwSEkDMFceNcoky+In8aG0oOpKMq2qREYDT8Ll3fmCc9n6GNhB9MJn2l6sZki3MPLeTMZNaswghm92WyavbtpLMof+WRS3TwGNXNdFVEVBNqoDDa/eSYT+c8G2pveoKmIIjEsBIuJycf8FCS+8eLixxgT/DBtrL1r21YVRFqeNnf43QhC5JpNbosT76sACgNtyzlQaM3ycfVeEwYlFBFCdNXGhrLfwYNtnB/xtweIMCKV98Z7ny30tes2pSKVtTAMeyLVzhwURpNmc0SCFSnOhW+fjJq9Q0ZoFcDhDotrUwwihBQtsJG2odHyvBPxkeq43bojlXVxWi3VTbM0cGPcXuqNc+F6n1g63hvxdp9NFWtXtDbcdwLGarVEgx8tfjVY/rT/sxDeBnToeTNmvi097W/MT/f2NpD96Sr6/740taPDzHeurV5jJRJUO8ZGSjNxVt1EzrF6auQy/lhCWA3KnaZ5a1kNhhknvbmDz4aGq8MwZbx5YshMFPXGBSGH3i2bImdW05uAIicDStSEUA1r5SEGMasgyxoUjyh1GRxZXbhGCJWNgqaBuxaGrD8yfMaGQIceGOsGS0NjlYfjyJx+RvvzYMy0EazBPrsVhAAoArgEsphovZpCgXQtH2KAKc/c3mxshDcEDSqT7OTRRD+EYHmlmrcCB3hUi11Be+F7seGzk2bzBRD01s8k4uuty5vuQApWoEIYFhkpggAitI1Z47nCsbISJVWBobQPg9XyRqrHVxh4+Mt7G6rVBS6mtAuD+ZVgQIqwbHmF6iEyS8wvLcjk0oxML83JzNK8LCwvGELHxkhibIIk45cWnyLpcUmSgGc/ZgYRC9+i5WWSjQvePWggycVd86GSMBoEAUR4N3igpB+4J+eKxCsjDSU8Cd5HAiBC4U31NjRSJd50QoyUx1dTJEQDvVY5qQQy+FiYU4uz0j7bL00z3XJjqlvaZvqkf2FMxpemwUwwcmVRlvDPkjIOdcXHgJmxyZIVnyrFiTlSlVQodWmlUp9aIhXJBZIKJlv4bIt99uLsbaNBP0gnvhuGRko3Q4fJEQk+69I6FGxkPmgeXHQJjC/RADEtcmCPZjmmBhtgS0SvnDm0IVHLOo2woFCFqcWta3hhQs6P35Rj49flwtQt6ZoblumVWTFuEJG42FiJg1lAWaTQYrFPVpb5E1nGXXhnGu/4t7S8LLFY282MT5LyxHzZllkpB3I3yM7sKilIzrSYhO4W/zVbiQzR6bQ2HY0gsVq37SEknAfNs7LC5kTPFCzkvq/eBJOPeRjC4d9WaUelGhgGztzyojRNdcpLw+fkjbEr0j4/qL0uLjbOMI514T/hryyBcYsxsoTf8nKsMlOWkML/yAPvlzKRQknGcJGe5j0Js4i0RXA5MS4BvTRH7s6rl8cKt8nOnCowO8VF6baeADsCDdYqakrdflkYh3fKzLVQ+WnT/Y2YXZ6Xc+O35PuDx+WtsWsyBvUZG4N+B5FXqXfkZYVMW4iVxQUwZZHGuklYBrMWV5bAUDBIEiQ3IU3KU3KkLCVXipKyJT8pDWNnsiTExWtPZl6q5+H5KemYGZGWyX4ZWZySytR8ebxoq7y/dJekQQ3/vw+W5RgG0Dg016GEYuYn4v9tZLWHAAWrlpZA/EuTrfLt/jfk6OhlMHEGYx17IXod0caPGnNlCQycByPnYqE2HdUK/cretYyeloNxcVNmiezLWSc7s6qlNr1Q8hLTYfjE3VYTF5aXZGRhWm5O9cnl8U6ZXZyX3dnVsiW7UjLik28Lhj/TO01nMvNtONpZPQfKaOOrDtTIEi3d35jwN1ueDKKA9cyNyLMDx+TZoWPSOz8qceyJ+Adtgh7JTmfU5+JMHHqiGQs5dSacBeRJAqM2ZZTKowUNcl/BRqkBA5Ni1/Jgqjhp/eEYujFjCzPSOTMssVBs5al5kp6Y7JRRKiEjEIwQgsIazOLSwN/FvPkII5jKcjErYKbKiOkK3jKhZ4uAiQCYAJ4hBJwS4cwEBNtG5gGAAAhlgFMc49iKnB6/IV/ufllOTTWrAMXCmGEpgyzgoTsuzMXJ0nwc1Cl+KMzfEtRjMqzUPTBaPlSxR+7BWJedmKqgLZ5r4ReeTtiA7rTBm06Y/BdskS8Pa/cRQNHx0JHtcoCbpAgdguluPi98FtHU1Xsm0Aw1wCmglbms8CKhsQFOe4nAokEkGOeFsYDpw7N9J+Tv+l6BcTOA0c0YNmboU2hQp3GyMBuvTLQEpjpm1dszKuQTlfvlgcJNkpVoDRV/O4K9xlv/WviBnhq8zPOWZ6IhgaWRYYIpFX5dvazJH6QhYyPhaXSOrdfwN7xGJ8bbALLWMjpUIMBIZb8jDMxDpDjWJMFC5BRA4zxApmHkHBm+KF/ofk7GVmYkAT0MsqjTBxJxGePiwgzGxtkEM1AijsSg5VmYlC4frdgrH0FvLEvNMbBRlv9t8BOZsf42hKHPHB78WMJPgwjpSssQQbUEpzz9c2MYKsZYQAoxzaHRxbFfOe+pg49+PIJt8MImRiYQTzWA+BpE0snjuZEqfkDehkaSFCWWA5mWYft0vySBQdUYu3z1AZFxGDbf7zslf9X9Q5mUeXgzqFZNYK9cXoiT+ZkENXBikMZEjp3EYVdOpfzKuvvl3sJ6GDTumGglWuuywLwtIuWcEBl/tiDYalvC3LUOf2tCGTiAvTnYJN/pOSEXJ27K2OKkxMYtSxYs57syauXDRffItqxa0IReVR9FQjDc+t2nUGLgAcxki6jzGYItJgCGYLyJXT2VxAZcIElX2oXxVumBif/e4t0hC9Kmjy9OyzO9J+UvO5+XqZV59EgyRNFSi5Xj4uJ0PHomJFkrpQMAUwxI9ntKtsjn6u+X9ZlFBinPlYR2MXefLPZMDcZ6iusjq4ueJzoF5mH9fuXmUfnb1qMyJOOSnBiDac+KxOFHjxrxz5RUear8EflA8X7JSjDjerD+t/Ouui46sky501Q0FIycxyT/DOaHhwcuqjfFnQoYRk8uzcqL/efByBdlCnnjVjAWwuvG3xK65MJMvMxPJsJaRTy7KH5Uq6mxifLJqv3ym5sfjchIEsFgHq0NazPShcGnSCEabJHvtZ2Vv7n1hgwsTGHcx9yV81/9YeCA8Ra7HI9564x8qe0leWvomszCb/zTBs6qQSSCMU3/aQG65U3vuYge+bctP5a61CIpTs52k1EfG/D6YKN8vvUFmVyYQwOBDphIV9syvDfKyKkEnXZoR4XbbQGMzMBk/dPVd8uv1N8nJWleGA7w+vhOtykIP/J969I/5TWeA5g5tJWqKcGbJNLSaTK4doL+aT/oRSuyXrqiuJHMUqmF+bR1r1yuiUNlV1yqx9QLvmR3DM4gX5vovyWfSiLVh9JdPuNh2RH/VF0XWJR1ZqKBM8f2Wnf7Q8O3pJ06AMC7hfnVbJSB0TpBOJFd6lJE9hK7qSJFfVMv5I+7YGZS2kBxgAAAABJRU5ErkJggg==" width="36" height="36" style="border-radius:50%;object-fit:cover;flex-shrink:0;min-width:36px;min-height:36px;" alt="Open Sparrow">
+          <img src="logo.png" width="36" height="36" style="border-radius:50%;object-fit:cover;flex-shrink:0;min-width:36px;min-height:36px;" alt="Open Sparrow">
           <span class="font-bold text-lg brand-text whitespace-nowrap">Open Sparrow</span>
         </div>
 
@@ -717,6 +719,68 @@
                     <span class="font-mono" style="color:#6B7A99" x-text="field.value"></span>
                   </div>
                 </template>
+              </div>
+
+              <div
+                x-show="ch.key === 'dingtalk'"
+                class="mt-4 rounded-xl p-3"
+                style="background:#F7FAFF;border:1px solid #C7D8F8"
+              >
+                <div class="flex items-start justify-between gap-3 flex-wrap">
+                  <div>
+                    <div class="text-xs font-semibold" style="color:#0958D9">钉钉诊断</div>
+                    <p class="text-xs mt-1" style="color:#6B7A99">用于 packaged read-back / lifecycle 对照，不代表 PASS。</p>
+                  </div>
+                  <button
+                    @click="refreshDingtalkDiagnostics()"
+                    :disabled="ch.diagnosticsLoading"
+                    class="edit-btn flex items-center gap-2"
+                  >
+                    <span x-show="ch.diagnosticsLoading" class="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
+                    <span x-text="ch.diagnosticsLoading ? '刷新中…' : '刷新读回'"></span>
+                  </button>
+                </div>
+
+                <div x-show="ch.diagnostics" class="mt-3 space-y-3">
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <span
+                      class="text-xs font-semibold px-2 py-1 rounded-full"
+                      :style="diagnosticsStatusStyle(ch.diagnostics)"
+                      x-text="diagnosticsStatusLabel(ch.diagnostics)"
+                    ></span>
+                    <span class="text-xs" style="color:#6B7A99" x-text="`daemon=${ch.diagnostics?.daemon || 'unknown'}`"></span>
+                  </div>
+                  <p
+                    x-show="ch.diagnostics?.probe?.summary"
+                    class="text-xs font-mono break-all rounded-lg p-3"
+                    style="background:white;border:1px solid #E0EEFF;color:#1D2B4E"
+                    x-text="ch.diagnostics?.probe?.summary || ''"
+                  ></p>
+                  <template x-if="Array.isArray(ch.diagnostics?.checks) && ch.diagnostics.checks.length > 0">
+                    <div>
+                      <div class="text-xs font-semibold mb-1" style="color:#0958D9">检查项</div>
+                      <template x-for="(item, idx) in ch.diagnostics.checks" :key="'dt-check-' + idx">
+                        <p class="text-xs mb-1" style="color:#1D2B4E" x-text="'• ' + item"></p>
+                      </template>
+                    </div>
+                  </template>
+                  <template x-if="Array.isArray(ch.diagnostics?.warnings) && ch.diagnostics.warnings.length > 0">
+                    <div>
+                      <div class="text-xs font-semibold mb-1" style="color:#B45309">告警</div>
+                      <template x-for="(item, idx) in ch.diagnostics.warnings" :key="'dt-warning-' + idx">
+                        <p class="text-xs mb-1" style="color:#92400E" x-text="'• ' + item"></p>
+                      </template>
+                    </div>
+                  </template>
+                  <template x-if="Array.isArray(ch.diagnostics?.errors) && ch.diagnostics.errors.length > 0">
+                    <div>
+                      <div class="text-xs font-semibold mb-1" style="color:#DC2626">未闭合项</div>
+                      <template x-for="(item, idx) in ch.diagnostics.errors" :key="'dt-error-' + idx">
+                        <p class="text-xs mb-1" style="color:#B91C1C" x-text="'• ' + item"></p>
+                      </template>
+                    </div>
+                  </template>
+                </div>
               </div>
             </div>
 
@@ -978,34 +1042,30 @@
             icon: '🐦',
             name: '飞书 / Lark',
             enabled: false,
-            fields: { appId: '', appSecret: '' },
+            fields: window.OpenSparrowChannels.createEmptyUiFields('feishu'),
             summaryFields: [],
+            diagnostics: null,
+            diagnosticsLoading: false,
           },
           {
             key: 'dingtalk',
             icon: '📎',
             name: '钉钉',
             enabled: false,
-            fields: { corpId: '', clientId: '', robotCode: '', clientSecret: '' },
+            fields: window.OpenSparrowChannels.createEmptyUiFields('dingtalk'),
             summaryFields: [],
+            diagnostics: null,
+            diagnosticsLoading: false,
           },
           {
             key: 'wecom',
             icon: '💼',
             name: '企业微信',
             enabled: false,
-            fields: {
-              botId: '',
-              secret: '',
-              corpId: '',
-              corpSecret: '',
-              agentId: '',
-              replyFormat: '',
-              callbackToken: '',
-              encodingAESKey: '',
-              callbackPath: '',
-            },
+            fields: window.OpenSparrowChannels.createEmptyUiFields('wecom'),
             summaryFields: [],
+            diagnostics: null,
+            diagnosticsLoading: false,
           },
         ],
 
@@ -1055,6 +1115,7 @@
           const keepOnDashboard = await this.loadStatus({ redirectOnReset: true });
           if (!keepOnDashboard) return;
           await this.loadConfig();
+          await this.refreshDingtalkDiagnostics();
           this.$nextTick(() => this._animateCards());
         },
 
@@ -1097,7 +1158,7 @@
             this.version = data.version || '1.0.0';
             this.serviceInfo.profile = data.profile || 'usb-portable';
             this.serviceInfo.configPath = data.configPath || '';
-            this.serviceInfo.port = '18889';
+            this.serviceInfo.port = String(data.gatewayPort ?? '') || '—';
 
             if (options.redirectOnReset === true && this.shouldRedirectToSetup(this.statusSnapshot)) {
               window.location.replace('/setup?force=1');
@@ -1117,62 +1178,39 @@
             if (!res.ok) {
               // Config not yet created — build empty summaries and return
               this.channelCards.forEach(card => {
+                card.enabled = false;
+                card.fields = window.OpenSparrowChannels.createEmptyUiFields(card.key);
                 card.summaryFields = this.buildSummaryFields(card.key, card.fields);
               });
-              return;
+              return false;
             }
             const data = await res.json();
-
-            // Populate API form from models.providers.openai
-            const openai = data?.models?.providers?.openai;
-            if (openai) {
-              this.apiForm.baseUrl = openai.baseUrl || '';
-              // model name comes from the models array
-              const firstModel = Array.isArray(openai.models) ? openai.models[0] : null;
-              this.apiForm.model = firstModel?.id || '';
-            }
-            // apiKey is in auth-profiles.json (not in main config) — leave blank
 
             // Populate channel cards from channels object
             const channels = data?.channels || {};
             this.channelCards.forEach(card => {
               const ch = channels[card.key];
-              if (ch) {
-                card.enabled = ch.enabled !== false;
-                // map channel fields to card.fields
-                if (card.key === 'feishu') {
-                  card.fields.appId     = ch.appId     || '';
-                  card.fields.appSecret = ch.appSecret || '';
-                } else if (card.key === 'dingtalk') {
-                  card.fields.corpId       = ch.corpId       || '';
-                  card.fields.clientId     = ch.clientId     || '';
-                  card.fields.robotCode    = ch.robotCode    || ch.clientId || '';
-                  card.fields.clientSecret = ch.clientSecret || '';
-                } else if (card.key === 'wecom') {
-                  card.fields.botId          = ch.botId          || '';
-                  card.fields.secret         = ch.secret         || '';
-                  card.fields.corpId         = ch.corpId         || '';
-                  card.fields.corpSecret     = ch.corpSecret     || '';
-                  card.fields.agentId        = ch.agentId        || '';
-                  card.fields.replyFormat    = ch.replyFormat    || '';
-                  card.fields.callbackToken  = ch.callbackToken  || '';
-                  card.fields.encodingAESKey = ch.encodingAESKey || '';
-                  card.fields.callbackPath   = ch.callbackPath   || '';
-                }
-              }
+              card.enabled = Boolean(ch) && ch.enabled !== false;
+              card.fields = {
+                ...window.OpenSparrowChannels.createEmptyUiFields(card.key),
+                ...window.OpenSparrowChannels.normalizeUiFields(card.key, ch || {}),
+              };
               card.summaryFields = this.buildSummaryFields(card.key, card.fields);
             });
+            return true;
           } catch (_) {
             // Use defaults
             this.channelCards.forEach(card => {
               card.summaryFields = this.buildSummaryFields(card.key, card.fields);
             });
+            return false;
           }
         },
 
         // ─── Helpers ─────────────────────────────────────────────────
 
         buildSummaryFields(channelKey, fields) {
+          const normalized = window.OpenSparrowChannels.normalizeUiFields(channelKey, fields);
           const mask = (v) => {
             if (!v) return '未配置';
             if (v.length <= 6) return v.slice(0, 2) + '***';
@@ -1181,82 +1219,100 @@
 
           if (channelKey === 'feishu') {
             return [
-              { label: 'App ID',     value: mask(fields.appId) },
-              { label: 'App Secret', value: mask(fields.appSecret) },
+              { label: 'App ID',     value: mask(normalized.appId) },
+              { label: 'App Secret', value: mask(normalized.appSecret) },
             ];
           }
           if (channelKey === 'dingtalk') {
             return [
-              { label: 'CorpId', value: mask(fields.corpId) },
-              { label: 'AppKey', value: mask(fields.clientId || fields.robotCode) },
-              { label: 'RobotCode', value: mask(fields.robotCode || fields.clientId) },
-              { label: 'AppSecret', value: mask(fields.clientSecret) },
+              { label: 'CorpId', value: mask(normalized.corpId) },
+              { label: 'Client ID', value: mask(normalized.clientId || normalized.robotCode) },
+              { label: 'RobotCode', value: mask(normalized.robotCode || normalized.clientId) },
+              { label: 'Client Secret', value: mask(normalized.clientSecret) },
             ];
           }
           if (channelKey === 'wecom') {
             const rows = [
-              { label: 'Bot ID',     value: mask(fields.botId) },
-              { label: 'Bot Secret', value: mask(fields.secret) },
+              { label: 'Bot ID',     value: mask(normalized.botId) },
+              { label: 'Bot Secret', value: mask(normalized.secret) },
             ];
-            if (fields.corpId) rows.push({ label: 'CorpId', value: mask(fields.corpId) });
-            if (fields.agentId) rows.push({ label: 'AgentId', value: String(fields.agentId) });
-            if (fields.callbackPath) rows.push({ label: 'Callback', value: fields.callbackPath });
+            if (normalized.corpId) rows.push({ label: 'CorpId', value: mask(normalized.corpId) });
+            if (normalized.agentId) rows.push({ label: 'AgentId', value: String(normalized.agentId) });
+            if (normalized.callbackPath) rows.push({ label: 'Callback', value: normalized.callbackPath });
             return rows;
           }
           return [];
         },
 
-        isLikelyWecomBotId(value) {
-          return /^aib(?:[_-]?[A-Za-z0-9][A-Za-z0-9._-]*)$/i.test(String(value || '').trim());
+        diagnosticsStatusLabel(report) {
+          if (!report || typeof report !== 'object') return '未检测';
+          if (report.status === 'ok') return '已读回';
+          if (report.status === 'warning') return '需补 fresh live verification';
+          return '配置未闭合';
         },
 
-        validateWecomFields(fields) {
-          const botId = String(fields?.botId || '').trim();
-          const secret = String(fields?.secret || '').trim();
-          const corpId = String(fields?.corpId || '').trim();
-          const corpSecret = String(fields?.corpSecret || '').trim();
-          const agentId = String(fields?.agentId || '').trim();
-          const replyFormat = String(fields?.replyFormat || '').trim().toLowerCase();
-          const callbackToken = String(fields?.callbackToken || '').trim();
-          const encodingAESKey = String(fields?.encodingAESKey || '').trim();
-          const callbackPath = String(fields?.callbackPath || '').trim();
-          const hasAgentBasics = Boolean(corpId || corpSecret || agentId);
-          const hasCallback = Boolean(callbackToken || encodingAESKey || callbackPath);
-          const errors = [];
+        diagnosticsStatusStyle(report) {
+          if (!report || typeof report !== 'object') {
+            return 'background:#EFF6FF;color:#1D4ED8;border:1px solid #BFDBFE';
+          }
+          if (report.status === 'ok') {
+            return 'background:#ECFDF5;color:#047857;border:1px solid #A7F3D0';
+          }
+          if (report.status === 'warning') {
+            return 'background:#FFFBEB;color:#B45309;border:1px solid #FDE68A';
+          }
+          return 'background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA';
+        },
 
-          if (!botId) errors.push('企业微信需要填写 Bot ID');
-          if (botId && !this.isLikelyWecomBotId(botId)) {
-            errors.push('企业微信 Bot ID 格式疑似错误，请填写智能机器人（API+长连接）生成的 Bot ID（通常以 aib 或 aib_ 开头）');
+        normalizeDiagnosticsReport(report, fallbackError = '') {
+          const raw = report && typeof report === 'object' ? report : {};
+          const errors = Array.isArray(raw.errors) ? raw.errors.slice() : [];
+          if (fallbackError && errors.length === 0) {
+            errors.push(fallbackError);
           }
-          if (!secret) errors.push('企业微信需要填写 Bot Secret');
-          if (hasAgentBasics && (!corpId || !corpSecret || !agentId)) {
-            errors.push('启用企业微信自建应用增强出站时，需要同时填写 CorpId、CorpSecret、AgentId');
-          }
-          if (agentId && !/^\d+$/.test(agentId)) {
-            errors.push('企业微信 AgentId 必须是正整数');
-          }
-          if (replyFormat && !['markdown', 'text'].includes(replyFormat)) {
-            errors.push('企业微信 Reply Format 仅支持 markdown 或 text');
-          }
-          if (hasCallback && (!callbackToken || !encodingAESKey || !callbackPath)) {
-            errors.push('启用企业微信回调入站时，需要同时填写 Callback Token、EncodingAESKey、Callback Path');
-          }
-          if (hasCallback && (!corpId || !corpSecret || !agentId)) {
-            errors.push('企业微信回调入站依赖完整的自建应用 CorpId、CorpSecret、AgentId');
-          }
-
+          const probe = raw.probe && typeof raw.probe === 'object' ? raw.probe : {};
           return {
-            botId,
-            secret,
-            corpId,
-            corpSecret,
-            agentId,
-            replyFormat,
-            callbackToken,
-            encodingAESKey,
-            callbackPath,
+            status: raw.status === 'ok' || raw.status === 'warning' ? raw.status : 'error',
+            ready: raw.ready === true,
+            daemon: typeof raw.daemon === 'string' ? raw.daemon : (this.statusSnapshot.daemon || 'unknown'),
+            checks: Array.isArray(raw.checks) ? raw.checks.slice() : [],
+            warnings: Array.isArray(raw.warnings) ? raw.warnings.slice() : [],
             errors,
+            probe: {
+              code: typeof probe.code === 'number' ? probe.code : null,
+              summary: String(probe.summary ?? '').trim(),
+            },
           };
+        },
+
+        async refreshDingtalkDiagnostics() {
+          const card = this.channelCards.find((entry) => entry.key === 'dingtalk');
+          if (!card) return false;
+
+          const hasReplayValue = window.OpenSparrowChannels.hasReplayValue('dingtalk', card.fields);
+          if (!card.enabled && !hasReplayValue) {
+            card.diagnostics = null;
+            card.diagnosticsLoading = false;
+            return false;
+          }
+
+          card.diagnosticsLoading = true;
+          try {
+            const res = await this.fetchWithTimeout('/api/dingtalk/probe', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({}),
+            }, this.requestTimeout.status);
+            const payload = await res.json().catch(() => ({}));
+            const fallbackError = res.ok ? '' : `钉钉诊断请求失败（HTTP ${res.status}）`;
+            card.diagnostics = this.normalizeDiagnosticsReport(payload, fallbackError);
+            return res.ok;
+          } catch (e) {
+            card.diagnostics = this.normalizeDiagnosticsReport({}, `钉钉诊断请求失败：${e?.message ?? String(e)}`);
+            return false;
+          } finally {
+            card.diagnosticsLoading = false;
+          }
         },
 
         showToast(msg, type = 'success') {
@@ -1296,6 +1352,7 @@
               // Refresh status after a short delay
               await new Promise(r => setTimeout(r, 800));
               await this.loadStatus();
+              await this.refreshDingtalkDiagnostics();
             } else {
               const err = await res.json().catch(() => ({}));
               this.showToast(err.message || '操作失败', 'error');
@@ -1314,7 +1371,7 @@
 
         async cleanupEnvironment() {
           const confirmed = window.confirm(
-            '将执行“快速清理”：停止/卸载 daemon，并尝试释放 18889 端口（不会删除配置文件与凭证）。确定继续吗？'
+            '将执行“快速清理”：停止/卸载 daemon，并尝试释放当前 gateway 端口（不会删除配置文件与凭证）。确定继续吗？'
           );
           if (!confirmed) return;
 
@@ -1341,6 +1398,7 @@
 
             await new Promise(r => setTimeout(r, 500));
             await this.loadStatus();
+            await this.refreshDingtalkDiagnostics();
           } catch (e) {
             if (e?.name === 'AbortError') {
               this.showToast(`快速清理超时（>${Math.round(this.requestTimeout.cleanup / 1000)}秒）`, 'error');
@@ -1406,13 +1464,35 @@
           const newEnabled = !ch.enabled;
           ch.enabled = newEnabled;
           try {
+            if (newEnabled) {
+              const validation = window.OpenSparrowChannels.validateUiFields(ch.key, ch.fields);
+              if (Array.isArray(validation.errors) && validation.errors.length > 0) {
+                ch.enabled = !newEnabled;
+                this.showToast(validation.errors.join('；'), 'error');
+                return;
+              }
+            }
+
+            const payload = newEnabled
+              ? window.OpenSparrowChannels.buildChannelPayload(ch.key, ch.fields, { enabled: newEnabled })
+              : { type: ch.key, enabled: newEnabled };
+
             const res = await this.fetchWithTimeout('/api/config/channels', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ type: ch.key, enabled: newEnabled, ...ch.fields }),
+              body: JSON.stringify(payload),
             }, this.requestTimeout.save);
             if (res.ok) {
-              this.showToast(`${ch.name} 已${newEnabled ? '启用' : '禁用'}，服务将自动重启`);
+              const reloaded = await this.loadConfig();
+              if (ch.key === 'dingtalk') {
+                await this.refreshDingtalkDiagnostics();
+              }
+              this.showToast(
+                reloaded
+                  ? `${ch.name} 已${newEnabled ? '启用' : '禁用'}，服务将自动重启`
+                  : `${ch.name} 已${newEnabled ? '启用' : '禁用'}，但 authoritative 回读失败，请刷新后确认`,
+                reloaded ? 'success' : 'error'
+              );
             } else {
               ch.enabled = !newEnabled; // revert
               this.showToast('更新失败', 'error');
@@ -1428,7 +1508,7 @@
         openModal(ch) {
           this.modal.channel = ch.key;
           this.modal.title   = `编辑 ${ch.name} 凭证`;
-          this.modal.fields  = { ...ch.fields };
+          this.modal.fields  = { ...window.OpenSparrowChannels.normalizeUiFields(ch.key, ch.fields) };
           this.modal.saving  = false;
           this.modal.open    = true;
         },
@@ -1441,28 +1521,13 @@
           this.modal.saving = true;
           const ch = this.channelCards.find(c => c.key === this.modal.channel);
           try {
-            const payloadFields = { ...this.modal.fields };
-            if (this.modal.channel === 'dingtalk') {
-              const corpId = String(payloadFields.corpId || '').trim();
-              const clientId = String(payloadFields.clientId || '').trim();
-              const robotCode = String(payloadFields.robotCode || '').trim();
-              const clientSecret = String(payloadFields.clientSecret || '').trim();
-              if (!corpId || (!clientId && !robotCode) || !clientSecret) {
-                this.showToast('钉钉需要填写 3 项：CorpId、AppKey（Client ID/Robot Code）、AppSecret', 'error');
-                return;
-              }
-              payloadFields.corpId = corpId;
-              payloadFields.clientId = clientId || robotCode;
-              payloadFields.robotCode = robotCode || clientId;
-              payloadFields.clientSecret = clientSecret;
-            } else if (this.modal.channel === 'wecom') {
-              const { errors, ...normalizedFields } = this.validateWecomFields(payloadFields);
-              if (errors.length > 0) {
-                this.showToast(errors.join('；'), 'error');
-                return;
-              }
-              Object.assign(payloadFields, normalizedFields);
+            const validation = window.OpenSparrowChannels.validateUiFields(this.modal.channel, this.modal.fields);
+            if (Array.isArray(validation.errors) && validation.errors.length > 0) {
+              this.showToast(validation.errors.join('；'), 'error');
+              return;
             }
+
+            const payloadFields = window.OpenSparrowChannels.buildChannelPayload(this.modal.channel, this.modal.fields);
             const res = await this.fetchWithTimeout('/api/config/channels', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -1473,13 +1538,17 @@
               }),
             }, this.requestTimeout.save);
             if (res.ok) {
-              // Update local card fields and summaries
-              if (ch) {
-                Object.assign(ch.fields, payloadFields);
-                ch.summaryFields = this.buildSummaryFields(ch.key, ch.fields);
+              const reloaded = await this.loadConfig();
+              if (this.modal.channel === 'dingtalk') {
+                await this.refreshDingtalkDiagnostics();
               }
               this.closeModal();
-              this.showToast('配置已更新，服务将自动重启');
+              this.showToast(
+                reloaded
+                  ? '配置已更新，服务将自动重启'
+                  : '配置已更新，但 authoritative 回读失败，请刷新后确认',
+                reloaded ? 'success' : 'error'
+              );
             } else {
               const err = await res.json().catch(() => ({}));
               const detail = err.message || (Array.isArray(err.errors) ? err.errors.join(' | ') : '');
@@ -1654,7 +1723,11 @@
               body: JSON.stringify(this.apiForm),
             }, this.requestTimeout.save);
             if (res.ok) {
-              this.showToast('API 配置已保存');
+              const data = await res.json().catch(() => ({}));
+              const warning = Array.isArray(data.warnings) && data.warnings.length > 0
+                ? `；告警：${data.warnings.join('；')}`
+                : '';
+              this.showToast(`API 配置已保存${warning}`);
             } else {
               const err = await res.json().catch(() => ({}));
               const detail = err.message || (Array.isArray(err.errors) ? err.errors.join(' | ') : '');

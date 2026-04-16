@@ -11,6 +11,26 @@ import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import os from 'node:os'
 
+import { copyDirectoryEntries, findBundledPluginArchive } from './install-helpers.mjs'
+import {
+  applyDingtalkUiMetaPatch,
+  buildChannelPersistPlan,
+  collectChannelInputErrors,
+  enrichChannelsForUi,
+  normalizeDingtalkCredentials,
+} from './lib/channel-canonical.mjs'
+import { isLikelyWecomBotId, normalizeWecomCredentials } from './lib/wecom.mjs'
+
+import {
+  DEFAULT_OPENAI_BASE_URL,
+  OPENAI_COMPAT_API,
+  buildOpenAIBaseUrlCandidates,
+  buildOpenAIModelTarget,
+  buildOpenAIProviderConfig,
+  normalizeOpenAIBaseUrl,
+} from './lib/openai-provider.mjs'
+import { maybeFreshRebindMainSession } from './lib/session-rebind.mjs'
+
 // ---------------------------------------------------------------------------
 // Path setup
 // ---------------------------------------------------------------------------
@@ -52,8 +72,8 @@ function resolveOpenClawEntry() {
   const candidates = [
     path.join(RUNTIME_ROOT, 'openclaw', 'openclaw.mjs'),
     path.join(RUNTIME_ROOT, 'node_modules', 'openclaw', 'openclaw.mjs'),
-    path.join(RUNTIME_ROOT, 'bin', 'node_modules', 'openclaw', 'openclaw.mjs'),
     path.join(RUNTIME_ROOT, 'lib', 'node_modules', 'openclaw', 'openclaw.mjs'),
+    path.join(RUNTIME_ROOT, 'bin', 'node_modules', 'openclaw', 'openclaw.mjs'),
   ]
 
   for (const candidate of candidates) {
@@ -74,6 +94,20 @@ const CONFIG_FILE = path.join(PROFILE_DIR, 'openclaw.json')
 const UI_META_FILE = path.join(PROFILE_DIR, 'ui-meta.json')
 const WORKSPACE_DIR = path.join(PROFILE_DIR, 'workspace')
 const PUBLIC_DIR  = path.join(__dirname, 'public')
+const PUBLIC_DIR_REAL = fs.realpathSync(PUBLIC_DIR)
+
+const PUBLIC_FILE_MIME_MAP = Object.freeze({
+  '.html': 'text/html; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'application/javascript; charset=utf-8',
+  '.mjs': 'application/javascript; charset=utf-8',
+  '.json': 'application/json',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+})
+
+const PUBLIC_ASSET_EXTENSIONS = new Set(Object.keys(PUBLIC_FILE_MIME_MAP))
 
 const SKILLS_SRC = path.join(PACK_ROOT, 'skills', 'superpowers')
 const SKILL_TARGETS = [
@@ -82,6 +116,7 @@ const SKILL_TARGETS = [
 ]
 
 const INDUSTRY_SKILLS_SRC = path.join(PACK_ROOT, 'skills', 'My_Skills')
+const BUNDLED_PLUGINS_DIR = path.join(PACK_ROOT, 'plugins')
 const INDUSTRY_SKILL_TARGETS = [
   path.join(os.homedir(), '.claude', 'skills', 'My_Skills'),
   path.join(os.homedir(), '.codex', 'skills', 'My_Skills'),
@@ -123,9 +158,11 @@ const OC_TIMEOUT = {
   DAEMON_UNINSTALL: 20000,
   DAEMON_INSTALL: 45000,
   DAEMON_RESTART: 80000,
-  PLUGIN_INSTALL: 180000,
+  PLUGIN_INSTALL: 300000,
   UNINSTALL_FULL: 90000,
 }
+
+const OPENAI_COMPAT_PROBE_TIMEOUT_MS = 5000
 
 function resolveBundledNodeBinary() {
   const candidates = process.platform === 'win32'
@@ -300,81 +337,148 @@ function summarizeOcIssue(result, fallback = 'unknown error') {
   return fallback
 }
 
-/**
- * Normalize user-provided OpenAI-compatible base URL.
- * - Host-only input -> append /v1
- * - Endpoint input (e.g. .../chat/completions) -> trim to provider base
- * - Custom non-root path is preserved
- * @param {string | null | undefined} rawInput
- * @param {string} [fallback]
- * @returns {string}
- */
-function normalizeOpenAIBaseUrl(rawInput, fallback = 'https://api.openai.com/v1') {
-  const fallbackValue = String(fallback || 'https://api.openai.com/v1').trim()
-  const raw = String(rawInput ?? '').trim()
-  if (!raw) return fallbackValue
-
-  let candidate = raw
-  const hasScheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(candidate)
-  if (!hasScheme && candidate.includes('.')) {
-    candidate = `https://${candidate}`
-  }
-
-  let parsed
-  try {
-    parsed = new URL(candidate)
-  } catch {
-    return raw.replace(/\/+$/, '') || fallbackValue
-  }
-
-  if (!/^https?:$/i.test(parsed.protocol)) {
-    return raw.replace(/\/+$/, '') || fallbackValue
-  }
-
-  let pathname = (parsed.pathname || '/').replace(/\/+$/, '')
-  pathname = pathname.replace(
-    /\/(chat\/completions|responses|models|completions|embeddings|audio\/transcriptions)$/i,
-    ''
-  )
-
-  if (!pathname || pathname === '/') pathname = '/v1'
-
-  parsed.pathname = pathname
-  parsed.search = ''
-  parsed.hash = ''
-
-  return parsed.toString().replace(/\/+$/, '')
+function getOpenAiAuthFilePath() {
+  return path.join(OPENCLAW_HOME, `.openclaw-${PROFILE}`, 'agents', 'main', 'agent', 'auth-profiles.json')
 }
 
-/**
- * Normalize DingTalk credentials from UI aliases.
- * Accepts:
- * - clientId / appKey / robotCode (same source value)
- * - corpId / cropId
- * - clientSecret / appSecret
- * @param {any} raw
- * @returns {{clientId: string, clientSecret: string, robotCode: string, corpId: string}}
- */
-function normalizeDingtalkCredentials(raw) {
-  const data = raw && typeof raw === 'object' ? raw : {}
-  const rawClientId = String(
-    data.clientId ?? data.appKey ?? ''
-  ).trim()
-  const rawRobotCode = String(
-    data.robotCode ?? ''
-  ).trim()
-  const clientId = rawClientId || rawRobotCode
-  const clientSecret = String(
-    data.clientSecret ?? data.appSecret ?? ''
-  ).trim()
-  const corpId = String(
-    data.corpId ?? data.cropId ?? ''
-  ).trim()
+function getMainAgentSessionsStorePath() {
+  return path.join(PROFILE_DIR, 'agents', 'main', 'sessions', 'sessions.json')
+}
+
+function readOpenAIApiKey() {
+  const authFile = getOpenAiAuthFilePath()
+  try {
+    if (!fs.existsSync(authFile)) return ''
+    const store = JSON.parse(fs.readFileSync(authFile, 'utf8'))
+    return String(store?.profiles?.['openai:default']?.key ?? '').trim()
+  } catch {
+    return ''
+  }
+}
+
+function writeOpenAIApiKey(apiKey) {
+  const trimmed = String(apiKey ?? '').trim()
+  if (!trimmed) return null
+
+  const authFile = getOpenAiAuthFilePath()
+  try {
+    fs.mkdirSync(path.dirname(authFile), { recursive: true })
+    const authData = {
+      version: 1,
+      profiles: {
+        'openai:default': { type: 'api_key', provider: 'openai', key: trimmed },
+      },
+      order: { openai: ['openai:default'] },
+    }
+    fs.writeFileSync(authFile, JSON.stringify(authData, null, 2), 'utf8')
+    return null
+  } catch (e) {
+    return `writing auth-profiles.json failed: ${e.message}`
+  }
+}
+
+function resolveOpenAIProbeModel(model) {
+  const trimmed = String(model ?? '').trim() || DEFAULT_MODEL
+  return trimmed.replace(/^openai\//, '')
+}
+
+async function probeOpenAIEndpoint(url, body, apiKey = '') {
+  const headers = { 'Content-Type': 'application/json' }
+  const token = String(apiKey ?? '').trim()
+  if (token) headers.Authorization = `Bearer ${token}`
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), OPENAI_COMPAT_PROBE_TIMEOUT_MS)
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    })
+    const responseText = await response.text().catch(() => '')
+    return {
+      ok: response.ok,
+      status: response.status,
+      body: responseText.slice(0, 240),
+      error: '',
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      status: 0,
+      body: '',
+      error: error instanceof Error ? error.message : String(error),
+    }
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
+function isOpenAIProbeReachable(result) {
+  return Number.isFinite(result?.status) && result.status > 0 && result.status !== 404
+}
+
+function summarizeOpenAIProbe(result) {
+  if (result?.error) return result.error
+  if (Number.isFinite(result?.status) && result.status > 0) return `HTTP ${result.status}`
+  return 'unknown error'
+}
+
+async function resolveOpenAIProviderSetup({ baseUrl, model, apiKey }) {
+  const normalizedBaseUrl = normalizeOpenAIBaseUrl(baseUrl, DEFAULT_OPENAI_BASE_URL)
+  const effectiveModel = typeof model === 'string' && model.trim() ? model.trim() : DEFAULT_MODEL
+  const probeModel = resolveOpenAIProbeModel(effectiveModel)
+  const effectiveApiKey = String(apiKey ?? '').trim() || readOpenAIApiKey()
+  const warnings = []
+  const candidates = buildOpenAIBaseUrlCandidates(normalizedBaseUrl, DEFAULT_OPENAI_BASE_URL)
+
+  let selectedBaseUrl = normalizedBaseUrl
+  if (candidates.length > 1 && !effectiveApiKey) {
+    warnings.push('未提供 API Key，无法精确探测自定义 provider 是否需要 /v1；当前保留归一化后的 base URL')
+  } else if (candidates.length > 1) {
+    const chatPayload = {
+      model: probeModel,
+      messages: [{ role: 'user', content: 'ping' }],
+      max_tokens: 1,
+      stream: false,
+    }
+    const results = []
+    for (const candidate of candidates) {
+      results.push({
+        candidate,
+        probe: await probeOpenAIEndpoint(`${candidate}/chat/completions`, chatPayload, effectiveApiKey),
+      })
+    }
+
+    const primary = results[0]
+    const fallback = results.find((entry) => entry.candidate !== primary?.candidate && isOpenAIProbeReachable(entry.probe))
+    if (primary && !isOpenAIProbeReachable(primary.probe) && fallback) {
+      selectedBaseUrl = fallback.candidate
+      warnings.push(`检测到 ${fallback.candidate}/chat/completions 可用，已自动补全 OpenAI Base URL 的 /v1`)
+    } else if (primary && !isOpenAIProbeReachable(primary.probe) && !fallback) {
+      warnings.push(`未确认 ${normalizedBaseUrl}/chat/completions 可达：${summarizeOpenAIProbe(primary.probe)}`)
+    }
+  }
+
+  if (effectiveApiKey) {
+    const responsesProbe = await probeOpenAIEndpoint(
+      `${selectedBaseUrl}/responses`,
+      { model: probeModel, input: 'ping', max_output_tokens: 1 },
+      effectiveApiKey,
+    )
+    if (!responsesProbe.ok) {
+      warnings.push(`未确认 provider 对 /responses 的兼容性（${summarizeOpenAIProbe(responsesProbe)}），已固定 ${OPENAI_COMPAT_API}`)
+    }
+  }
+
   return {
-    clientId,
-    clientSecret,
-    robotCode: rawRobotCode || rawClientId,
-    corpId,
+    baseUrl: selectedBaseUrl,
+    model: effectiveModel,
+    modelTarget: buildOpenAIModelTarget(effectiveModel),
+    providerConfig: buildOpenAIProviderConfig(selectedBaseUrl, effectiveModel),
+    warnings: [...new Set(warnings)],
   }
 }
 
@@ -429,19 +533,14 @@ function saveDingtalkUiMeta(patch = {}) {
     const currentMeta = current?.dingtalk && typeof current.dingtalk === 'object'
       ? current.dingtalk
       : {}
-    const corpId = String(
-      patch.corpId ?? patch.cropId ?? currentMeta.corpId ?? ''
-    ).trim()
-    const robotCode = String(
-      patch.robotCode ?? currentMeta.robotCode ?? ''
-    ).trim()
+    const nextDingtalkMeta = applyDingtalkUiMetaPatch(currentMeta, patch)
     const next = {
       ...current,
-      dingtalk: {
-        ...currentMeta,
-        ...(corpId ? { corpId } : {}),
-        ...(robotCode ? { robotCode } : {}),
-      },
+    }
+    if (Object.keys(nextDingtalkMeta).length > 0) {
+      next.dingtalk = nextDingtalkMeta
+    } else {
+      delete next.dingtalk
     }
     writeUiMetaSafe(next)
   } catch {}
@@ -552,162 +651,10 @@ function patchDingtalkPluginDist() {
 }
 
 /**
- * Merge UI meta back into DingTalk channel payload for frontend forms.
- * @param {any} channelCfg
- * @returns {any}
- */
-function enrichDingtalkChannelForUi(channelCfg) {
-  if (!channelCfg || typeof channelCfg !== 'object') return channelCfg
-  const meta = getDingtalkUiMeta()
-  const clientId = String(channelCfg.clientId ?? '').trim()
-  const robotCode = String(channelCfg.robotCode ?? '').trim() || meta.robotCode || clientId
-  const corpId = String(channelCfg.corpId ?? channelCfg.cropId ?? '').trim() || meta.corpId
-
-  return {
-    ...channelCfg,
-    robotCode,
-    ...(corpId ? { corpId } : {}),
-  }
-}
-
-/**
  * Check whether a value looks like WeCom smart-bot Bot ID.
  * Official examples currently use `aib...` or `aib_...`.
  * @param {string | null | undefined} raw
  * @returns {boolean}
- */
-function isLikelyWecomBotId(raw) {
-  const value = String(raw ?? '').trim()
-  if (!value) return false
-  return /^aib(?:[_-]?[A-Za-z0-9][A-Za-z0-9._-]*)$/i.test(value)
-}
-
-/**
- * Normalize WeCom credentials from UI aliases or persisted nested config.
- * @param {any} raw
- * @returns {{
- *   botId: string,
- *   secret: string,
- *   corpId: string,
- *   corpSecret: string,
- *   agentId: string,
- *   replyFormat: string,
- *   callbackToken: string,
- *   encodingAESKey: string,
- *   callbackPath: string,
- *   hasAnyAgentFields: boolean,
- *   agentConfigured: boolean,
- *   hasCallbackFields: boolean,
- *   callbackConfigured: boolean,
- * }}
- */
-function normalizeWecomCredentials(raw) {
-  const data = raw && typeof raw === 'object' ? raw : {}
-  const agent = data.agent && typeof data.agent === 'object' ? data.agent : {}
-  const rootCallback = data.callback && typeof data.callback === 'object' ? data.callback : {}
-  const agentCallback = agent.callback && typeof agent.callback === 'object' ? agent.callback : {}
-  const botId = String(data.botId ?? '').trim()
-  const secret = String(data.secret ?? '').trim()
-  const corpId = String(data.corpId ?? agent.corpId ?? '').trim()
-  const corpSecret = String(data.corpSecret ?? agent.corpSecret ?? '').trim()
-  const agentId = String(data.agentId ?? agent.agentId ?? '').trim()
-  const replyFormat = String(data.replyFormat ?? agent.replyFormat ?? '').trim().toLowerCase()
-  const callbackToken = String(data.callbackToken ?? rootCallback.token ?? agentCallback.token ?? '').trim()
-  const encodingAESKey = String(data.encodingAESKey ?? rootCallback.encodingAESKey ?? agentCallback.encodingAESKey ?? '').trim()
-  const callbackPath = String(data.callbackPath ?? rootCallback.path ?? agentCallback.path ?? '').trim()
-  const hasAnyAgentFields = Boolean(corpId || corpSecret || agentId || replyFormat)
-  const agentConfigured = Boolean(corpId && corpSecret && agentId)
-  const hasCallbackFields = Boolean(callbackToken || encodingAESKey || callbackPath)
-  const callbackConfigured = Boolean(callbackToken && encodingAESKey && callbackPath)
-
-  return {
-    botId,
-    secret,
-    corpId,
-    corpSecret,
-    agentId,
-    replyFormat,
-    callbackToken,
-    encodingAESKey,
-    callbackPath,
-    hasAnyAgentFields,
-    agentConfigured,
-    hasCallbackFields,
-    callbackConfigured,
-  }
-}
-
-/**
- * Validate WeCom required and advanced credential groups.
- * @param {any} raw
- * @returns {{errors: string[]} & ReturnType<typeof normalizeWecomCredentials>}
- */
-function collectWecomInputErrors(raw) {
-  const normalized = normalizeWecomCredentials(raw)
-  const {
-    botId,
-    secret,
-    corpId,
-    corpSecret,
-    agentId,
-    replyFormat,
-    callbackToken,
-    encodingAESKey,
-    callbackPath,
-    hasAnyAgentFields,
-    hasCallbackFields,
-  } = normalized
-  const errors = []
-
-  if (!botId) errors.push('企业微信需要填写 Bot ID')
-  if (botId && !isLikelyWecomBotId(botId)) {
-    errors.push('企业微信 Bot ID 格式疑似错误，请填写智能机器人（API+长连接）生成的 Bot ID（通常以 aib 或 aib_ 开头）')
-  }
-  if (!secret) errors.push('企业微信需要填写 Bot Secret')
-  if (hasAnyAgentFields && (!corpId || !corpSecret || !agentId)) {
-    errors.push('启用企业微信自建应用增强出站时，需要同时填写 CorpId、CorpSecret、AgentId')
-  }
-  if (agentId && !/^\d+$/.test(agentId)) {
-    errors.push('企业微信 AgentId 必须是正整数')
-  }
-  if (replyFormat && !['markdown', 'text'].includes(replyFormat)) {
-    errors.push('企业微信 Reply Format 仅支持 markdown 或 text')
-  }
-  if (hasCallbackFields && (!callbackToken || !encodingAESKey || !callbackPath)) {
-    errors.push('启用企业微信回调入站时，需要同时填写 Callback Token、EncodingAESKey、Callback Path')
-  }
-  if (hasCallbackFields && (!corpId || !corpSecret || !agentId)) {
-    errors.push('企业微信回调入站依赖完整的自建应用 CorpId、CorpSecret、AgentId')
-  }
-
-  return {
-    ...normalized,
-    errors,
-  }
-}
-
-/**
- * Flatten nested WeCom config for UI forms.
- * @param {any} channelCfg
- * @returns {any}
- */
-function enrichWecomChannelForUi(channelCfg) {
-  if (!channelCfg || typeof channelCfg !== 'object') return channelCfg
-  const normalized = normalizeWecomCredentials(channelCfg)
-  return {
-    ...channelCfg,
-    botId: normalized.botId,
-    secret: normalized.secret,
-    corpId: normalized.corpId,
-    corpSecret: normalized.corpSecret,
-    agentId: normalized.agentId,
-    replyFormat: normalized.replyFormat,
-    callbackToken: normalized.callbackToken,
-    encodingAESKey: normalized.encodingAESKey,
-    callbackPath: normalized.callbackPath,
-  }
-}
-
 /**
  * Display path with ~ prefix when under user home.
  * @param {string} absolutePath
@@ -1040,18 +987,19 @@ async function installPluginPackage(spec, pluginId, options = {}) {
     return { ok: false, errors: ['plugin package spec / id 无效'] }
   }
 
-  const args = ['plugins', 'install', packageSpec]
-  if (options?.pin) args.push('--pin')
+  const bundledArchive = findBundledPluginArchive(BUNDLED_PLUGINS_DIR, packageSpec)
+  const installTarget = bundledArchive ?? packageSpec
+  const args = ['plugins', 'install', installTarget]
+  if (options?.pin && !bundledArchive) args.push('--pin')
 
   const result = await runOc(args, {
     timeoutMs: OC_TIMEOUT.PLUGIN_INSTALL,
-    opName: `plugins install ${packageSpec}`,
+    opName: `plugins install ${bundledArchive ? path.basename(bundledArchive) : packageSpec}`,
   })
   if (result.code !== 0) {
     return {
       ok: false,
-      errors: [`安装插件 ${packageSpec} 失败：${compactProbeOutput(`${result.stdout}
-${result.stderr}`) || `exit code ${result.code}`}`],
+      errors: [`安装插件 ${bundledArchive ? path.basename(bundledArchive) : packageSpec} 失败：${compactProbeOutput(`${result.stdout}\n${result.stderr}`) || `exit code ${result.code}`}`],
     }
   }
 
@@ -1157,7 +1105,7 @@ async function buildDingtalkProbeReport() {
     (summaryLower.includes('gateway not reachable') || summaryLower.includes('connect failed'))
     && daemon !== 'running'
   ) {
-    warnings.push('Gateway 不可达，请确认服务已启动且 18889 端口被当前 profile 占用')
+    warnings.push(`Gateway 不可达，请确认服务已启动且 ${GATEWAY_PORT} 端口被当前 profile 占用`)
   }
   if (
     summaryLower.includes('status code 401')
@@ -1327,7 +1275,7 @@ async function buildWecomProbeReport() {
     (summaryLower.includes('gateway not reachable') || summaryLower.includes('connect failed'))
     && daemon !== 'running'
   ) {
-    warnings.push('Gateway 不可达，请确认服务已启动且 18889 端口被当前 profile 占用')
+    warnings.push(`Gateway 不可达，请确认服务已启动且 ${GATEWAY_PORT} 端口被当前 profile 占用`)
   }
 
   if (normalized.agentConfigured) {
@@ -1412,6 +1360,16 @@ function isDaemonNotInstalledIssue(detail) {
     text.includes('cannot find') ||
     text.includes('could not find service')
   )
+}
+
+/**
+ * Whether daemon output indicates the supervisor entry exists but is not loaded.
+ * @param {string} detail
+ * @returns {boolean}
+ */
+function isDaemonServiceNotLoadedIssue(detail) {
+  const text = stripAnsi(detail).toLowerCase()
+  return text.includes('service not loaded')
 }
 
 /**
@@ -1506,6 +1464,84 @@ async function installGatewayRuntimeWithFallback() {
   return { ok: false, error: `daemon install failed: ${detail}` }
 }
 
+function describeRuntimeState(state) {
+  return `daemon=${state.daemon}, runtimeMode=${state.runtimeMode}, gatewayHealthy=${state.gatewayHealthy}, gatewayPortBusy=${state.gatewayPortBusy}`
+}
+
+async function waitForRuntimeActivation(timeoutMs = 15000) {
+  const deadline = Date.now() + timeoutMs
+  let lastState = null
+  while (Date.now() < deadline) {
+    lastState = await resolveRuntimeState()
+    if (lastState.daemon === 'running' || lastState.gatewayHealthy) {
+      return lastState
+    }
+    await new Promise((resolve) => setTimeout(resolve, 400))
+  }
+  return lastState ?? await resolveRuntimeState()
+}
+
+/**
+ * Verify a daemon lifecycle action actually brought the runtime back online.
+ * On macOS, `daemon start/restart` can exit 0 while leaving the LaunchAgent
+ * unloaded, so recover by reinstalling the service when needed.
+ * @param {'start'|'restart'} action
+ * @param {{stdout?: string, stderr?: string, code?: number}} result
+ * @returns {Promise<{ok: boolean, mode?: 'daemon'|'gateway-fallback', warning?: string, error?: string} | null>}
+ */
+async function finalizeDaemonActivation(action, result) {
+  const detail = summarizeOcIssue(result, '')
+
+  if (result.code !== 0 && !(process.platform === 'darwin' && isDaemonServiceNotLoadedIssue(detail))) {
+    return null
+  }
+
+  const state = await waitForRuntimeActivation()
+  if (state.daemon === 'running') {
+    return { ok: true, mode: 'daemon' }
+  }
+  if (process.platform === 'win32' && state.gatewayHealthy) {
+    return {
+      ok: true,
+      mode: 'gateway-fallback',
+      warning: `daemon ${action} completed via reachable gateway runtime`,
+    }
+  }
+
+  if (process.platform === 'darwin' && (isDaemonServiceNotLoadedIssue(detail) || state.daemon === 'stopped')) {
+    const reinstall = await installGatewayRuntimeWithFallback()
+    if (!reinstall.ok) {
+      return {
+        ok: false,
+        error: `daemon ${action} left LaunchAgent unloaded (${detail || describeRuntimeState(state)}); daemon install recovery failed: ${reinstall.error ?? 'unknown error'}`,
+      }
+    }
+
+    const recoveredState = await waitForRuntimeActivation()
+    if (recoveredState.daemon === 'running') {
+      return {
+        ok: true,
+        mode: 'daemon',
+        warning: `daemon ${action} returned without reloading LaunchAgent; service was reinstalled to recover the packaged mac runtime`,
+      }
+    }
+
+    return {
+      ok: false,
+      error: `daemon ${action} ran daemon install recovery but runtime stayed ${describeRuntimeState(recoveredState)}`,
+    }
+  }
+
+  if (result.code === 0) {
+    return {
+      ok: false,
+      error: `daemon ${action} reported success but runtime stayed ${describeRuntimeState(state)}${detail ? `; command output: ${detail}` : ''}`,
+    }
+  }
+
+  return null
+}
+
 /**
  * Restart gateway runtime, with fallback when daemon is unavailable on Windows.
  * @returns {Promise<{ok: boolean, mode?: 'daemon'|'gateway-fallback', warning?: string, error?: string}>}
@@ -1515,7 +1551,9 @@ async function restartGatewayRuntimeWithFallback() {
     timeoutMs: OC_TIMEOUT.DAEMON_RESTART,
     opName: 'daemon restart',
   })
-  if (r.code === 0) return { ok: true, mode: 'daemon' }
+
+  const activation = await finalizeDaemonActivation('restart', r)
+  if (activation) return activation
 
   const detail = summarizeOcIssue(r)
 
@@ -1603,19 +1641,48 @@ function sendJson(res, status, data) {
  * @param {http.ServerResponse} res
  * @param {string} filePath  Absolute path to the file
  */
-function sendFile(res, filePath) {
-  const ext = path.extname(filePath).toLowerCase()
-  const mimeMap = {
-    '.html': 'text/html; charset=utf-8',
-    '.css':  'text/css; charset=utf-8',
-    '.js':   'application/javascript; charset=utf-8',
-    '.mjs':  'application/javascript; charset=utf-8',
-    '.json': 'application/json',
-    '.png':  'image/png',
-    '.svg':  'image/svg+xml',
-    '.ico':  'image/x-icon',
+function isPathInside(baseDir, targetPath) {
+  const relativePath = path.relative(baseDir, targetPath)
+  return relativePath === '' || (!relativePath.startsWith('..') && !path.isAbsolute(relativePath))
+}
+
+function resolvePublicAssetPath(pathname) {
+  let decodedPathname
+  try {
+    decodedPathname = decodeURIComponent(pathname)
+  } catch {
+    return null
   }
-  const contentType = mimeMap[ext] ?? 'application/octet-stream'
+
+  if (!decodedPathname.startsWith('/') || decodedPathname === '/' || decodedPathname.startsWith('/api/')) {
+    return null
+  }
+
+  const relativePath = decodedPathname.replace(/^\/+/, '')
+  if (!relativePath || relativePath.endsWith('/')) return null
+
+  const ext = path.extname(relativePath).toLowerCase()
+  if (!PUBLIC_ASSET_EXTENSIONS.has(ext)) return null
+
+  const absolutePath = path.resolve(PUBLIC_DIR_REAL, relativePath)
+  if (!isPathInside(PUBLIC_DIR_REAL, absolutePath)) return null
+
+  try {
+    const stats = fs.statSync(absolutePath)
+    if (!stats.isFile()) return null
+
+    const realAssetPath = fs.realpathSync(absolutePath)
+    if (!isPathInside(PUBLIC_DIR_REAL, realAssetPath)) return null
+
+    return realAssetPath
+  } catch {
+    return null
+  }
+}
+
+function sendFile(res, filePath, { headOnly = false } = {}) {
+  const ext = path.extname(filePath).toLowerCase()
+  const contentType = PUBLIC_FILE_MIME_MAP[ext] ?? 'application/octet-stream'
 
   fs.readFile(filePath, (err, data) => {
     if (err) {
@@ -1627,6 +1694,10 @@ function sendFile(res, filePath) {
       'Content-Type': contentType,
       'Content-Length': data.length,
     })
+    if (headOnly) {
+      res.end()
+      return
+    }
     res.end(data)
   })
 }
@@ -1646,6 +1717,7 @@ async function handleStatus(res) {
     installed,
     daemon,
     runtimeMode,
+    gatewayPort: GATEWAY_PORT,
     configExists,
     profileDirExists,
     gatewayHealthy,
@@ -1679,13 +1751,7 @@ async function installSkills() {
   } else {
     for (const dest of SKILL_TARGETS) {
       try {
-        fs.mkdirSync(dest, { recursive: true })
-        const files = fs.readdirSync(SKILLS_SRC)
-        for (const file of files) {
-          const src = path.join(SKILLS_SRC, file)
-          const dst = path.join(dest, file)
-          fs.copyFileSync(src, dst)
-        }
+        copyDirectoryEntries(SKILLS_SRC, dest)
       } catch (e) {
         errors.push(`skills copy to ${dest} failed: ${e.message}`)
       }
@@ -1865,11 +1931,30 @@ async function cleanupOldDaemon(options = {}) {
 }
 
 /** POST /api/install */
+async function ensureChannelPluginReady(channelType) {
+  if (channelType === 'dingtalk') {
+    const install = await installPluginPackage(DINGTALK_PLUGIN_PACKAGE, DINGTALK_PLUGIN_ID)
+    const warnings = []
+    if (install.ok) {
+      const patch = patchDingtalkPluginDist()
+      if (!patch.ok) warnings.push(patch.message)
+      if (patch.ok && patch.changed) warnings.push(patch.message)
+    }
+    return { ok: install.ok, errors: install.errors, warnings }
+  }
+
+  if (channelType === 'wecom') {
+    const install = await installPluginPackage(WECOM_PLUGIN_PACKAGE, WECOM_PLUGIN_ID, { pin: true })
+    return { ok: install.ok, errors: install.errors, warnings: [] }
+  }
+
+  return { ok: true, errors: [], warnings: [] }
+}
+
 async function handleInstall(res, body) {
   const channels = Array.isArray(body?.channels) ? body.channels : []
   const api = body?.api && typeof body.api === 'object' ? body.api : {}
   const baseUrlRaw = typeof api.baseUrl === 'string' ? api.baseUrl.trim() : ''
-  const baseUrl = normalizeOpenAIBaseUrl(baseUrlRaw)
   const apiKey = typeof api.apiKey === 'string' ? api.apiKey.trim() : ''
   const model = typeof api.model === 'string' && api.model.trim() ? api.model.trim() : DEFAULT_MODEL
   // NOTE: selectedSkillCategories removed — industry skills are no longer bulk-installed.
@@ -1883,21 +1968,7 @@ async function handleInstall(res, body) {
     inputErrors.push('API Key 不能为空，请在网页中填写后再安装')
   }
   for (const ch of channels) {
-    const type = typeof ch?.type === 'string' ? ch.type : ''
-    if (!type) {
-      inputErrors.push('渠道类型无效，请重新选择渠道')
-      continue
-    }
-    if (type === 'feishu') {
-      if (!String(ch.appId ?? '').trim()) inputErrors.push('飞书 App ID 不能为空')
-      if (!String(ch.appSecret ?? '').trim()) inputErrors.push('飞书 App Secret 不能为空')
-    } else if (type === 'dingtalk') {
-      const { clientId, clientSecret, corpId } = normalizeDingtalkCredentials(ch)
-      if (!clientId) inputErrors.push('钉钉 AppKey（Client ID / Robot Code）不能为空')
-      if (!clientSecret) inputErrors.push('钉钉 AppSecret（Client Secret）不能为空')
-    } else if (type === 'wecom') {
-      inputErrors.push(...collectWecomInputErrors(ch).errors)
-    }
+    inputErrors.push(...collectChannelInputErrors(ch))
   }
   if (inputErrors.length > 0) {
     sendJson(res, 400, { ok: false, errors: inputErrors })
@@ -1942,19 +2013,20 @@ async function handleInstall(res, body) {
     errors.push(...skillErrors)
   }
 
+  const pluginReady = { dingtalk: !requestedHasDingtalk, wecom: !requestedHasWecom }
+
   if (requestedHasDingtalk) {
-    const dingtalkInstall = await installPluginPackage(DINGTALK_PLUGIN_PACKAGE, DINGTALK_PLUGIN_ID)
+    const dingtalkInstall = await ensureChannelPluginReady('dingtalk')
     errors.push(...dingtalkInstall.errors)
-    if (dingtalkInstall.ok) {
-      const patch = patchDingtalkPluginDist()
-      if (!patch.ok) warnings.push(patch.message)
-      if (patch.ok && patch.changed) warnings.push(patch.message)
-    }
+    warnings.push(...dingtalkInstall.warnings)
+    pluginReady.dingtalk = dingtalkInstall.ok
   }
 
   if (requestedHasWecom) {
-    const wecomInstall = await installPluginPackage(WECOM_PLUGIN_PACKAGE, WECOM_PLUGIN_ID, { pin: true })
+    const wecomInstall = await ensureChannelPluginReady('wecom')
     errors.push(...wecomInstall.errors)
+    warnings.push(...wecomInstall.warnings)
+    pluginReady.wecom = wecomInstall.ok
   }
 
   // Step 2: Write base gateway config
@@ -1984,11 +2056,14 @@ async function handleInstall(res, body) {
 
   // Step 3: Write API (model provider) config
   // Always write baseUrl and models together — openclaw validates both fields simultaneously
-  const effectiveModel = model
-  const providerJson = JSON.stringify({
-    baseUrl,
-    models: [{ id: effectiveModel, name: effectiveModel, api: 'openai-completions' }],
+  const openaiSetup = await resolveOpenAIProviderSetup({
+    baseUrl: baseUrlRaw || DEFAULT_OPENAI_BASE_URL,
+    model,
+    apiKey,
   })
+  warnings.push(...openaiSetup.warnings)
+
+  const providerJson = JSON.stringify(openaiSetup.providerConfig)
   {
     const r = await runOc([
       'config', 'set',
@@ -2002,35 +2077,29 @@ async function handleInstall(res, body) {
     if (r.code !== 0) errors.push(`config set models.providers.openai failed: ${r.stderr}`)
   }
   {
-    const modelForSet = effectiveModel.includes('/') ? effectiveModel : `openai/${effectiveModel}`
-    const r = await runOc(['models', 'set', modelForSet], {
+    const r = await runOc(['models', 'set', openaiSetup.modelTarget], {
       timeoutMs: OC_TIMEOUT.MODEL_SET,
-      opName: `models set ${modelForSet}`,
+      opName: `models set ${openaiSetup.modelTarget}`,
     })
-    if (r.code !== 0) errors.push(`models set ${modelForSet} failed: ${r.stderr}`)
+    if (r.code !== 0) errors.push(`models set ${openaiSetup.modelTarget} failed: ${r.stderr}`)
   }
 
   // Step 4: Write auth-profiles.json with the API key
-  if (apiKey) {
-    const authDir  = path.join(OPENCLAW_HOME, `.openclaw-${PROFILE}`, 'agents', 'main', 'agent')
-    const authFile = path.join(authDir, 'auth-profiles.json')
-    try {
-      fs.mkdirSync(authDir, { recursive: true })
-      const authData = {
-        version: 1,
-        profiles: {
-          'openai:default': { type: 'api_key', provider: 'openai', key: apiKey },
-        },
-        order: { openai: ['openai:default'] },
-      }
-      fs.writeFileSync(authFile, JSON.stringify(authData, null, 2), 'utf8')
-    } catch (e) {
-      errors.push(`writing auth-profiles.json failed: ${e.message}`)
-    }
+  {
+    const authError = writeOpenAIApiKey(apiKey)
+    if (authError) errors.push(authError)
   }
 
   // Step 5: Write per-channel config
   for (const ch of channels) {
+    if (ch?.type === 'dingtalk' && !pluginReady.dingtalk) {
+      warnings.push('钉钉插件未安装成功，已跳过钉钉渠道配置写入')
+      continue
+    }
+    if (ch?.type === 'wecom' && !pluginReady.wecom) {
+      warnings.push('企业微信插件未安装成功，已跳过企业微信渠道配置写入')
+      continue
+    }
     const chErrors = await configureChannel(ch)
     errors.push(...chErrors)
   }
@@ -2105,6 +2174,7 @@ async function handleInstall(res, body) {
  */
 async function configureChannel(channel) {
   const errors = []
+  const plan = buildChannelPersistPlan(channel)
 
   async function oc(...args) {
     const r = await runOc(['config', 'set', ...args, '--strict-json'], {
@@ -2125,91 +2195,31 @@ async function configureChannel(channel) {
     }
   }
 
-  switch (channel.type) {
-    case 'feishu': {
-      const { appId = '', appSecret = '' } = channel
-      await oc('channels.feishu.enabled',        'true')
-      await oc('channels.feishu.connectionMode', '"websocket"')
-      await oc('channels.feishu.domain',         '"feishu"')
-      await oc('channels.feishu.appId',          JSON.stringify(appId))
-      await oc('channels.feishu.appSecret',      JSON.stringify(appSecret))
-      await oc('channels.feishu.dmPolicy',       '"open"')
-      await oc('channels.feishu.allowFrom',      '["*"]')
-      await oc('channels.feishu.requireMention', 'false')
-      await oc('plugins.entries.feishu.enabled', 'true')
-      break
-    }
+  if (plan.errors.length > 0) {
+    errors.push(...plan.errors)
+    return errors
+  }
 
-    case 'dingtalk': {
-      errors.push(...await ensurePluginsAllowIncludes(['channels']))
-      const { clientId, clientSecret, robotCode, corpId } = normalizeDingtalkCredentials(channel)
-      await oc('channels.dingtalk.enabled',                          'true')
-      await oc('channels.dingtalk.clientId',                         JSON.stringify(clientId))
-      await oc('channels.dingtalk.clientSecret',                     JSON.stringify(clientSecret))
-      await oc('channels.dingtalk.robotCode',                        JSON.stringify(robotCode))
-      await oc('channels.dingtalk.connectionMode',                   '"stream"')
-      await oc('channels.dingtalk.dmPolicy',                         '"open"')
-      await oc('channels.dingtalk.allowFrom',                        '["*"]')
-      await oc('channels.dingtalk.groupPolicy',                      '"open"')
-      await oc('channels.dingtalk.requireMention',                   'true')
-      await oc('gateway.http.endpoints.chatCompletions.enabled',     'true')
-      if (corpId || robotCode) {
-        saveDingtalkUiMeta({ corpId, robotCode })
-      }
-      {
-        const patch = patchDingtalkPluginDist()
-        if (!patch.ok) console.log(patch.message)
-      }
-      break
-    }
+  if (plan.type === 'dingtalk') {
+    errors.push(...await ensurePluginsAllowIncludes(['channels']))
+  }
+  if (plan.type === 'wecom') {
+    errors.push(...await ensurePluginsAllowIncludes([WECOM_PLUGIN_ID]))
+  }
 
-    case 'wecom': {
-      errors.push(...await ensurePluginsAllowIncludes([WECOM_PLUGIN_ID]))
-      const wecom = normalizeWecomCredentials(channel)
-      const { botId, secret } = wecom
-      await oc('plugins.entries.wecom.enabled', 'true')
-      await oc('channels.wecom.enabled', 'true')
-      await oc('channels.wecom.botId', JSON.stringify(botId))
-      await oc('channels.wecom.secret', JSON.stringify(secret))
-      await oc('channels.wecom.dmPolicy', '"open"')
-      await oc('channels.wecom.allowFrom', '["*"]')
-      await oc('channels.wecom.groupPolicy', '"open"')
-      await oc('channels.wecom.groupChat.enabled', 'true')
-      await oc('channels.wecom.groupChat.requireMention', 'true')
-      await oc('channels.wecom.groupChat.mentionPatterns', '["@"]')
-      await ocUnset('channels.wecom.mode')
-      await ocUnset('channels.wecom.requireMention')
+  for (const op of plan.set) {
+    await oc(op.path, op.value)
+  }
+  for (const pathKey of plan.unset) {
+    await ocUnset(pathKey)
+  }
 
-      if (wecom.agentConfigured) {
-        await oc('channels.wecom.agent.corpId', JSON.stringify(wecom.corpId))
-        await oc('channels.wecom.agent.corpSecret', JSON.stringify(wecom.corpSecret))
-        await oc('channels.wecom.agent.agentId', String(wecom.agentId))
-        if (wecom.replyFormat) {
-          await oc('channels.wecom.agent.replyFormat', JSON.stringify(wecom.replyFormat))
-        } else {
-          await ocUnset('channels.wecom.agent.replyFormat')
-        }
-      } else {
-        await ocUnset('channels.wecom.agent.corpId')
-        await ocUnset('channels.wecom.agent.corpSecret')
-        await ocUnset('channels.wecom.agent.agentId')
-        await ocUnset('channels.wecom.agent.replyFormat')
-      }
-
-      if (wecom.callbackConfigured && wecom.agentConfigured) {
-        await oc('channels.wecom.agent.callback.token', JSON.stringify(wecom.callbackToken))
-        await oc('channels.wecom.agent.callback.encodingAESKey', JSON.stringify(wecom.encodingAESKey))
-        await oc('channels.wecom.agent.callback.path', JSON.stringify(wecom.callbackPath))
-      } else {
-        await ocUnset('channels.wecom.agent.callback.token')
-        await ocUnset('channels.wecom.agent.callback.encodingAESKey')
-        await ocUnset('channels.wecom.agent.callback.path')
-      }
-      break
-    }
-
-    default:
-      errors.push(`Unknown channel type: ${channel.type}`)
+  if (plan.type === 'dingtalk' && plan.uiMetaPatch) {
+    saveDingtalkUiMeta(plan.uiMetaPatch)
+  }
+  if (plan.type === 'dingtalk') {
+    const patch = patchDingtalkPluginDist()
+    if (!patch.ok) console.log(patch.message)
   }
 
   return errors
@@ -2220,11 +2230,10 @@ function handleGetConfig(res) {
   try {
     const raw = fs.readFileSync(CONFIG_FILE, 'utf8')
     const config = JSON.parse(raw)
-    if (config?.channels?.dingtalk && typeof config.channels.dingtalk === 'object') {
-      config.channels.dingtalk = enrichDingtalkChannelForUi(config.channels.dingtalk)
-    }
-    if (config?.channels?.wecom && typeof config.channels.wecom === 'object') {
-      config.channels.wecom = enrichWecomChannelForUi(config.channels.wecom)
+    if (config?.channels && typeof config.channels === 'object') {
+      config.channels = enrichChannelsForUi(config.channels, {
+        dingtalkUiMeta: getDingtalkUiMeta(),
+      })
     }
     sendJson(res, 200, config)
   } catch (e) {
@@ -2236,6 +2245,9 @@ function handleGetConfig(res) {
 async function handleUpdateApi(res, body) {
   const { baseUrl, apiKey, model } = body
   const errors = []
+  const warnings = []
+  let providerConfigWritten = baseUrl === undefined && model === undefined
+  let authProfileWritten = !(typeof apiKey === 'string' && apiKey.trim())
 
   // Write baseUrl and models together so openclaw validation passes
   if (baseUrl !== undefined || model !== undefined) {
@@ -2248,25 +2260,29 @@ async function handleUpdateApi(res, body) {
         const raw = fs.readFileSync(CONFIG_FILE, 'utf8')
         const cfg = JSON.parse(raw)
         const openai = cfg?.models?.providers?.openai ?? {}
-        if (currentBaseUrl === undefined) currentBaseUrl = openai.baseUrl ?? 'https://api.openai.com/v1'
+        if (currentBaseUrl === undefined) currentBaseUrl = openai.baseUrl ?? DEFAULT_OPENAI_BASE_URL
         if (currentModel === undefined) {
           const m = Array.isArray(openai.models) ? openai.models[0]?.id : null
           currentModel = m ?? DEFAULT_MODEL
         }
       } catch {
-        currentBaseUrl = currentBaseUrl ?? 'https://api.openai.com/v1'
+        currentBaseUrl = currentBaseUrl ?? DEFAULT_OPENAI_BASE_URL
         currentModel   = currentModel   ?? DEFAULT_MODEL
       }
     }
 
-    currentBaseUrl = normalizeOpenAIBaseUrl(currentBaseUrl)
+    currentBaseUrl = normalizeOpenAIBaseUrl(currentBaseUrl, DEFAULT_OPENAI_BASE_URL)
     currentModel = typeof currentModel === 'string' ? currentModel.trim() : ''
     if (!currentModel) currentModel = DEFAULT_MODEL
 
-    const providerJson = JSON.stringify({
+    const openaiSetup = await resolveOpenAIProviderSetup({
       baseUrl: currentBaseUrl,
-      models: [{ id: currentModel, name: currentModel, api: 'openai-completions' }],
+      model: currentModel,
+      apiKey,
     })
+    warnings.push(...openaiSetup.warnings)
+
+    const providerJson = JSON.stringify(openaiSetup.providerConfig)
     const r = await runOc([
       'config', 'set',
       'models.providers.openai',
@@ -2277,24 +2293,19 @@ async function handleUpdateApi(res, body) {
       opName: 'config set models.providers.openai',
     })
     if (r.code !== 0) errors.push(`config set models.providers.openai failed: ${r.stderr}`)
+
+    const modelSetResult = await runOc(['models', 'set', openaiSetup.modelTarget], {
+      timeoutMs: OC_TIMEOUT.MODEL_SET,
+      opName: `models set ${openaiSetup.modelTarget}`,
+    })
+    if (modelSetResult.code !== 0) errors.push(`models set ${openaiSetup.modelTarget} failed: ${modelSetResult.stderr}`)
+    providerConfigWritten = r.code === 0 && modelSetResult.code === 0
   }
 
-  if (apiKey !== undefined) {
-    const authDir  = path.join(OPENCLAW_HOME, `.openclaw-${PROFILE}`, 'agents', 'main', 'agent')
-    const authFile = path.join(authDir, 'auth-profiles.json')
-    try {
-      fs.mkdirSync(authDir, { recursive: true })
-      const authData = {
-        version: 1,
-        profiles: {
-          'openai:default': { type: 'api_key', provider: 'openai', key: apiKey },
-        },
-        order: { openai: ['openai:default'] },
-      }
-      fs.writeFileSync(authFile, JSON.stringify(authData, null, 2), 'utf8')
-    } catch (e) {
-      errors.push(`writing auth-profiles.json failed: ${e.message}`)
-    }
+  if (typeof apiKey === 'string' && apiKey.trim()) {
+    const authError = writeOpenAIApiKey(apiKey)
+    if (authError) errors.push(authError)
+    else authProfileWritten = true
   }
 
   // Restart daemon to apply changes
@@ -2303,10 +2314,23 @@ async function handleUpdateApi(res, body) {
     errors.push(restartResult.error ?? 'daemon restart failed')
   }
 
+  if (errors.length === 0) {
+    try {
+      maybeFreshRebindMainSession({
+        storePath: getMainAgentSessionsStorePath(),
+        providerConfigWritten,
+        authProfileWritten,
+        runtimeRestarted: restartResult.ok,
+      })
+    } catch (e) {
+      errors.push(`main session fresh rebind failed: ${e?.message ?? String(e)}`)
+    }
+  }
+
   if (errors.length > 0) {
-    sendJson(res, 500, { ok: false, errors })
+    sendJson(res, 500, { ok: false, errors, warnings })
   } else {
-    sendJson(res, 200, { ok: true })
+    sendJson(res, 200, { ok: true, warnings })
   }
 }
 
@@ -2315,13 +2339,9 @@ function handleGetChannels(res) {
   try {
     const raw = fs.readFileSync(CONFIG_FILE, 'utf8')
     const config = JSON.parse(raw)
-    const channels = config.channels ?? {}
-    if (channels?.dingtalk && typeof channels.dingtalk === 'object') {
-      channels.dingtalk = enrichDingtalkChannelForUi(channels.dingtalk)
-    }
-    if (channels?.wecom && typeof channels.wecom === 'object') {
-      channels.wecom = enrichWecomChannelForUi(channels.wecom)
-    }
+    const channels = enrichChannelsForUi(config.channels ?? {}, {
+      dingtalkUiMeta: getDingtalkUiMeta(),
+    })
     sendJson(res, 200, channels)
   } catch (e) {
     sendJson(res, 404, { error: `Cannot read config: ${e.message}` })
@@ -2698,24 +2718,15 @@ async function handleSkillUninstall(res, body) {
 /** POST /api/config/channels */
 async function handleUpdateChannel(res, body) {
   const errors = []
+  const warnings = []
 
-  if (body?.type === 'wecom' && body?.enabled !== false) {
-    const inputErrors = collectWecomInputErrors(body).errors
+  if (body?.enabled !== false) {
+    const inputErrors = collectChannelInputErrors(body)
     if (inputErrors.length > 0) {
       sendJson(res, 400, {
         ok: false,
         errors: inputErrors,
       })
-      return
-    }
-  }
-  if (body?.type === 'dingtalk' && body?.enabled !== false) {
-    const { clientId, clientSecret, corpId } = normalizeDingtalkCredentials(body)
-    const inputErrors = []
-    if (!clientId) inputErrors.push('钉钉 AppKey（Client ID / Robot Code）不能为空')
-    if (!clientSecret) inputErrors.push('钉钉 AppSecret（Client Secret）不能为空')
-    if (inputErrors.length > 0) {
-      sendJson(res, 400, { ok: false, errors: inputErrors })
       return
     }
   }
@@ -2729,8 +2740,18 @@ async function handleUpdateChannel(res, body) {
     })
     if (r.code !== 0) errors.push(`config set ${key} failed: ${r.stderr}`)
   } else {
-    const chErrors = await configureChannel(body)
-    errors.push(...chErrors)
+    if (body?.type === 'dingtalk' || body?.type === 'wecom') {
+      const pluginInstall = await ensureChannelPluginReady(body.type)
+      errors.push(...pluginInstall.errors)
+      warnings.push(...pluginInstall.warnings)
+      if (pluginInstall.ok) {
+        const chErrors = await configureChannel(body)
+        errors.push(...chErrors)
+      }
+    } else {
+      const chErrors = await configureChannel(body)
+      errors.push(...chErrors)
+    }
   }
 
   // Restart daemon to apply changes
@@ -2740,9 +2761,9 @@ async function handleUpdateChannel(res, body) {
   }
 
   if (errors.length > 0) {
-    sendJson(res, 500, { ok: false, errors })
+    sendJson(res, 500, { ok: false, errors, warnings })
   } else {
-    sendJson(res, 200, { ok: true })
+    sendJson(res, 200, { ok: true, warnings })
   }
 }
 
@@ -2771,8 +2792,23 @@ async function handleDaemon(res, body) {
       timeoutMs,
       opName: 'daemon start',
     })
-    if (r.code === 0) {
-      sendJson(res, 200, { ok: true, mode: 'daemon', stdout: r.stdout })
+
+    const activation = await finalizeDaemonActivation('start', r)
+    if (activation?.ok) {
+      sendJson(res, 200, {
+        ok: true,
+        mode: activation.mode ?? 'daemon',
+        stdout: r.stdout,
+        warning: activation.warning ?? null,
+      })
+      return
+    }
+    if (activation && !activation.ok) {
+      sendJson(res, 500, {
+        ok: false,
+        error: activation.error,
+        stdout: r.stdout,
+      })
       return
     }
 
@@ -2845,7 +2881,7 @@ async function handleCleanup(res) {
     const cleanupResult = await cleanupOldDaemon({ graceful: true, forceKill: true })
     log.push(...cleanupResult.log)
     if (cleanupResult.portBusy) {
-      errors.push('Port 18889 is still occupied after cleanup')
+      errors.push(`Port ${GATEWAY_PORT} is still occupied after cleanup`)
     }
   } catch (e) {
     log.push(`cleanupOldDaemon error: ${e?.message ?? String(e)}`)
@@ -2898,7 +2934,7 @@ async function handleFactoryReset(res, body) {
     const cleanupResult = await cleanupOldDaemon({ graceful: true, forceKill: true })
     log.push(...cleanupResult.log)
     if (cleanupResult.portBusy) {
-      warnings.push('Port 18889 is still occupied after factory reset cleanup')
+      warnings.push(`Port ${GATEWAY_PORT} is still occupied after factory reset cleanup`)
     }
   } catch (e) {
     log.push(`cleanupOldDaemon error: ${e?.message ?? String(e)}`)
@@ -2951,8 +2987,8 @@ async function handleFactoryReset(res, body) {
   if (fs.existsSync(CONFIG_FILE)) {
     errors.push(`配置文件仍存在: ${toUserPath(CONFIG_FILE)}`)
   }
-  if (await isPortBusy(18889)) {
-    warnings.push('Port 18889 is still occupied after factory reset')
+  if (await isPortBusy(GATEWAY_PORT)) {
+    warnings.push(`Port ${GATEWAY_PORT} is still occupied after factory reset`)
   }
 
   console.log('[cleanup:factory-reset]', log.join(' | '))
@@ -3053,26 +3089,28 @@ async function requestHandler(req, res) {
   const parsedUrl = new URL(url, `http://localhost`)
   const pathname  = parsedUrl.pathname
 
+  const isStaticRequest = method === 'GET' || method === 'HEAD'
+  const headOnly = method === 'HEAD'
+
   // --- Static file routes ---
-  if (method === 'GET' && pathname === '/') {
-    sendFile(res, path.join(PUBLIC_DIR, 'index.html'))
+  if (isStaticRequest && pathname === '/') {
+    sendFile(res, path.join(PUBLIC_DIR, 'index.html'), { headOnly })
     return
   }
 
-  if (method === 'GET' && pathname === '/dashboard') {
-    sendFile(res, path.join(PUBLIC_DIR, 'dashboard.html'))
+  if (isStaticRequest && pathname === '/dashboard') {
+    sendFile(res, path.join(PUBLIC_DIR, 'dashboard.html'), { headOnly })
     return
   }
 
-  if (method === 'GET' && pathname === '/setup') {
-    sendFile(res, path.join(PUBLIC_DIR, 'index.html'))
+  if (isStaticRequest && pathname === '/setup') {
+    sendFile(res, path.join(PUBLIC_DIR, 'index.html'), { headOnly })
     return
   }
 
-  if (method === 'GET' && (pathname.endsWith('.css') || pathname.endsWith('.js') || pathname.endsWith('.mjs'))) {
-    // Serve only from the public directory, prevent path traversal
-    const safeName = path.basename(pathname)
-    sendFile(res, path.join(PUBLIC_DIR, safeName))
+  const publicAssetPath = isStaticRequest ? resolvePublicAssetPath(pathname) : null
+  if (publicAssetPath) {
+    sendFile(res, publicAssetPath, { headOnly })
     return
   }
 

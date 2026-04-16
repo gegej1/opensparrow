@@ -294,7 +294,9 @@
     "category": "validation",
     "component": "windows-env-verification",
     "description": "Windows environment verification on UTM ARM VM: UI accessibility, gateway stability, daemon status consistency, plugin install retry.",
-    "depends_on": ["F-012"],
+    "depends_on": [
+      "F-012"
+    ],
     "acceptance_criteria": [
       "USB mode starts successfully on Windows (<30s).",
       "Dashboard status matches actual gateway process state.",
@@ -318,24 +320,27 @@
     "priority": 2,
     "category": "channel",
     "component": "wecom-channel-integration",
-    "description": "WeCom (企业微信) channel integration using community plugin @sunnoy/wecom. M3 milestone.",
-    "depends_on": ["F-012"],
+    "description": "WeCom (企业微信) channel integration hardening for the bot-first long-connection mainline, with real Bot ID + Secret evidence and at least one real message roundtrip.",
+    "depends_on": [
+      "F-012"
+    ],
     "acceptance_criteria": [
-      "WeCom plugin installable via ClawHub or bundled.",
-      "UI setup wizard includes WeCom tab with Bot ID + Secret fields.",
-      "server.mjs handleInstall() supports wecom channel branch.",
-      "E2E test with real WeCom credentials passes."
+      "WeCom plugin is installable via bundled/offline archive or an existing plugin path accepted by the current runtime.",
+      "UI setup and Dashboard support bot-first `Bot ID + Secret` WeCom configuration for the long-connection mainline.",
+      "`ui/server.mjs`, shared helpers, and probe handling support the WeCom bot-first long-connection contract reflected in the frozen spec/runbook surface.",
+      "Commander-accepted fresh operator evidence confirms real `Bot ID + Secret` enablement, successful probe readiness, and at least one real message roundtrip with reply visibility on the WeCom side.",
+      "Callback / self-built app enhanced paths remain optional scenario-specific chains and are not the default passing gate for this closeout."
     ],
     "steps": [
-      "Evaluate and select WeCom plugin.",
-      "Add WeCom UI form to setup wizard.",
-      "Add WeCom install logic to server.mjs.",
-      "E2E test on Mac and Windows.",
-      "Update docs and runbooks."
+      "Keep the WeCom integration on the bot-first long-connection mainline with `Bot ID + Secret` as the minimum real entry.",
+      "Support the same bot-first contract across install UI, Dashboard, server handling, and probe/readiness surfaces.",
+      "Retain helper and server validation coverage for the frozen bot-first truth surface.",
+      "Close the feature only from Commander-accepted fresh operator evidence covering real enablement and at least one real message roundtrip.",
+      "Leave callback / self-built app enhanced-chain verification to separate follow-up work when business scenarios actually require it."
     ],
-    "evidence_hint": "Plugin install + UI form + E2E test + runbook",
+    "evidence_hint": "Helper tests + server check + fresh probe evidence + real WeCom roundtrip evidence",
     "risk": "medium",
-    "passes": false
+    "passes": true
   },
   {
     "id": "F-015",
@@ -383,6 +388,294 @@
       "Sync Windows delivery docs and unified progress records."
     ],
     "evidence_hint": "one-click-deploy.ps1 diff + docs/usb-pack/windows-native-delivery.md note + longrun entry",
+    "risk": "medium",
+    "passes": true
+  },
+  {
+    "id": "F-017",
+    "priority": 2,
+    "category": "ui",
+    "component": "public-static-asset-hardening",
+    "description": "Unify OpenSparrow UI public asset routing so dashboard images and future nested static files load consistently and safely.",
+    "depends_on": [
+      "F-015"
+    ],
+    "acceptance_criteria": [
+      "`ui/public/dashboard.html` references `logo.png` instead of an oversized inline data URL.",
+      "`ui/server.mjs` serves public assets through a shared MIME/extension contract with path traversal protection.",
+      "Static GET/HEAD requests for `logo.png` return `200` and direct file-open validation shows the image renders correctly."
+    ],
+    "steps": [
+      "Extract dashboard logo into a standalone public PNG file.",
+      "Unify public asset MIME and route handling in the UI server.",
+      "Add safe public path resolution with traversal checks.",
+      "Validate HTTP and direct-file rendering paths."
+    ],
+    "evidence_hint": "`curl -I /logo.png` + direct `dashboard.html` browser check",
+    "risk": "low",
+    "passes": true
+  },
+  {
+    "id": "F-018",
+    "priority": 1,
+    "category": "maintenance",
+    "component": "openai-compatible-provider-hardening",
+    "description": "Custom OpenAI-compatible provider setup now writes provider-level api metadata, auto-corrects `/v1` when the raw custom path chat route is unreachable, and keeps Dashboard API saves aligned with the active runtime model.",
+    "depends_on": [
+      "F-012"
+    ],
+    "acceptance_criteria": [
+      "`ui/server.mjs` writes `models.providers.openai.api = \"openai-completions\"` during install and Dashboard API saves.",
+      "`POST /api/config/api` follows provider config writes with `models set`, preventing model drift between the form and runtime.",
+      "Custom non-root OpenAI-compatible URLs get a conservative `/v1` fallback probe and surface compatibility warnings in install/Dashboard success responses.",
+      "Shared Bash / PowerShell install scripts also write provider-level `api` metadata."
+    ],
+    "steps": [
+      "Extract and test OpenAI provider config helpers.",
+      "Wire install/save flows to provider probing, provider-level api writes, and models set synchronization.",
+      "Expose compatibility warnings in the dashboard and sync shared installer scripts."
+    ],
+    "evidence_hint": "helper unit tests + isolated /api/config/api smoke + dashboard/script diffs",
+    "risk": "medium",
+    "passes": true
+  },
+  {
+    "id": "F-019",
+    "priority": 1,
+    "category": "planning",
+    "component": "commander-orchestration-governance",
+    "description": "Record a long-term Commander operating model with a fixed 5-agent roster, optional 1-3 temporary specialists, and explicit dispatch / review / handoff rules for the unified repo.",
+    "depends_on": [
+      "F-004"
+    ],
+    "acceptance_criteria": [
+      "`specs/013-commander-orchestration-governance/` contains `spec.md`, `plan.md`, and `tasks.md`.",
+      "`docs/runbooks/F-019-commander-orchestration-governance.md` records the fixed roster, dispatch patterns, temporary expansion triggers, and conflict-avoidance rules.",
+      "`longrun/workspaces/opensparrow-unified/feature_list.json` and `claude-progress.txt` both mention the Commander governance baseline and note that this round did not modify runtime code."
+    ],
+    "steps": [
+      "Write the governance spec, implementation plan, and task breakdown.",
+      "Create a Commander runbook for role cards, dispatch modes, and escalation rules.",
+      "Sync the new governance baseline into unified longrun records and verify the persistence workflow still runs."
+    ],
+    "evidence_hint": "new spec suite + runbook + progress_report output + unified init pass",
+    "risk": "low",
+    "passes": true
+  },
+  {
+    "id": "F-020",
+    "priority": 1,
+    "category": "packaging",
+    "component": "mac-arm64-installer-hardening",
+    "description": "Harden the macOS arm64 UI package so bundled superpowers copy recursively, DingTalk/WeCom install from bundled plugin archives instead of ClawHub-first resolution, and plugin-backed channel config is skipped unless the plugin is ready.",
+    "depends_on": [
+      "F-012",
+      "F-019"
+    ],
+    "acceptance_criteria": [
+      "`ui/install-helpers.mjs` plus `ui/tests/install-helpers.test.mjs` cover recursive skill copy and bundled plugin archive resolution.",
+      "`ui/server.mjs` prefers packaged `.tgz` plugin archives, skips DingTalk/WeCom channel config when plugin install fails, and uses a longer plugin install timeout suitable for WeCom local archive installs.",
+      "A fresh arm64 package exists at `dist/handoff/opensparrow-mac-ui-full-arm64-20260414-162747.zip` and its bundled `vendor/mac-openclaw/bin/node` reports `arm64`.",
+      "Smoke evidence shows local `.tgz` plugin install works for DingTalk and WeCom, and package launch still reaches the UI listening state."
+    ],
+    "steps": [
+      "Add pure install helpers and a focused node:test regression for recursive skill copy and plugin archive discovery.",
+      "Wire UI install and channel-update flows to local plugin archives, plugin-ready gating, corrected OpenClaw entry preference, and a longer plugin install timeout.",
+      "Rebuild the mac arm64 UI package, bundle local DingTalk/WeCom plugin archives, validate launch, and retain only the latest good ZIP."
+    ],
+    "evidence_hint": "`node --test ui/tests/install-helpers.test.mjs` + local `.tgz` plugin smoke + `FINAL_ENTRY_SMOKE=PASS` + final zip path",
+    "risk": "medium",
+    "passes": true
+  },
+  {
+    "id": "F-021",
+    "priority": 1,
+    "category": "maintenance",
+    "component": "codespec-template-ingestion",
+    "description": "Mirror curated codeSPEC cleanup templates into the unified repo, keep the source project untouched, and clarify the boundary between imported references and local authority surfaces.",
+    "depends_on": [
+      "F-006",
+      "F-019"
+    ],
+    "acceptance_criteria": [
+      "`specs/015-codespec-template-ingestion/` contains `spec.md`, `plan.md`, and `tasks.md`.",
+      "`scripts/import-codespec-template.sh` plus `scripts/tests/import-codespec-template.test.mjs` prove the import is whitelist-based and does not overwrite local reference docs.",
+      "`docs/reference/codeSPEC-template/` contains local scope docs plus an upstream `UnifiedFramework` snapshot imported from `codeSPEC` without modifying the source repo.",
+      "`longrun/README.md`, `longrun/CHECKLIST.md`, and `longrun/METHOD.zh-CN.md` clearly position longrun as project memory rather than feature or execution authority.",
+      "`README.md`, `longrun/workspaces/opensparrow-unified/feature_list.json`, and `longrun/workspaces/opensparrow-unified/claude-progress.txt` all mention the new reference surface and its authority boundary."
+    ],
+    "steps": [
+      "Write the migration spec, plan, and tasks for curated codeSPEC template ingestion.",
+      "Add a tested import script that rebuilds a local reference snapshot from a whitelist of `UnifiedFramework` files.",
+      "Create reference docs and runbook entries that explain imported scope, skipped assets, and why current repo authority stays local.",
+      "Sync the longrun boundary notes and unified project-memory records after the import succeeds."
+    ],
+    "evidence_hint": "`node --test scripts/tests/import-codespec-template.test.mjs` + `bash -n scripts/import-codespec-template.sh` + import manifest + unified init/progress report",
+    "risk": "low",
+    "passes": true
+  },
+  {
+    "id": "F-022",
+    "priority": 1,
+    "category": "governance",
+    "component": "codespec-framework-adaptation",
+    "description": "Adapt codeSPEC into OpenSparrow's active development framework by wiring local governance docs, longrun scaffolds, authority order, and curated upstream reference sync into one usable底座.",
+    "depends_on": [
+      "F-019",
+      "F-021"
+    ],
+    "acceptance_criteria": [
+      "`docs/governance/` contains an active local governance surface: framework stack, project onboarding SOP, dispatch templates, and quick reference.",
+      "`AGENTS.md`, `.specify/memory/constitution.md`, `docs/项目持久化说明.md`, and `README.md` all point to the new framework entry and share the same authority order.",
+      "`longrun/templates/initializer_prompt.template.md` and `longrun/templates/coding_prompt.template.md` clearly position longrun as project memory scaffolding instead of feature or execution authority.",
+      "`scripts/import-codespec-template.sh` plus `scripts/tests/import-codespec-template.test.mjs` mirror the expanded curated whitelist (`UnifiedFramework` + `AgentTeam`) without modifying the source repo or overwriting local reference docs.",
+      "`claude-progress.txt` records that the framework底座 is ready and future product work should build on this adapted stack."
+    ],
+    "steps": [
+      "Create active local governance docs that adapt codeSPEC's UnifiedFramework and AgentTeam concepts to OpenSparrow paths and rules.",
+      "Wire the new governance stack into AGENTS, constitution, project persistence docs, README, and longrun prompt scaffolds.",
+      "Expand curated reference import coverage to include AgentTeam onboarding/dispatch templates and the execution bridge document.",
+      "Validate the updated stack with import tests, real reference sync, unified init, and progress reporting."
+    ],
+    "evidence_hint": "`docs/governance/` + `node --test scripts/tests/import-codespec-template.test.mjs` + import manifest + unified init/progress report",
+    "risk": "low",
+    "passes": true
+  },
+  {
+    "id": "F-023",
+    "priority": 1,
+    "category": "governance",
+    "component": "commander-mode-hardening",
+    "description": "Harden Commander Mode boundaries across the constitution, plan template, and coding prompt scaffold so commander activation stays explicit, execution ownership stays serialized, and closeout remains non-authoritative.",
+    "depends_on": [
+      "F-019",
+      "F-022"
+    ],
+    "acceptance_criteria": [
+      "`.specify/memory/constitution.md` records explicit Commander Mode activation, role boundaries, commander contract, ownership serialization, and non-authoritative closeout rules.",
+      "`.specify/templates/plan-template.md` makes packetization the default dispatch scaffold with required packet fields, independent reviewer/verifier roles, stop rules, and separate integration-packet wording.",
+      "`longrun/templates/coding_prompt.template.md` states that commander mode does not make the main thread the default implementation owner, that longrun closeout remains non-authoritative, and that `passes: true` still requires traceable acceptance evidence.",
+      "Cross-surface wording for `PKT-017-A/B/C/D` is backed by existing `Batch Reviewer: APPROVED` and `Batch Verifier: PASS` evidence and no further integration is required for this round."
+    ],
+    "steps": [
+      "Harden the constitution wording for explicit commander activation, role boundaries, commander contract, and serialized ownership.",
+      "Upgrade the plan template so packet fields, ownership guards, reviewer/verifier separation, and stop rules are dispatch defaults.",
+      "Harden the coding prompt scaffold so continuation notes stay non-authoritative and `passes: true` remains evidence-gated.",
+      "Align the cross-surface wording and close the round only from existing reviewed and verified evidence."
+    ],
+    "evidence_hint": "`Batch Reviewer: APPROVED` + `Batch Verifier: PASS` for `PKT-017-A/B/C/D` + key anchors in `.specify/memory/constitution.md`, `.specify/templates/plan-template.md`, and `longrun/templates/coding_prompt.template.md`",
+    "risk": "low",
+    "passes": true
+  },
+  {
+    "id": "F-024",
+    "priority": 1,
+    "category": "channel",
+    "component": "unified-channel-contract-baseline",
+    "description": "Freeze the Feishu / DingTalk / WeCom baseline canonical contract so server canonical handling, shared browser helpers, minimal docs wording sync, and install/dashboard/read-back closure all follow one baseline without claiming full replay parity.",
+    "depends_on": [
+      "F-012",
+      "F-014"
+    ],
+    "acceptance_criteria": [
+      "`specs/024-unified-channel-contract-baseline/spec.md`, `plan.md`, `tasks.md`, and `docs/runbooks/F-024-unified-channel-contract-baseline.md` freeze the baseline truth table and mapping closure, including Feishu `appId + appSecret`, DingTalk `clientId + clientSecret` with optional `corpId`, and WeCom `botId + secret` with nested persistence.",
+      "`PKT-024-B` lands server-side canonical normalize / validate / persist / read-back handling so `/api/install` and `/api/config/channels` share one requiredness model, DingTalk `corpId` stays optional metadata, WeCom remains bot-first with nested persistence, and Feishu has a first-class canonical boundary.",
+      "`PKT-024-C` lands shared frontend helper baseline for Feishu / DingTalk / WeCom so Install and Dashboard use the same normalize / validate / payload-build contract and DingTalk `corpId` is no longer a browser install blocker.",
+      "`PKT-024-D` syncs only the directly affected live-spec / tutorial / SOP / runbook wording to the frozen baseline, including the three-card Dashboard surface and the explicit `F-024` versus `F-025` boundary.",
+      "`PKT-024-E` provides install / dashboard / read-back baseline closure evidence and the Commander acceptance gate passes for the baseline only, explicitly leaving real E2E, Windows replay fidelity, and broader docs parity to `F-025`."
+    ],
+    "steps": [
+      "Freeze the shared core / delta / alias truth table and install/dashboard/server/read-back mapping closure for the baseline contract.",
+      "Converge server canonical handling for Feishu, DingTalk, and WeCom without flattening WeCom persistence or re-promoting DingTalk `corpId` to required.",
+      "Switch Install and Dashboard to shared channel helpers for normalize / validate / payload build while keeping the current surface structure.",
+      "Sync only the directly affected live-spec, tutorial, SOP, and runbook wording to the frozen baseline and document the `F-024` versus `F-025` boundary.",
+      "Close the round from verification-only install / dashboard / read-back evidence plus Commander acceptance PASS, not from longrun self-inference."
+    ],
+    "evidence_hint": "Commander acceptance gate PASS + existing `PKT-024-A/B/C/D/E` evidence for baseline truth table, canonical handling, shared helpers, wording sync, and closure",
+    "risk": "medium",
+    "passes": true
+  },
+  {
+    "id": "F-026",
+    "priority": 1,
+    "category": "reliability",
+    "component": "mac-first-platform-parity",
+    "description": "Verified closeout for the mac-first direct user-path parity surface across the primary launcher, secondary handoff wrappers, and authoritative Dashboard gateway-port binding, limited to `MAC-DIV-001/002/003/006` and explicitly excluding companion `MAC-DIV-004/005`, packaging/runtime blocker `MAC-DIV-007`, and any change to `F-025-B`'s blocked Windows-specific status.",
+    "depends_on": [
+      "F-003",
+      "F-020"
+    ],
+    "acceptance_criteria": [
+      "`specs/026-mac-first-platform-parity/` plus `mac-truth-inventory.md` freeze `F-026` as a mac-first feature and confine the verified closeout scope to `MAC-DIV-001/002/003/006` without re-opening `F-003`, true `F-014 = wecom-channel-integration`, or `F-025-B`.",
+      "`platforms/mac/wrappers/01-开始部署.command` now follows the same runtime-root precedence as `ui/server.mjs`, checking `runtime/` before falling back to `vendor/mac-openclaw` on the mac direct user path.",
+      "`platforms/mac/wrappers/run-openclaw-usb.command` and `platforms/mac/wrappers/harden-openclaw-usb.command` are closed as UI-first / canonical UI-Dashboard handoffs instead of direct legacy credential or hardening bridges.",
+      "`ui/server.mjs` returns authoritative `gatewayPort` from `/api/status`, and `ui/public/dashboard.html` displays that authoritative port instead of hardcoding `18889`.",
+      "Fresh macOS evidence shows syntax checks passing for the three wrappers, launcher/handoff entry at `http://localhost:19031`, `http://localhost:19032`, and `http://localhost:19033`, matching `/api/status.gatewayPort` values `18897/18898/18899`, and Safari dashboard display matching authoritative `gatewayPort` rather than default `18889`.",
+      "Closeout wording explicitly keeps `MAC-DIV-004/005` unresolved in this round, retains `MAC-DIV-007` as a packaging/runtime blocker outside this closeout, and leaves `F-025-B` blocked on Windows-specific evidence."
+    ],
+    "steps": [
+      "Freeze the mac-first truth surface and admissible closeout scope for `MAC-DIV-001/002/003/006` without widening into companion, packaging, or Windows fidelity work.",
+      "Align the primary mac launcher with server runtime-root precedence and convert the secondary wrappers into UI-first / canonical UI-Dashboard handoff surfaces.",
+      "Make `/api/status.gatewayPort` the authoritative Dashboard service-port source instead of a hardcoded `18889` display.",
+      "Close the feature only from fresh macOS syntax, launcher, status, and browser evidence on the direct user-path surface.",
+      "Retain companion `MAC-DIV-004/005`, packaging/runtime blocker `MAC-DIV-007`, and `F-025-B`'s Windows-specific blocked status outside this verified closeout."
+    ],
+    "evidence_hint": "Fresh macOS `bash -n` on the three wrappers + direct launcher/handoff runs at `19031/19032/19033` + `/api/status.gatewayPort` parity + Safari dashboard port evidence",
+    "risk": "medium",
+    "passes": true
+  },
+  {
+    "id": "F-027",
+    "priority": 1,
+    "category": "packaging",
+    "component": "packaged-mac-ui-first-release-readiness",
+    "description": "Closed as `packaged-mac-ui-first-release-readiness` for tonight's Mac-only UI-first packaged support surface: the only verified official first-click path is root `01-开始部署.command`, official packaged support is limited to Feishu / DingTalk, `mac/run-openclaw-usb.command` and `mac/harden-openclaw-usb.command` are advanced compatibility / handoff only, packaged UI / Dashboard reads authoritative `/api/status.gatewayPort` instead of hardcoding `18889`, companion stays outside tonight's support surface, WeCom is de-scoped from tonight's outward promise without marking true `F-014` as failed, and `F-025-B` remains blocked on Windows-specific evidence.",
+    "depends_on": [
+      "F-020",
+      "F-026"
+    ],
+    "acceptance_criteria": [
+      "`specs/027-mac-ui-first-release-readiness/` plus `packaged-mac-release-surface-inventory.md` freeze `F-027` as a new packaged Mac-only feature, not a reopening of `F-026`, not a rewrite of true `F-014`, and not any change to `F-025-B = blocked on Windows-specific evidence`.",
+      "The Commander-accepted `PKT-027-A3` PASS gate is tied to one packaged verification artifact only: `dist/handoff/opensparrow-mac-ui-full-arm64-20260415-235340/opensparrow-0.1.0-alpha-mac-ui-arm64`, with root `01-开始部署.command` as tonight's only official first-click path.",
+      "Tonight's packaged official support surface is Mac-only UI-first with Feishu / DingTalk, while `mac/run-openclaw-usb.command` and `mac/harden-openclaw-usb.command` are recorded only as advanced compatibility / handoff surfaces rather than the main install or hardening path.",
+      "The packaged UI / Dashboard surface is closed on authoritative `/api/status.gatewayPort`, and the packaged dashboard no longer hardcodes `18889` for the service port display.",
+      "Tonight's outward promise explicitly de-scopes packaged WeCom readiness without converting true `F-014` into a failure, keeps companion outside the official support surface, and preserves residual Windows files plus the known WeCom plugin/runtime mismatch as residual notes rather than upgraded blockers for this closeout."
+    ],
+    "steps": [
+      "Freeze `F-027` as packaged Mac UI-first release readiness scoped only to tonight's packaged support surface.",
+      "Anchor the closeout to the single Commander-accepted verification artifact and root `01-开始部署.command` as the only official first-click path.",
+      "Record the official packaged support promise as Mac-only UI-first with Feishu / DingTalk, while demoting `mac/run-openclaw-usb.command` and `mac/harden-openclaw-usb.command` to advanced compatibility / handoff only.",
+      "Carry forward the packaged `/api/status.gatewayPort` authority and the dashboard de-hardcoding of `18889` as part of the packaged release-ready surface.",
+      "Preserve WeCom de-scope, companion exclusion, residual Windows files, the known WeCom plugin/runtime mismatch note, and `F-025-B`'s blocked Windows-specific status without reopening `F-026` or rewriting true `F-014`."
+    ],
+    "evidence_hint": "Commander-accepted `PKT-027-A3 = PASS` on `dist/handoff/opensparrow-mac-ui-full-arm64-20260415-235340/opensparrow-0.1.0-alpha-mac-ui-arm64` + packaged first-click / wrapper-role / gatewayPort / outward-promise evidence",
+    "risk": "medium",
+    "passes": true
+  },
+  {
+    "id": "F-028",
+    "priority": 1,
+    "category": "tooling",
+    "component": "mem0-project-memory-integration",
+    "description": "Integrate Mem0 as the project's durable memory layer for Codex-first usage, codify memory operating rules, curate durable project knowledge, and import the initial OpenSparrow memory batch without touching the F-027 Mac UI-first implementation path.",
+    "depends_on": [
+      "F-022",
+      "F-023"
+    ],
+    "acceptance_criteria": [
+      "`specs/028-mem0-project-memory-integration/` contains `spec.md`, `plan.md`, and `tasks.md`.",
+      "`AGENTS.md` contains a `Memory Operating Rules` section that matches the existing authority order and longrun subordinate-memory boundary.",
+      "`docs/memory-setup.md` and `memory/mem0_import.json` explain the memory operating model, A/B/C mapping, namespace contract, and re-import/verification workflow.",
+      "Local Codex configuration exposes the Mem0 MCP with auth injected from environment variables rather than repo secrets.",
+      "Mem0 connectivity, list/search/get/update, and the initial OpenSparrow memory import are all verified with fresh evidence."
+    ],
+    "steps": [
+      "Freeze the sidecar scope for Mem0 project memory integration in spec/plan/tasks.",
+      "Add repo-level memory operating rules and curate durable project memories into a JSON import batch.",
+      "Connect Mem0 to Codex via local MCP configuration and install the official mem0 CLI.",
+      "Run system-test writes, import the initial OpenSparrow memory batch, and verify CLI plus agent-side retrieval."
+    ],
+    "evidence_hint": "Mem0 MCP config + `mem0 status` + project-scoped list/search/get/update + imported memory batch + `codex exec` log showing Mem0 MCP retrieval",
     "risk": "medium",
     "passes": true
   }

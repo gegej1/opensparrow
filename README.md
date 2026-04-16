@@ -13,6 +13,8 @@
 - 项目持久化说明：`docs/项目持久化说明.md`
 - 多平台统一仓方案：`docs/多平台统一仓方案-20260323.md`
 - unified workspace 规格：`longrun/workspaces/opensparrow-unified/app_spec.md`
+- 当前开发框架治理入口：`docs/governance/README.md`
+- `codeSPEC` 清洗模板参考：`docs/reference/codeSPEC-template/README.md`
 
 ## 当前真源结构
 
@@ -21,7 +23,7 @@
 - `scripts/openclaw-usb/`：共享安装/收口脚本
 - `ui/`：USB/UI 控制面
 - `specs/`、`longrun/`、`.specify/`、`.codex/`：文档驱动与长期维护骨架
-- `docs/`：对外说明、runbook 与迁移方案
+- `docs/`：对外说明、runbook、迁移方案与 reference 模板镜像
 
 ## 面向用户的交付入口
 
@@ -34,3 +36,5 @@
 - `dist/` 为生成物输出目录，不直接维护
 - `opensparrow_win/`、`_push_opensparrow_win/`、`openclaw-usb-feishu-delivery/`、`openclawtest/` 当前冻结为历史/实验目录
 - 不强行统一入口脚本；统一的是共享逻辑、配置契约、验证链、构建/导出规则与容器化基线
+- `docs/governance/` 是当前仓正在使用的治理与派工底层
+- `docs/reference/codeSPEC-template/` 是上游参考镜像层，不是当前仓的权威规则层

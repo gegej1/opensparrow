@@ -1,190 +1,99 @@
-# OpenClaw 本地 U 盘部署 SOP（v1）
+# OpenSparrow Mac UI-first 首发 SOP
 
 ## 元数据
-- 日期：`2026-03-23`
-- 作者/Agent：`Codex-B`
-- 关联 spec：`specs/002-openclaw-usb-installer/spec.md`；`specs/008-build-export-dist-closure/spec.md`
 
-## 概述
-- 在不依赖 VPS 的前提下，把 OpenClaw + 飞书接入流程做成可复用的 U 盘交付包，实现“插入 U 盘后，手动执行入口脚本完成部署”，并确保不污染目标机器原有默认 OpenClaw 环境。
-- 本文是 USB 交付的总 SOP，统一记录边界、隔离、平台入口、验收、排障和交付导出命令。
+- 日期：`2026-04-15`
+- Feature：`F-027`
+- 适用对象：今晚 Mac packaged release 的操作者 / 支持人员
 
-## 前置条件
-- 关键边界（先讲清楚）：
-  - 现代操作系统默认不允许 USB 介质自动执行安装脚本。
-  - 可行路径是：用户插入 U 盘后手动双击或手动运行入口脚本。
-  - 因安全要求，密钥不能预置在 U 盘明文文件中，应在目标机运行时输入或注入环境变量。
-  - 本方案优先支持本地与 U 盘交付，不处理 VPS。
-- 隔离策略：
-  - OpenClaw profile：`usb-portable`
-  - Isolated state：`~/.openclaw-usb-portable/`
-  - Isolated workspace：`~/.openclaw-usb-portable/workspace/`
-  - Dedicated gateway port：默认请求 `18889`，若占用会自动切换到下一个空闲端口
-  - Dedicated service：`ai.openclaw.usb-portable`
-- U 盘目录建议：
+## 今晚边界
 
-  ```text
-  openclaw-usb-pack/
-  ├── README.txt
-  ├── docs/
-  ├── mac/
-  ├── windows/
-  ├── runbooks/
-  ├── scripts/
-  └── skills/
-  ```
+- 这是 **Mac-only UI-first 首发 cut**
+- 唯一官方 first-click path：根目录 `01-开始部署.command`
+- 今晚正式支持渠道：`飞书`、`钉钉`
+- `mac/run-openclaw-usb.command` 与 `mac/harden-openclaw-usb.command` 只保留为 **advanced compatibility / handoff**
+- 企业微信不纳入今晚 packaged outward promise
+- companion 不纳入今晚正式支持面
+- 不把 bundled runtime / plugin mismatch 反写成真正 `F-014` 失败
 
-- 目标机器前置条件：
-  1. 已联网。
-  2. 若直接从仓库/staging 运行，目标机需有 Node.js 和 npm；若使用 handoff copy，平台运行时已随包提供。
-  3. 可访问模型 API（官方或可用中转）。
-  4. 飞书应用已开通消息权限并启用 WebSocket 事件方式。
-  5. Windows 机器仅需可运行 PowerShell，不再依赖 Git Bash。
+## 交付包应包含什么
 
-## 操作步骤
-1. 检查交付包目录是否齐全
+至少应看到：
 
-   ```bash
-   find openclaw-usb-pack -maxdepth 2 | sort
-   ```
+```text
+opensparrow-<version>-mac-ui-<arch>/
+├── 01-开始部署.command
+├── README.md
+├── README.txt
+├── docs/
+│   ├── INSTALL.md
+│   └── SOP.md
+├── mac/
+│   ├── 01-开始部署.command
+│   ├── run-openclaw-usb.command
+│   └── harden-openclaw-usb.command
+├── plugins/
+├── runbooks/
+└── ui/
+```
 
-   - 目标是确认包中至少含有 `docs/`、`mac/`、`windows/`、`runbooks/`、`scripts/`、`skills/`。
-   - 如果当前还未导出成独立目录，也可在 staging 包目录下执行相同检查。
+重点口径：
 
-2. 在 macOS 上执行安装
+- 根目录 `01-开始部署.command` 是唯一官方起点
+- `mac/*.command` 不是主安装路径
+- 文档不得继续把 Windows 当作今晚支持面
+- 文档不得继续把企业微信写成今晚 packaged ready 支持面
 
-   ```bash
-   bash mac/run-openclaw-usb.command
-   ```
+## 标准操作
 
-   - 操作顺序：
-     1. 插入 U 盘，进入包目录。
-     2. 双击 `mac/run-openclaw-usb.command`，或在 Terminal 中执行上面的命令。
-     3. 按提示输入：
-        - `FEISHU_APP_ID`
-        - `FEISHU_APP_SECRET`
-        - `OPENAI_API_KEY`
-        - `OPENAI_BASE_URL`（可选）
-     4. 等待脚本完成。
-     5. 验收：
-        - `openclaw --profile usb-portable channels status --probe`
-        - `openclaw --profile usb-portable agent --agent main --message "请只回复OK" --json`
-        - 飞书给机器人发 `ok`
-   - 执行日志与证据默认落在包目录下的 `.openclaw-usb-runtime/`。
+1. 进入交付包根目录。
+2. 双击 `01-开始部署.command`。
+3. 等待浏览器打开安装向导。
+4. 只按今晚正式支持面选择：
+   - 飞书
+   - 钉钉
+5. 完成安装后进入 Dashboard。
+6. 如需重置或再次安装，在 Dashboard 中完成，不回退到 legacy CLI 流程。
 
-3. 在 Windows 上执行安装
+## 高级兼容入口的处理方式
 
-   ```cmd
-   cmd /c windows\run-openclaw-usb.cmd
-   ```
+如果用户误点：
 
-   - 操作顺序：
-     1. 插入 U 盘，进入包目录。
-     2. 双击 `windows/run-openclaw-usb.cmd`，或在命令行执行上面的命令。
-     3. `run-openclaw-usb.cmd` 会调用 `install-local-feishu.ps1`。
-     4. PowerShell 会提示输入：
-        - `FEISHU_APP_ID`
-        - `FEISHU_APP_SECRET`
-        - `OPENAI_API_KEY`
-        - `OPENAI_BASE_URL`（可选）
-     5. PowerShell 会直接执行包内 `scripts/openclaw-usb/install-local-feishu.ps1`，优先使用包内 Windows Node/OpenClaw 运行时。
-     6. 验收：
-        - 若本机已安装全局 `openclaw`：`openclaw --profile usb-portable channels status --probe`
-        - 若仅使用包内运行时：`runtime\node\node.exe runtime\openclaw\openclaw.mjs --profile usb-portable channels status --probe`
-        - agent smoke 同理可替换为 `agent --agent main --message "请只回复OK" --json`
+- `mac/run-openclaw-usb.command`
+- `mac/harden-openclaw-usb.command`
 
-4. 在 Windows 上重放历史配置（DingTalk / WeCom / UI 历史配置）
+当前期望行为是：
 
-   ```powershell
-   powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\one-click-deploy.ps1 -NoPause
-   ```
+- 明确提示这只是高级兼容 / handoff 入口
+- 提示今晚正式支持面仍是根目录 `01-开始部署.command`
+- 自动转交到 canonical UI / Dashboard 链路
 
-   - 适用场景：目标机已经有 `%USERPROFILE%\.openclaw-usb-portable\` 下的历史配置，并希望直接复用现有 UI 配置发起安装。
-   - 说明：
-     - 该脚本会读取 `openclaw.json`。
-     - 对 DingTalk 会额外读取可选的 `ui-meta.json`，补带 `corpId/robotCode`。
-     - 即使 `corpId` 缺失，也不会再因最小契约不匹配直接失败。
-     - 若 `/api/install` 返回 4xx/5xx JSON 错误体，终端会优先显示后端 `errors[]/message`。
+## 快速核对项
 
-5. 以开放策略完成首次联调（仅用于临时联调）
+在今晚 release gate 中，至少确认：
 
-   ```bash
-   bash scripts/openclaw-usb/install-local-feishu.sh \
-     --profile usb-portable \
-     --port 18889 \
-     --dm-policy open \
-     --allow-from-json '["*"]' \
-     --require-mention false
-   ```
-
-   - 说明：
-     - 仓库 / Bash 模式可直接使用上面的命令。
-     - Windows handoff copy 模式可直接双击 `windows/run-openclaw-usb.cmd`。
-
-6. 完成联调后立即安全收口
-
-   ```bash
-   bash scripts/openclaw-usb/harden-local-feishu.sh \
-     --profile usb-portable \
-     --dm-policy pairing \
-     --allow-from-json '[]' \
-     --require-mention true
-   ```
-
-   - 复验：
-
-     ```bash
-     openclaw --profile usb-portable config get channels.feishu.dmPolicy
-     openclaw --profile usb-portable config get channels.feishu.allowFrom --json
-     openclaw --profile usb-portable channels status --probe
-     ```
-
-   - 说明：
-     - 仓库 / Bash 模式使用上列命令。
-     - Windows handoff copy 模式直接双击 `windows/harden-openclaw-usb.cmd`。
-
-7. 生成 staging 包与平台 handoff copy
-
-   ```bash
-   bash longrun/workspaces/openclaw-usb-portable/execution/scripts/build-delivery-pack.sh
-   bash longrun/workspaces/openclaw-usb-portable/execution/scripts/create-mac-handoff-copy.sh
-   bash longrun/workspaces/openclaw-usb-portable/execution/scripts/create-windows-handoff-copy.sh
-   ```
-
-   - 交付备注：
-     - 不将任何真实密钥提交到仓库或固化到 U 盘文件。
-     - staging 交付包通过 `build-delivery-pack.sh` 生成。
-     - Mac / Windows handoff copy 分别用各自平台脚本导出。
-
-## 验证方法
-- 验收标准：
-  - OpenClaw daemon 运行正常。
-  - Feishu 通道探测为 `works`。
-  - 本地 agent 文字回复成功。
-  - 若已进行人工联调，飞书端收到机器人回复。
+- 根目录 `01-开始部署.command` 存在
+- Dashboard “基本信息”卡片中的端口来自 authoritative read-back，而不是前端写死 `18889`
+- `README.txt`、`docs/INSTALL.md`、`docs/SOP.md` 不再把 Windows 写成今晚正式支持面
+- `docs/SOP.md` 不再把 `mac/run-openclaw-usb.command` 写成主安装入口
+- packaged outward promise 已去掉企业微信 tonight-ready 承诺
 
 ## 故障排查
-- `openclaw` 未安装：检查 npm 全局安装权限，改用 nvm 或自定义 npm prefix。
-- Windows 入口双击后被策略拦截：右键以 PowerShell 运行，或在 PowerShell 中执行 `Set-ExecutionPolicy -Scope Process Bypass` 后再重试。
-- Windows 包内运行时不可用：
-  - 检查 `runtime\node\node.exe` 与 `runtime\openclaw\openclaw.mjs` 是否存在。
-  - 若目标机架构不匹配（x64/arm64），重新导出对应架构包。
-- 网关不健康：
-  - 检查 `openclaw --profile usb-portable daemon status`。
-  - 查看安装输出或 `session-metadata.txt`，确认脚本最终使用的是哪个端口。
-  - 若需要固定端口，再手动用 `--port <free-port>` 重跑。
-- 飞书不回复：
-  - 检查是否有其他实例使用同一 app id。
-  - 查看 `openclaw --profile usb-portable logs --follow --plain` 是否收到入站事件。
-- 模型超时：检查 `OPENAI_BASE_URL` 与网络连通性。
 
-## 参考资料
-- `specs/002-openclaw-usb-installer/spec.md`
-- `specs/008-build-export-dist-closure/spec.md`
-- `docs/usb-pack/SOURCES.md`
-- `docs/usb-pack/isolation-boundary.md`
-- `docs/usb-pack/package-boundary.md`
-- `docs/usb-pack/windows-native-delivery.md`
-- `docs/runbooks/F-001-install-and-configure.md`
-- `docs/runbooks/F-003-usb-delivery-pack.md`
-- `docs/runbooks/F-004-security-hardening.md`
+### 浏览器地址不是 `19000`
+
+这是允许的。若默认端口占用，系统会自动切到下一个可用端口。
+以启动输出和 Dashboard 展示的实际端口为准。
+
+### 仍然看到高级兼容入口
+
+这是允许的，但它们只能作为 handoff surface。
+若脚本仍直接收凭据、直跑 legacy CLI、或绕开 UI / Dashboard，则应视为 blocker。
+
+### 用户问到企业微信
+
+统一口径：
+
+- 真正 `F-014` 没有被改写
+- 今晚只是 packaged outward promise de-scope
+- 当前 cut 不把企业微信作为正式可交付支持面

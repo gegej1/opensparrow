@@ -7,66 +7,72 @@ source "${script_dir}/lib/export-common.sh"
 
 workspace_dir="$(usb_exec_workspace_dir)"
 project_root="$(usb_project_root "$workspace_dir")"
-export_root="${project_root}/dist/handoff/mac-feishu-usb-copy-$(date +%Y%m%d-%H%M%S)"
-archive_path="${export_root}.tar.gz"
-usb_pack_dir="${export_root}/usb-pack"
-feishu_source_dir="${export_root}/feishu-source"
-runtime_dir="${usb_pack_dir}/runtime"
-node_version="$(usb_vendor_node_version "$project_root")"
-openclaw_version="$(usb_vendor_openclaw_version "$project_root")"
+version="$(tr -d '[:space:]' < "${project_root}/VERSION")"
 arch="$(uname -m)"
+
 case "$arch" in
-  arm64) node_arch='arm64' ;;
-  x86_64) node_arch='x64' ;;
+  arm64) artifact_arch='arm64' ;;
+  x86_64) artifact_arch='x64' ;;
   *) echo "[ERROR] Unsupported macOS arch: $arch" >&2; exit 1 ;;
 esac
 
+stage_dir="${project_root}/dist/usb-pack/opensparrow-${version}"
+export_root="${project_root}/dist/handoff/opensparrow-mac-ui-full-${artifact_arch}-$(date +%Y%m%d-%H%M%S)"
+archive_path="${export_root}.zip"
+artifact_dir="${export_root}/opensparrow-${version}-mac-ui-${artifact_arch}"
+node_version="$(usb_vendor_node_version "$project_root")"
+openclaw_version="$(usb_vendor_openclaw_version "$project_root")"
+
 mkdir -p "${project_root}/dist/handoff"
-usb_build_stage_pack "$workspace_dir"
+
+echo "[INFO] Building fresh Mac UI-first USB pack..."
+bash "${project_root}/scripts/build-usb-pack.sh" --platform mac
+
+if [[ ! -d "$stage_dir" ]]; then
+  echo "[ERROR] Expected stage dir missing: $stage_dir" >&2
+  exit 1
+fi
+
 usb_prepare_export_root "$export_root" "$archive_path"
-mkdir -p "$usb_pack_dir" "$feishu_source_dir"
-
-usb_copy_stage_pack "$workspace_dir" "$usb_pack_dir"
-usb_sync_vendor_runtime "$project_root" mac "$runtime_dir"
-
-usb_copy_feature_snapshot "$project_root" "$feishu_source_dir"
-usb_prune_feature_snapshot "$feishu_source_dir"
+mkdir -p "$artifact_dir"
+rsync -a --delete "${stage_dir}/" "$artifact_dir/"
 
 cat > "${export_root}/README-FIRST.txt" <<README
-OpenClaw USB Portable - Mac handoff copy (Feishu-only)
-======================================================
+OpenSparrow Mac UI-first packaged release
+=========================================
 
-这是明天拷到 U 盘用的 Mac 副本，内容包含：
+本次导出只覆盖今晚的 Mac UI-first 首发 cut：
 
-1. usb-pack/
-   - 可直接用于 U 盘交付的安装包
-   - 已内置 Node 运行时与 OpenClaw 运行时
-   - 只包含 OpenClaw + Feishu 本地/U盘部署内容
-2. feishu-source/
-   - 与本次 002 USB/Feishu 本地部署直接相关的源码与文档快照
-   - 不包含 Notion、VPS、群聊归档、知识检索等扩展主题
+- 唯一官方 first-click path：根目录 01-开始部署.command
+- 今晚正式支持渠道：飞书、钉钉
+- 企业微信不纳入今晚 packaged outward promise
+- mac/run-openclaw-usb.command 与 mac/harden-openclaw-usb.command 仅作为 advanced compatibility / handoff
+- companion 不纳入今晚正式支持面
 
-本副本针对当前机器架构构建：
-- macOS arch: ${arch}
-- bundled Node: v${node_version} (${node_arch})
+当前导出信息：
+- version: ${version}
+- macOS arch: ${artifact_arch}
+- bundled Node: v${node_version}
 - bundled OpenClaw: ${openclaw_version}
 
-推荐使用方式：
-- 直接把 usb-pack/ 整个目录拷到 U 盘
-- 在目标 Mac 上双击 usb-pack/mac/run-openclaw-usb.command
+建议使用方式：
+1. 进入 opensparrow-${version}-mac-ui-${artifact_arch}/
+2. 双击 01-开始部署.command
+3. 在浏览器安装向导中完成飞书 / 钉钉配置
 
-注意：
-- 该副本已经尽量把运行依赖带上，但飞书凭证 / API key 仍需目标机输入
-- 该副本不绕过 Gatekeeper，也不绕过 U 盘自动执行限制
-- 该副本明确排除 Notion / VPS 相关内容，后续 Windows 导出也应保持同一边界
-- 若目标 Mac 架构与 ${arch} 不一致，包内 Node 可能不适用
 README
 
-usb_write_versions_file "$export_root" "mac_arch" "$arch" "$node_version" "$openclaw_version"
 usb_write_checksums "$export_root"
-tar -czf "$archive_path" -C "$(dirname "$export_root")" "$(basename "$export_root")"
 
-echo "[DONE] Mac handoff copy created: $export_root"
+(
+  cd "$(dirname "$export_root")"
+  if command -v ditto >/dev/null 2>&1; then
+    ditto -c -k --sequesterRsrc --keepParent "$(basename "$export_root")" "$(basename "$archive_path")"
+  else
+    zip -qry "$(basename "$archive_path")" "$(basename "$export_root")"
+  fi
+)
+
+echo "[DONE] Mac UI-first candidate created: $export_root"
 echo "[DONE] Archive created: $archive_path"
-echo "[INFO] usb-pack path: $usb_pack_dir"
-echo "[INFO] feishu source path: $feishu_source_dir"
+echo "[INFO] Packaged artifact dir: $artifact_dir"

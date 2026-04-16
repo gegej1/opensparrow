@@ -5,6 +5,8 @@
 ## 开始任何开发前必须先看
 
 - `docs/项目持久化说明.md`
+- `docs/governance/README.md`
+- `docs/governance/framework-stack.md`
 - `.specify/memory/constitution.md`
 - `longrun/workspaces/opensparrow-unified/app_spec.md`
 - `longrun/workspaces/opensparrow-unified/feature_list.json`
@@ -45,6 +47,29 @@
 - 不提交任何凭证或本机配置：`.codex/auth.json`、`.codex/config.toml`、`.env` 类文件必须保持忽略。
 - 不要随意修改 `vendor/` 中的二进制、`node_modules/`、`bin/`、`lib/`、`share/`、`*.exe` 等内容，除非任务明确要求。
 - 不要强行统一平台入口脚本：macOS 继续允许 `.command + Bash`，Windows 继续允许 `.cmd/.ps1`。
+
+## Memory Operating Rules
+
+- 开始新任务前，先检索与当前任务相关的 Mem0 历史记忆；当前项目统一使用 `user_id = opensparrow-memory`，并在 metadata 中标注 `project = opensparrow`。
+- 关键工作完成后，把 durable memory 写入 Mem0，优先使用以下类型：
+  - `decision`
+  - `task_learning`
+  - `anti_pattern`
+  - `convention`
+  - `environmental`
+  - `user_preference`
+- 只写 durable facts：架构决策、冻结边界、长期约定、环境发现、长期偏好；不要写闲聊、命令回显、长日志、无关上下文。
+- 旧事实被新事实取代时，优先更新已有 memory；不要并列保留互相冲突的 active truth。
+- 不要把所有历史文档全文写进 Mem0；先提炼成短、准、可执行的 durable memory，再导入。
+- 即将丢失重大上下文时，写 `session_state`，但不要把 `session_state` 误当成永久规则。
+
+## 当前底层框架
+
+- 项目规则层：`AGENTS.md` + `.specify/memory/constitution.md`
+- feature 交付层：`specs/`
+- 项目记忆层：`longrun/`
+- 执行方法层：当前会话使用的 `superpowers` 工作流
+- 协作治理层：`docs/governance/` + `docs/runbooks/F-019-commander-orchestration-governance.md`
 
 ## 推荐修改区域
 

@@ -1,0 +1,1129 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang xml:lang>
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>龙虾完整使用手册</title>
+  <style>
+
+@page {
+  margin: 15mm 15mm 15mm 15mm;
+  @top-center { content: none; }
+  @bottom-center { content: none; }
+}
+
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+
+ul.task-list[class]{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+font-size: inherit;
+width: 0.8em;
+margin: 0 0.8em 0.2em -1.6em;
+vertical-align: middle;
+}
+.display.math{display: block; text-align: center; margin: 0.5rem auto;}
+
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+{ counter-reset: source-line 0; }
+pre.numberSource code > span
+{ position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+{ content: counter(source-line);
+position: relative; left: -1em; text-align: right; vertical-align: baseline;
+border: none; display: inline-block;
+-webkit-touch-callout: none; -webkit-user-select: none;
+-khtml-user-select: none; -moz-user-select: none;
+-ms-user-select: none; user-select: none;
+padding: 0 4px; width: 4em;
+color: #aaaaaa;
+}
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa; padding-left: 4px; }
+div.sourceCode
+{ }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } 
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.at { color: #7d9029; } 
+code span.bn { color: #40a070; } 
+code span.bu { color: #008000; } 
+code span.cf { color: #007020; font-weight: bold; } 
+code span.ch { color: #4070a0; } 
+code span.cn { color: #880000; } 
+code span.co { color: #60a0b0; font-style: italic; } 
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.do { color: #ba2121; font-style: italic; } 
+code span.dt { color: #902000; } 
+code span.dv { color: #40a070; } 
+code span.er { color: #ff0000; font-weight: bold; } 
+code span.ex { } 
+code span.fl { color: #40a070; } 
+code span.fu { color: #06287e; } 
+code span.im { color: #008000; font-weight: bold; } 
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.kw { color: #007020; font-weight: bold; } 
+code span.op { color: #666666; } 
+code span.ot { color: #007020; } 
+code span.pp { color: #bc7a00; } 
+code span.sc { color: #4070a0; } 
+code span.ss { color: #bb6688; } 
+code span.st { color: #4070a0; } 
+code span.va { color: #19177c; } 
+code span.vs { color: #4070a0; } 
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } 
+</style>
+  <style type="text/css">
+/* ─── 全局 ─── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: "PingFang SC", "Noto Sans SC", "Microsoft YaHei", "Helvetica Neue", sans-serif;
+  font-size: 15px;
+  line-height: 1.85;
+  color: #1a1a2e;
+  background: #f7f8fc;
+}
+
+/* ─── 封面页 ─── */
+body::before {
+  content: "";
+  display: block;
+  height: 6px;
+  background: linear-gradient(90deg, #e74c3c 0%, #e67e22 50%, #f1c40f 100%);
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 999;
+}
+
+/* ─── 主容器 ─── */
+.content-wrapper, article {
+  max-width: 860px;
+  margin: 30px auto;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+  padding: 60px 70px;
+}
+
+/* ─── 标题 ─── */
+h1 {
+  font-size: 2.2em;
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(135deg, #c0392b 0%, #e74c3c 100%);
+  margin: -60px -70px 40px -70px;
+  padding: 50px 70px 40px;
+  border-radius: 12px 12px 0 0;
+  line-height: 1.3;
+  letter-spacing: -0.5px;
+}
+
+h2 {
+  font-size: 1.4em;
+  font-weight: 700;
+  color: #1a5276;
+  border-left: 5px solid #e74c3c;
+  padding: 10px 16px;
+  margin: 2.5em 0 1em;
+  background: linear-gradient(90deg, #eaf2fb 0%, transparent 100%);
+  border-radius: 0 6px 6px 0;
+}
+
+h3 {
+  font-size: 1.1em;
+  font-weight: 700;
+  color: #2c3e50;
+  margin: 1.8em 0 0.6em;
+  padding-left: 10px;
+  border-left: 3px solid #f39c12;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #7f8c8d;
+  margin: 1.4em 0 0.4em;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-size: 0.85em;
+}
+
+/* ─── 段落 ─── */
+p {
+  margin: 0.7em 0;
+  color: #2c3e50;
+}
+
+/* ─── 表格 ─── */
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1.2em 0;
+  font-size: 0.9em;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+}
+
+thead tr { background: linear-gradient(135deg, #1a5276 0%, #2980b9 100%); }
+th {
+  color: #fff;
+  padding: 11px 16px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.88em;
+  letter-spacing: 0.3px;
+}
+td {
+  padding: 9px 16px;
+  border-bottom: 1px solid #ecf0f1;
+  color: #2c3e50;
+}
+tr:last-child td { border-bottom: none; }
+tr:nth-child(even) td { background: #f8fbff; }
+tr:hover td { background: #eaf4fb; transition: background 0.15s; }
+
+/* ─── 代码块 ─── */
+pre {
+  background: #f6f8fa;
+  border: 1px solid #e1e4e8;
+  border-radius: 8px;
+  padding: 18px 22px;
+  overflow-x: auto;
+  margin: 1.2em 0;
+  position: relative;
+}
+pre::before {
+  content: "示例";
+  position: absolute;
+  top: 8px; right: 12px;
+  font-size: 11px;
+  color: #aab;
+  font-family: sans-serif;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+pre code {
+  color: #24292e;
+  background: none;
+  padding: 0;
+  font-size: 0.86em;
+  line-height: 1.7;
+  font-family: "SF Mono", "JetBrains Mono", "Fira Code", "Courier New", monospace;
+  border: none;
+}
+
+/* ─── 行内代码 ─── */
+code {
+  background: #fef9f0;
+  color: #c0392b;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.85em;
+  border: 1px solid #fde8d8;
+  font-family: "SF Mono", monospace;
+}
+
+/* ─── 引用块 ─── */
+blockquote {
+  border-left: 4px solid #f39c12;
+  background: linear-gradient(90deg, #fefdf5 0%, #fff 100%);
+  padding: 14px 20px;
+  margin: 1.2em 0;
+  border-radius: 0 8px 8px 0;
+  box-shadow: 0 2px 6px rgba(243,156,18,0.1);
+}
+blockquote p { color: #7f6000; margin: 0; font-size: 0.93em; }
+
+/* ─── 分割线 ─── */
+hr {
+  border: none;
+  height: 2px;
+  background: linear-gradient(90deg, #e74c3c, #e67e22, #f1c40f, transparent);
+  margin: 3em 0;
+  border-radius: 2px;
+}
+
+/* ─── 列表 ─── */
+ul, ol {
+  padding-left: 1.5em;
+  margin: 0.6em 0;
+}
+li {
+  margin-bottom: 0.35em;
+  color: #2c3e50;
+  padding-left: 4px;
+}
+ul li::marker { color: #e74c3c; }
+ol li::marker { color: #2980b9; font-weight: 600; }
+
+/* ─── 分页（打印） ─── */
+@media print {
+  body { background: #fff; }
+  article, .content-wrapper {
+    max-width: 100%;
+    margin: 0;
+    padding: 30px 40px;
+    box-shadow: none;
+    border-radius: 0;
+  }
+  h1 { margin: -30px -40px 30px; padding: 40px 40px 30px; }
+  h2 { page-break-before: auto; }
+  pre { box-shadow: none; }
+  body::before { position: static; height: 4px; margin-bottom: 0; }
+}
+
+</style>
+</head>
+<body>
+<header id="title-block-header">
+<h1 class="title">龙虾完整使用手册</h1>
+</header>
+<h1 id="opensparrow-安装教程">OpenSparrow 安装教程</h1>
+<blockquote>
+<p><strong>版本</strong>：v1.0<br />
+<strong>发布日期</strong>：2026-04<br />
+<strong>适用平台</strong>：macOS / Windows / Linux</p>
+</blockquote>
+<hr />
+<h2 id="目录">📖 目录</h2>
+<ol type="1">
+<li><a href="#一安装前准备">安装前准备</a></li>
+<li><a href="#二快速安装5-分钟">快速安装（5 分钟）</a></li>
+<li><a href="#三api-key-配置与轮换">API Key 配置与轮换</a></li>
+<li><a href="#四渠道管理飞书--钉钉--企微">渠道管理（飞书 / 钉钉 /
+企微）</a></li>
+<li><a href="#五skill-技能商场">Skill 技能商场</a></li>
+<li><a href="#六常见问题与故障排查">常见问题与故障排查</a></li>
+</ol>
+<hr />
+<h2 id="一安装前准备">一、安装前准备</h2>
+<h3 id="系统要求">1.1 系统要求</h3>
+<table>
+<thead>
+<tr>
+<th>平台</th>
+<th>最低要求</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>macOS</td>
+<td>12.0（Monterey）及以上</td>
+</tr>
+<tr>
+<td>Windows</td>
+<td>Windows 10 及以上</td>
+</tr>
+<tr>
+<td>Linux</td>
+<td>Ubuntu 20.04 / Debian 11 及以上</td>
+</tr>
+<tr>
+<td>浏览器</td>
+<td>Chrome 90+ / Edge 90+ / Safari 14+</td>
+</tr>
+</tbody>
+</table>
+<p>📌 <strong>不需要安装任何其他软件</strong>——Node.js、Python、Docker
+均已内置在交付包中，开箱即用。</p>
+<h3 id="需要提前准备的凭据">1.2 需要提前准备的凭据</h3>
+<p>在安装前，请根据你要接入的 IM 平台，提前准备好对应凭据：</p>
+<p><strong>飞书</strong> - App ID（例：<code>cli_xxxxxxxxxx</code>） -
+App Secret（例：<code>xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</code>） -
+获取位置：飞书开放平台 → 我的应用 → 选择应用 → 凭证与基础信息</p>
+<p><strong>钉钉</strong> - Client ID（有些页面显示为 AppKey） - Client
+Secret（有些页面显示为 AppSecret） - 获取位置：钉钉开放平台 → 应用开发 →
+选择应用 → 基础信息</p>
+<p><strong>企业微信</strong> - 企业 ID（corpid） - 应用 AgentId - 应用
+Secret - 获取位置：企业微信管理后台 → 应用管理 → 选择应用 → 查看详情</p>
+<p><strong>AI 模型 API Key</strong>（任选其一） - Anthropic
+Claude：https://console.anthropic.com → API Keys -
+OpenAI：https://platform.openai.com → API Keys -
+DeepSeek：https://platform.deepseek.com → API Keys - 其他支持 OpenAI
+格式的模型均可使用</p>
+<hr />
+<h2 id="二快速安装5-分钟">二、快速安装（5 分钟）</h2>
+<h3 id="解压交付包">2.1 解压交付包</h3>
+<p>如果收到的是 <code>.zip</code>
+压缩文件，先解压到任意目录（例如桌面）。</p>
+<p>解压后你会看到这样的目录结构：</p>
+<pre><code>opensparrow-pack/
+├── 01-开始部署.command    ← macOS 入口
+├── one-click-deploy.cmd   ← Windows 入口
+├── run-openclaw-usb.sh    ← Linux 入口
+├── docs/
+├── skills/
+└── ...</code></pre>
+<h3 id="启动安装向导">2.2 启动安装向导</h3>
+<blockquote>
+<p>⚠️
+<strong>三个平台唯一的区别就在这一步</strong>，后续步骤完全相同。</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>平台</th>
+<th>操作</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>macOS</strong></td>
+<td>双击 <code>01-开始部署.command</code></td>
+</tr>
+<tr>
+<td><strong>Windows</strong></td>
+<td>双击 <code>one-click-deploy.cmd</code></td>
+</tr>
+<tr>
+<td><strong>Linux</strong></td>
+<td>打开终端，执行 <code>bash run-openclaw-usb.sh</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>macOS
+安全提示处理</strong>：如果系统弹出”无法打开，因为无法验证开发者”提示：
+1. 右键点击文件 → 选择”打开” 2. 在弹出对话框中点击”打开” 3.
+之后就可以正常双击运行了</p>
+<p><strong>Windows SmartScreen 处理</strong>：如果出现蓝色安全警告： 1.
+点击”更多信息” 2. 点击”仍要运行”</p>
+<h3 id="打开安装页面">2.3 打开安装页面</h3>
+<p>启动后，浏览器会自动打开安装向导：</p>
+<pre><code>http://localhost:19000</code></pre>
+<p>如果浏览器没有自动打开，请手动将上面的地址复制到浏览器地址栏。</p>
+<p>📌 如果 19000 端口被占用，系统会自动切换到下一个可用端口（如
+19001、19002），请查看启动窗口中显示的实际端口。</p>
+<h3 id="填写渠道凭据">2.4 填写渠道凭据</h3>
+<p>在安装向导中： 1. 选择你要接入的平台（飞书 / 钉钉 /
+企业微信，可多选） 2. 填写对应凭据（App ID + App Secret 等） 3. 填写 AI
+模型 API Key</p>
+<h3 id="选择技能包可跳过">2.5 选择技能包（可跳过）</h3>
+<p>系统会显示”选择 AI 技能包”界面，根据你的行业选择：</p>
+<table>
+<thead>
+<tr>
+<th>行业包</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>商业</td>
+<td>营销、管理、运营</td>
+</tr>
+<tr>
+<td>教育</td>
+<td>教学、培训、课程设计</td>
+</tr>
+<tr>
+<td>金融</td>
+<td>投资、财务、风控</td>
+</tr>
+<tr>
+<td>政务</td>
+<td>公文写作、政策分析</td>
+</tr>
+<tr>
+<td>医疗</td>
+<td>医学知识、临床辅助</td>
+</tr>
+<tr>
+<td>工具</td>
+<td>通用效率、编程辅助</td>
+</tr>
+</tbody>
+</table>
+<p>📌
+不确定选什么？可以先跳过，以后随时重新安装。基础技能包（superpowers）会自动安装，无需手动选择。</p>
+<h3 id="点击安装并等待">2.6 点击安装并等待</h3>
+<p>点击”安装”按钮后，等待安装完成： - 只装基础包：约 10 秒 -
+每个行业包：约 1-2 分钟 - 全选 6 个包：约 5-10 分钟</p>
+<p>⚠️ 安装过程中<strong>请不要关闭浏览器或命令行窗口</strong>。</p>
+<h3 id="验证安装成功">2.7 验证安装成功</h3>
+<p>✅ <strong>成功标志</strong>： - 页面自动跳转到 Dashboard - Dashboard
+中能看到渠道状态为”运行中” - 向 Bot 发送一条消息，Bot 有回复</p>
+<hr />
+<h2 id="三api-key-配置与轮换">三、API Key 配置与轮换</h2>
+<h3 id="什么时候需要更换-api-key">3.1 什么时候需要更换 API Key</h3>
+<ul>
+<li>API Key 泄露或被他人使用</li>
+<li>余额用完，需要换新 Key</li>
+<li>想切换到其他模型提供商（如从 OpenAI 换到 DeepSeek）</li>
+<li>Key 被平台封禁或限制</li>
+</ul>
+<h3 id="方法一通过-dashboard-修改推荐">3.2 方法一：通过 Dashboard
+修改（推荐）</h3>
+<ol type="1">
+<li>打开浏览器，访问 <code>http://localhost:19000</code></li>
+<li>进入 Dashboard</li>
+<li>点击”设置” → “AI 接入”</li>
+<li>找到 API Key 配置项</li>
+<li>清除旧 Key，填入新 Key</li>
+<li>点击”保存”</li>
+<li>点击”重启服务”使配置生效</li>
+</ol>
+<h3 id="方法二直接编辑配置文件高级">3.3
+方法二：直接编辑配置文件（高级）</h3>
+<p>配置文件位置：</p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr>
+<th>平台</th>
+<th>路径</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>macOS / Linux</td>
+<td><code>~/.openclaw-usb-portable/agents/main/agent/auth-profiles.json</code></td>
+</tr>
+<tr>
+<td>Windows</td>
+<td><code>%USERPROFILE%\.openclaw-usb-portable\agents\main\agent\auth-profiles.json</code></td>
+</tr>
+</tbody>
+</table>
+<p>文件格式示例：</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode json"><code class="sourceCode json"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;version&quot;</span><span class="fu">:</span> <span class="dv">1</span><span class="fu">,</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;profiles&quot;</span><span class="fu">:</span> <span class="fu">{</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    <span class="dt">&quot;openai:default&quot;</span><span class="fu">:</span> <span class="fu">{</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;type&quot;</span><span class="fu">:</span> <span class="st">&quot;openai&quot;</span><span class="fu">,</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;provider&quot;</span><span class="fu">:</span> <span class="st">&quot;openai&quot;</span><span class="fu">,</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;key&quot;</span><span class="fu">:</span> <span class="st">&quot;sk-xxxxxxxxxxxxxxxxxxxxxxxx&quot;</span><span class="fu">,</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>      <span class="dt">&quot;baseUrl&quot;</span><span class="fu">:</span> <span class="st">&quot;https://api.openai.com/v1&quot;</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">}</span></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a><span class="fu">}</span></span></code></pre></div>
+<p><strong>字段说明：</strong> - <code>key</code>：填入你的新 API Key -
+<code>baseUrl</code>：API 地址，如果使用中转站或国内镜像，修改此字段</p>
+<p>📌
+修改配置文件后，需要<strong>重启服务</strong>才能生效：重新双击启动脚本，或在
+Dashboard 中点击”重启服务”。</p>
+<h3 id="支持的模型与-base-url">3.4 支持的模型与 Base URL</h3>
+<table>
+<colgroup>
+<col style="width: 55%" />
+<col style="width: 45%" />
+</colgroup>
+<thead>
+<tr>
+<th>模型提供商</th>
+<th>Base URL</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>OpenAI 官方</td>
+<td><code>https://api.openai.com/v1</code></td>
+</tr>
+<tr>
+<td>Anthropic Claude</td>
+<td><code>https://api.anthropic.com</code></td>
+</tr>
+<tr>
+<td>DeepSeek</td>
+<td><code>https://api.deepseek.com/v1</code></td>
+</tr>
+<tr>
+<td>阿里云通义千问</td>
+<td><code>https://dashscope.aliyuncs.com/compatible-mode/v1</code></td>
+</tr>
+<tr>
+<td>国内 OpenAI 中转站</td>
+<td>由服务商提供，通常格式为 <code>https://xxx.xxx.com/v1</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="四渠道管理飞书-钉钉-企微">四、渠道管理（飞书 / 钉钉 /
+企微）</h2>
+<p>渠道是指 IM
+平台的接入路线。你可以同时连接多个渠道，也可以随时增删。</p>
+<h3 id="添加新渠道">4.1 添加新渠道</h3>
+<ol type="1">
+<li>打开 Dashboard（<code>http://localhost:19000</code>）</li>
+<li>点击”渠道管理”</li>
+<li>点击”添加渠道”</li>
+<li>选择平台类型</li>
+</ol>
+<p><strong>飞书渠道</strong>需要填写： - App ID - App Secret</p>
+<p><strong>钉钉渠道</strong>需要填写： - Client ID（或 AppKey） - Client
+Secret（或 AppSecret）</p>
+<p><strong>企业微信渠道</strong>需要填写： - 企业 ID（corpid） - 应用
+AgentId - 应用 Secret</p>
+<ol start="5" type="1">
+<li>填写完成后点击”保存并启用”</li>
+<li>✅ 状态变为”运行中”即添加成功</li>
+</ol>
+<h3 id="企业微信特别配置">4.2 企业微信特别配置</h3>
+<p>企业微信需要在<strong>管理后台</strong>配置消息接收服务器地址：</p>
+<ol type="1">
+<li>进入企业微信管理后台 → 应用管理</li>
+<li>找到你的应用 → 接收消息 → 设置 API 接收</li>
+<li>在”URL”字段填入：<code>http://你的IP地址:18889/wecom/callback</code></li>
+<li>填写 Token 和 EncodingAESKey（与 OpenSparrow 中的配置保持一致）</li>
+</ol>
+<p>📌 如果你部署在内网，外部用户访问可能需要配置内网穿透或端口转发。</p>
+<h3 id="禁用渠道暂时停用">4.3 禁用渠道（暂时停用）</h3>
+<ol type="1">
+<li>在”渠道管理”列表中找到目标渠道</li>
+<li>点击”禁用”</li>
+<li>✅ 渠道暂停接收消息，配置保留，随时可重新启用</li>
+</ol>
+<h3 id="删除渠道彻底移除">4.4 删除渠道（彻底移除）</h3>
+<ol type="1">
+<li>在”渠道管理”列表中找到目标渠道</li>
+<li>点击”删除”</li>
+<li>在弹出确认框中确认操作</li>
+<li>✅ 渠道及其配置被彻底删除，Bot 不再响应该平台消息</li>
+</ol>
+<hr />
+<h2 id="五skill-技能商场">五、Skill 技能商场</h2>
+<h3 id="技能包是什么">5.1 技能包是什么</h3>
+<p>技能包（Skill Pack）是 AI 助手的”专业知识模块”。每个技能包是一批
+Markdown 文档，告诉 AI 在特定场景下如何工作，让 AI
+的回答更专业、更准确。</p>
+<p>OpenSparrow 内置了 <strong>69,000+ 个行业技能</strong>，分为 6
+大类别：</p>
+<table>
+<thead>
+<tr>
+<th>类别</th>
+<th>说明</th>
+<th>技能数</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>🏢 商业</td>
+<td>营销策划、企业管理、运营增长</td>
+<td>~11,600</td>
+</tr>
+<tr>
+<td>📚 教育</td>
+<td>教学设计、培训课程、学习辅导</td>
+<td>~14,400</td>
+</tr>
+<tr>
+<td>💰 金融</td>
+<td>投资分析、财务管理、风险控制</td>
+<td>~11,200</td>
+</tr>
+<tr>
+<td>🏛️ 政务</td>
+<td>公文写作、政策分析、行政管理</td>
+<td>~10,600</td>
+</tr>
+<tr>
+<td>🏥 医疗</td>
+<td>医学知识、健康管理、临床辅助</td>
+<td>~11,200</td>
+</tr>
+<tr>
+<td>🔧 工具</td>
+<td>通用效率提升、编程辅助、文档处理</td>
+<td>~10,300</td>
+</tr>
+</tbody>
+</table>
+<p>此外，还有一个自动安装的<strong>基础技能包（superpowers）</strong>，包含
+32 个通用智能工作技能。</p>
+<h3 id="安装时选择技能包">5.2 安装时选择技能包</h3>
+<p>在安装向导的”选择 AI 技能包”步骤： 1. 根据你的行业勾选对应类别 2.
+可以多选 3. 不确定就先不选，基础包会自动安装 4. 点击”继续安装”</p>
+<p><strong>安装时间参考：</strong> - 只装基础包：&lt; 10 秒 -
+每个行业包：约 1-2 分钟 - 全选 6 个行业包：约 5-10 分钟</p>
+<h3 id="安装后追加技能包">5.3 安装后追加技能包</h3>
+<p>如果安装时没选，或者想补充其他类别：</p>
+<ol type="1">
+<li>打开浏览器，访问 <code>http://localhost:19000/api/reset</code></li>
+<li>确认重置（注意：这会清除渠道配置，需要重新填写凭据）</li>
+<li>重新走安装向导，这次勾选你需要的技能包</li>
+</ol>
+<h3 id="技能文件存放位置">5.4 技能文件存放位置</h3>
+<p>安装完成后，技能文件会自动部署到：</p>
+<table>
+<thead>
+<tr>
+<th>工具</th>
+<th>路径</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Claude Code 用户</td>
+<td><code>~/.claude/skills/</code></td>
+</tr>
+<tr>
+<td>Codex 用户</td>
+<td><code>~/.codex/skills/</code></td>
+</tr>
+</tbody>
+</table>
+<p>无需手动操作，全部自动完成。</p>
+<hr />
+<h2 id="六常见问题与故障排查">六、常见问题与故障排查</h2>
+<h3 id="浏览器没有自动打开">❓ 浏览器没有自动打开</h3>
+<p>手动在浏览器地址栏输入：<code>http://localhost:19000</code><br />
+如果提示无法连接，查看启动窗口中实际显示的端口号（可能是 19001
+等）。</p>
+<h3 id="端口-19000-被占用">❓ 端口 19000 被占用</h3>
+<p>不需要手动处理，系统会自动切换到下一个可用端口（19001、19002……）。</p>
+<h3 id="安装失败了怎么重试">❓ 安装失败了怎么重试</h3>
+<ol type="1">
+<li>不要关闭浏览器页面</li>
+<li>记下错误信息</li>
+<li>检查填写的凭据是否正确（App ID/Secret 等）</li>
+<li>重新点击”安装”按钮再试一次</li>
+</ol>
+<h3 id="想从头重新安装">❓ 想从头重新安装</h3>
+<ol type="1">
+<li>打开 Dashboard</li>
+<li>找到”全量重置”按钮</li>
+<li>确认操作</li>
+<li>页面自动回到安装向导</li>
+<li>重新填写凭据，重新安装</li>
+</ol>
+<h3 id="如何查看日志">❓ 如何查看日志</h3>
+<table>
+<thead>
+<tr>
+<th>平台</th>
+<th>日志目录</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>macOS / Linux</td>
+<td><code>~/.openclaw-usb-portable/logs/</code></td>
+</tr>
+<tr>
+<td>Windows</td>
+<td><code>%USERPROFILE%\.openclaw-usb-portable\logs\</code></td>
+</tr>
+</tbody>
+</table>
+<p>如需反馈问题，请将日志目录打包发给技术支持。</p>
+<h3 id="bot-不回复消息">❓ Bot 不回复消息</h3>
+<p>请逐项排查： 1. 检查 Dashboard 中渠道状态是否为”运行中” 2. 检查 AI
+模型 API Key 是否有效（余额是否充足） 3. 检查网络是否正常（能访问外网）
+4. 查看日志是否有报错信息</p>
+<h3 id="macos-说文件已损坏或无法验证">❓ macOS
+说”文件已损坏”或无法验证</h3>
+<div class="sourceCode" id="cb4"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co"># 在终端执行以下命令解除隔离</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="ex">xattr</span> <span class="at">-cr</span> /path/to/opensparrow-pack/</span></code></pre></div>
+<p>将 <code>/path/to/opensparrow-pack/</code> 替换为你的实际路径。</p>
+<hr />
+<blockquote>
+<p>📞 需要帮助？请将以下信息发给支持人员：操作系统版本 + 错误截图 +
+日志文件</p>
+</blockquote>
+<hr />
+<h1 id="龙虾使用教程让-ai-真正帮你干活">龙虾使用教程：让 AI
+真正帮你干活</h1>
+<blockquote>
+<p><strong>版本</strong>：v1.1 · <strong>日期</strong>：2026-04 ·
+<strong>适合人群</strong>：完全不懂技术的用户</p>
+</blockquote>
+<hr />
+<h2 id="目录-1">📖 目录</h2>
+<ol type="1">
+<li><a href="#一龙虾到底能干什么">龙虾到底能干什么</a></li>
+<li><a href="#二和龙虾对话的基本方式">和龙虾对话的基本方式</a></li>
+<li><a href="#三日常办公场景10-个真实案例">日常办公场景：10
+个真实案例</a></li>
+<li><a href="#四skill-技能包给龙虾装上专业大脑">Skill
+技能包：给龙虾装上专业大脑</a></li>
+<li><a href="#五让龙虾学习你的专属知识">让龙虾学习你的专属知识</a></li>
+<li><a href="#六进阶玩法工作流自动化">进阶玩法：工作流自动化</a></li>
+<li><a href="#七对话技巧怎么问才能得到更好的答案">对话技巧：怎么问才能得到更好的答案</a></li>
+</ol>
+<hr />
+<h2 id="一龙虾到底能干什么">一、龙虾到底能干什么</h2>
+<p>很多人第一次用龙虾，不知道从哪里开始。其实很简单——</p>
+<p><strong>把它当一个随叫随到、永远不嫌烦的超级同事。</strong></p>
+<p>你可以在飞书、钉钉、企业微信里直接 @
+它，就像和同事发消息一样。它能帮你：</p>
+<table>
+<thead>
+<tr>
+<th>你的需求</th>
+<th>龙虾能做的</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>写东西</td>
+<td>写邮件、写方案、写周报、写公告、写合同</td>
+</tr>
+<tr>
+<td>看东西</td>
+<td>分析数据、读合同、总结文档、提炼要点</td>
+</tr>
+<tr>
+<td>想东西</td>
+<td>出主意、对比方案、帮你做决策</td>
+</tr>
+<tr>
+<td>翻东西</td>
+<td>中英互译、改写润色、调整语气</td>
+</tr>
+<tr>
+<td>问东西</td>
+<td>医疗、法律、金融、行业知识随时问</td>
+</tr>
+<tr>
+<td>自动化</td>
+<td>定时发报告、自动总结会议、批量处理文本</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="二和龙虾对话的基本方式">二、和龙虾对话的基本方式</h2>
+<h3 id="在飞书-钉钉-企微中对话">2.1 在飞书 / 钉钉 / 企微中对话</h3>
+<p>安装完成后，找到你的 Bot，直接发消息就行。支持三种模式：</p>
+<p><strong>① 私聊 Bot</strong>（最常用） 直接和 Bot
+发消息，适合个人任务、隐私内容。</p>
+<p><strong>② 在群里 @ Bot</strong> 把 Bot 加入工作群，需要它时 @
+一下，团队所有人都能看到回复，适合团队协作。</p>
+<pre><code>@龙虾 帮我把这段话翻译成英文：
+[粘贴你要翻译的内容]</code></pre>
+<p><strong>③ 连续多轮对话</strong>
+龙虾会记住当前对话的上下文，你可以不断追问、修改要求：</p>
+<pre><code>用户：帮我写一封给客户的致歉邮件
+龙虾：[生成邮件]
+用户：语气改得正式一些，结尾加上补偿方案
+龙虾：[修改后的邮件]</code></pre>
+<h3 id="发送文件和图片">2.2 发送文件和图片</h3>
+<p>可以直接把文件内容粘贴进对话，或上传图片让龙虾分析。</p>
+<hr />
+<h2 id="三日常办公场景10-个真实案例">三、日常办公场景：10
+个真实案例</h2>
+<h3 id="案例-15-分钟写完周报">📝 案例 1：5 分钟写完周报</h3>
+<p><strong>场景</strong>：每周五下午要交周报，不知道怎么写。</p>
+<p><strong>操作</strong>：</p>
+<pre><code>帮我写一份本周工作周报。
+
+本周完成的事情：
+- 开了3个客户需求沟通会
+- 完成了XX功能的测试
+- 修复了5个线上bug
+
+遇到的问题：
+- 有一个客户需求理解不一致，已对齐
+
+下周计划：
+- 开始开发YY模块
+- 准备月度复盘材料</code></pre>
+<p><strong>龙虾输出</strong>：一份格式规范、语言专业的完整周报，直接可以发给领导。</p>
+<hr />
+<h3 id="案例-2会议纪要一键生成">📋 案例 2：会议纪要一键生成</h3>
+<p><strong>场景</strong>：开完会，想快速整理出会议纪要和行动项。</p>
+<p><strong>操作</strong>：</p>
+<pre><code>下面是今天会议的简单记录，帮我整理成正式会议纪要，包含：
+决议事项、行动项（负责人+截止时间）、待议事项。
+
+[粘贴你的会议草记或录音转文字内容]</code></pre>
+<p><strong>龙虾输出</strong>：</p>
+<pre><code>【会议纪要】2026-04-14
+
+一、决议事项
+1. 确定Q2营销预算为50万元
+2. 新版本将于4月底上线
+
+二、行动项
+| 事项 | 负责人 | 截止日期 |
+| 完成设计稿 | 小李 | 4月18日 |
+| 对接第三方API | 小张 | 4月20日 |
+
+三、待议事项
+- 海外市场拓展方案（下次会议讨论）</code></pre>
+<hr />
+<h3 id="案例-3棘手邮件秒变专业">✉️ 案例 3：棘手邮件秒变专业</h3>
+<p><strong>场景</strong>：要写一封拒绝合作的邮件，既不想得罪人，又要说清楚。</p>
+<p><strong>操作</strong>：</p>
+<pre><code>帮我写一封商务邮件。
+
+背景：对方是一家供应商，希望和我们签独家合作协议，
+但我们公司的策略是不签独家。
+
+要求：婉拒独家合作，但保留继续普通合作的可能，
+语气要礼貌、专业，不能显得太强硬。</code></pre>
+<hr />
+<h3 id="案例-4数据分析和可视化建议">📊 案例 4：数据分析和可视化建议</h3>
+<p><strong>场景</strong>：老板发来一堆数据，要求今天给出分析报告。</p>
+<p><strong>操作</strong>：</p>
+<pre><code>下面是我们1-3月的销售数据，请帮我分析：
+1. 整体趋势是涨还是跌？
+2. 哪个产品表现最好？哪个最差？
+3. 有没有明显的异常？
+4. 给出3条可执行的改进建议
+
+[粘贴数据表格]</code></pre>
+<hr />
+<h3 id="案例-5合同风险快速扫描">⚖️ 案例 5：合同风险快速扫描</h3>
+<p><strong>场景</strong>：收到一份合同，不想花钱请律师，想先自己看看有没有大问题。</p>
+<p><strong>操作</strong>：</p>
+<pre><code>请帮我审查这份合同，重点关注：
+1. 有没有对我方不利的条款？
+2. 违约责任是否对等？
+3. 付款条件是否合理？
+4. 有没有模糊不清的表述？
+
+[粘贴合同内容]</code></pre>
+<blockquote>
+<p>💡
+安装了<strong>法律技能包</strong>后，龙虾的合同审查能力会显著提升，能识别更多专业法律风险。</p>
+</blockquote>
+<hr />
+<h3 id="案例-6演讲稿和-ppt-大纲">🎤 案例 6：演讲稿和 PPT 大纲</h3>
+<p><strong>场景</strong>：下周要做一个产品发布演讲，完全不知道怎么组织内容。</p>
+<p><strong>操作</strong>：</p>
+<pre><code>我需要做一个15分钟的产品发布演讲。
+
+产品：一款帮助中小企业管理库存的SaaS工具
+受众：潜在企业客户（非技术背景的老板们）
+目标：让他们感兴趣，愿意试用
+
+请帮我：
+1. 设计演讲结构和大纲
+2. 写开场白（要能抓住注意力）
+3. 给出核心卖点的表达方式</code></pre>
+<hr />
+<h3 id="案例-7翻译-本地化">🌐 案例 7：翻译 + 本地化</h3>
+<p><strong>场景</strong>：收到一封英文合作邀约，需要理解内容并回复。</p>
+<p><strong>操作</strong>：</p>
+<pre><code>请翻译下面这封英文邮件，然后帮我用中文写一封礼貌的回复，
+表达我们有兴趣合作，需要2周时间内部讨论。
+
+[粘贴英文邮件]</code></pre>
+<hr />
+<h3 id="案例-8头脑风暴和创意生成">💡 案例 8：头脑风暴和创意生成</h3>
+<p><strong>场景</strong>：策划一个新产品的营销活动，需要创意。</p>
+<p><strong>操作</strong>：</p>
+<pre><code>我们的产品是一款面向大学生的记账App，即将在5月上线。
+请帮我头脑风暴10个有创意的推广活动方案，
+要求：预算低、传播性强、符合大学生的喜好。</code></pre>
+<hr />
+<h3 id="案例-9快速学习新领域">📚 案例 9：快速学习新领域</h3>
+<p><strong>场景</strong>：老板突然让你负责一个完全不懂的新业务方向。</p>
+<p><strong>操作</strong>：</p>
+<pre><code>我需要快速了解&quot;供应链金融&quot;这个领域。
+
+请用最通俗的方式帮我：
+1. 解释核心概念（假设我完全没接触过）
+2. 列出这个领域最重要的5个知识点
+3. 告诉我有哪些常见的商业模式
+4. 给我一个1周的快速学习计划</code></pre>
+<hr />
+<h3 id="案例-10竞品分析报告">🔍 案例 10：竞品分析报告</h3>
+<p><strong>场景</strong>：要做一份竞品分析，但手里只有一些零散的信息。</p>
+<p><strong>操作</strong>：</p>
+<pre><code>请帮我整理一份竞品分析报告。
+
+我们的产品：企业内部知识管理工具
+主要竞品：Notion、飞书文档、Confluence
+
+请从以下维度对比：
+- 核心功能
+- 定价策略  
+- 目标客户
+- 优劣势
+- 我们的差异化机会</code></pre>
+<hr />
+<h2 id="四skill-技能包给龙虾装上专业大脑">四、Skill
+技能包：给龙虾装上专业大脑</h2>
+<h3 id="为什么要安装技能包">4.1 为什么要安装技能包？</h3>
+<p>没有技能包的龙虾，就像一个聪明但没有行业经验的应届生——什么都懂一点，但不够专业。</p>
+<p>安装了技能包，就像给它注入了某个领域的<strong>几年工作经验</strong>。</p>
+<h3 id="六大行业技能包">4.2 六大行业技能包</h3>
+<p><strong>🏢 商业技能包</strong></p>
+<p>适合：销售、运营、市场、创业者</p>
+<p>安装后能做什么： - 写出符合商业逻辑的营销方案 - 分析商业模式的可行性
+- 生成专业的商务提案和报价单 - 用数据支撑商业决策</p>
+<p>示例对话：</p>
+<pre><code>用户：我们要进入下沉市场，给我一个完整的市场进入策略
+
+龙虾（安装商业技能包后）：
+[输出包含市场调研方法、渠道策略、定价策略、风险评估的完整方案]</code></pre>
+<hr />
+<p><strong>💰 金融技能包</strong></p>
+<p>适合：财务、投资、风控、CFO</p>
+<p>安装后能做什么： - 读懂财务报表，识别异常指标 -
+分析投资项目的风险和回报 - 生成标准化的财务分析报告 -
+解释复杂的金融产品条款</p>
+<p>示例对话：</p>
+<pre><code>用户：帮我分析这份资产负债表，看看有没有流动性风险
+
+龙虾（安装金融技能包后）：
+[从流动比率、速动比率、应收账款周转等专业角度逐项分析]</code></pre>
+<hr />
+<p><strong>⚖️ 政务技能包</strong></p>
+<p>适合：政府机关、国企、行政人员</p>
+<p>安装后能做什么： - 起草各类公文（通知、报告、请示、批复） -
+把口语化内容转化为正式公文格式 - 生成符合规范的汇报材料 -
+政策解读和分析</p>
+<p>示例对话：</p>
+<pre><code>用户：帮我把这个情况说明改写成正式的工作报告
+
+龙虾（安装政务技能包后）：
+[输出符合政府公文规范的格式化报告，包括标题、主送、正文、落款]</code></pre>
+<hr />
+<p><strong>🏥 医疗技能包</strong></p>
+<p>适合：医疗机构、健康管理、医学研究</p>
+<p>安装后能做什么： - 解读化验报告和影像报告 - 整理病历和诊疗记录 -
+解答常见医学问题 - 医学文献摘要和翻译</p>
+<blockquote>
+<p>⚠️ 注意：AI 回答不能替代专业医生诊断，仅供参考。</p>
+</blockquote>
+<hr />
+<p><strong>📚 教育技能包</strong></p>
+<p>适合：学校、培训机构、在线教育</p>
+<p>安装后能做什么： - 根据学员水平设计课程大纲 -
+自动出题（选择题、问答题、案例分析） - 生成教学材料和讲义 -
+设计学习评估方案</p>
+<hr />
+<p><strong>🔧 工具技能包</strong></p>
+<p>适合：所有需要提升效率的人</p>
+<p>安装后能做什么： - 更高效地处理文档和数据 - 更结构化地分析和规划 -
+代码辅助（写脚本、调试错误） - 流程设计和优化</p>
+<h3 id="如何安装技能包">4.3 如何安装技能包</h3>
+<p>安装向导中选择，或者之后通过重置重新选择：</p>
+<ol type="1">
+<li>打开 <code>http://localhost:19000</code></li>
+<li>Dashboard → 技能管理 → 选择要安装的类别</li>
+<li>点击安装，等待完成（每个包约 1-2 分钟）</li>
+</ol>
+<p>安装后<strong>无需任何操作</strong>，龙虾会自动使用对应技能包的知识回答相关问题。</p>
+<hr />
+<h2 id="五让龙虾学习你的专属知识">五、让龙虾学习你的专属知识</h2>
+<h3 id="上传你的文档">5.1 上传你的文档</h3>
+<p>龙虾可以”阅读”你发给它的文档，并基于内容回答问题。</p>
+<p><strong>操作方式</strong>：直接把文档内容粘贴到对话中，然后提问。</p>
+<pre><code>下面是我们公司的《员工报销管理制度》全文，请帮我记住。
+之后我会问你一些报销相关的问题。
+
+[粘贴制度文件内容]
+---
+好的，现在问你：差旅费报销上限是多少？机票需要附什么材料？</code></pre>
+<h3 id="建立专属知识库">5.2 建立专属知识库</h3>
+<p>如果你有大量的内部文档，可以把它们整理成
+Skill（技能文件），让龙虾永久掌握。</p>
+<p><strong>适用场景</strong>： - 公司 FAQ 和规章制度 -
+行业专有知识和术语 - 产品手册和操作指南 - 自己积累的行业经验</p>
+<p><strong>操作步骤</strong>：</p>
+<ol type="1">
+<li>整理你的知识内容，保存为 Markdown 文件（<code>.md</code> 格式）</li>
+<li>把文件放到技能目录：<code>~/.claude/skills/</code> （Mac/Linux）或
+<code>%USERPROFILE%\.claude\skills\</code>（Windows）</li>
+<li>重启龙虾服务后，AI 会自动加载这些知识</li>
+</ol>
+<p><strong>Skill 文件格式示例</strong>：</p>
+<div class="sourceCode" id="cb22"><pre class="sourceCode markdown"><code class="sourceCode markdown"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="co">---</span></span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a><span class="an">name:</span><span class="co"> &quot;公司报销制度&quot;</span></span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a><span class="an">description:</span><span class="co"> &quot;XX公司费用报销规定，2026年版&quot;</span></span>
+<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a><span class="co">---</span></span>
+<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-6"><a href="#cb22-6" aria-hidden="true" tabindex="-1"></a><span class="fu"># 报销制度</span></span>
+<span id="cb22-7"><a href="#cb22-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb22-8"><a href="#cb22-8" aria-hidden="true" tabindex="-1"></a><span class="fu">## 差旅费</span></span>
+<span id="cb22-9"><a href="#cb22-9" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>交通：经济舱/高铁二等座，超出需审批</span>
+<span id="cb22-10"><a href="#cb22-10" aria-hidden="true" tabindex="-1"></a><span class="ss">- </span>住宿：一线城市500元/晚，其他城市350元/晚</span>
+<span id="cb22-11"><a href="#cb22-11" aria-hidden="true" tabindex="-1"></a>...</span></code></pre></div>
+<h3 id="让-ai-扮演特定角色">5.3 让 AI 扮演特定角色</h3>
+<p>通过在对话开始时设定角色，让龙虾更精准地服务你：</p>
+<pre><code>接下来你是我们公司的法务顾问，熟悉中国劳动法和商业合同法律。
+我们公司主营业务是SaaS软件，遇到合同问题时请从保护公司利益的角度分析。
+
+现在帮我看看这份合同有没有问题：[合同内容]</code></pre>
+<hr />
+<h2 id="六进阶玩法工作流自动化">六、进阶玩法：工作流自动化</h2>
+<h3 id="定时任务">6.1 定时任务</h3>
+<p>龙虾支持设置定时触发的自动任务，例如：</p>
+<ul>
+<li><strong>每天早上 9 点</strong>：自动推送当天日程摘要</li>
+<li><strong>每周五下午</strong>：自动提醒团队填写周报</li>
+<li><strong>每月 1 号</strong>：自动生成上月数据汇总报告</li>
+</ul>
+<p>这需要管理员在 Dashboard 中配置，普通用户直接在 IM 中享受结果。</p>
+<h3 id="批量处理">6.2 批量处理</h3>
+<p>需要处理大量重复性内容时，可以一次性提交：</p>
+<pre><code>下面有50条用户反馈，请帮我：
+1. 按问题类型分类（功能问题/性能问题/体验问题/其他）
+2. 统计各类型的数量和占比
+3. 找出最频繁出现的 TOP 5 问题
+4. 给出优化建议
+
+[粘贴50条反馈内容]</code></pre>
+<h3 id="多步骤任务链">6.3 多步骤任务链</h3>
+<p>可以把复杂任务拆解后，让龙虾逐步完成：</p>
+<pre><code>第一步：先帮我分析下面这份竞品报告的核心要点
+[报告内容]
+
+---
+（等龙虾回复后继续）
+
+第二步：基于你刚才的分析，帮我写一份给CEO的1页纸简报
+要突出：对我们的威胁、我们的应对策略建议</code></pre>
+<hr />
+<h2 id="七对话技巧怎么问才能得到更好的答案">七、对话技巧：怎么问才能得到更好的答案</h2>
+<h3 id="好的提问方式">✅ 好的提问方式</h3>
+<p><strong>1. 说清楚背景</strong></p>
+<pre><code>❌ 帮我写一封邮件
+✅ 帮我写一封给重要客户的邮件，客户是国企采购部门，
+   背景是我们的产品延期交付了2周，需要道歉并说明原因</code></pre>
+<p><strong>2. 指定输出格式</strong></p>
+<pre><code>✅ 用表格的形式输出
+✅ 分点列出，不超过5条
+✅ 写成正式商务邮件格式
+✅ 用简单的话解释，我完全不懂这个领域</code></pre>
+<p><strong>3. 给出例子或参考</strong></p>
+<pre><code>✅ 仿照这个风格写：[例子]
+✅ 像小红书的文案风格
+✅ 参考以下模板：[模板内容]</code></pre>
+<p><strong>4. 分步骤进行</strong></p>
+<pre><code>✅ 先帮我梳理思路，再写初稿，最后我来审阅</code></pre>
+<h3 id="使用注意事项">⚠️ 使用注意事项</h3>
+<ul>
+<li><strong>AI
+可能犯错</strong>：重要的内容（合同、数据、医学信息）请人工核实</li>
+<li><strong>保护隐私</strong>：不要把真实的客户姓名、证件号、密码等敏感信息发给
+AI</li>
+<li><strong>API Key 安全</strong>：不要把 Key 分享给他人，也不要截图含有
+Key 的页面</li>
+</ul>
+<hr />
+<blockquote>
+<p>💬 <strong>还有什么不会用的？</strong> 直接在飞书/钉钉里问龙虾本身！
+发送 <code>你能帮我做什么？</code> 或
+<code>如何使用你？</code>，它会给你更多使用建议。</p>
+</blockquote>
+</body>
+</html>

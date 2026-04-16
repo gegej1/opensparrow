@@ -1,92 +1,90 @@
-# F-005 / W-005 UI Reset & Hardening 收口说明
+# F-005 UI Install / Reset Runbook（Mac packaged cut）
 
 ## 元数据
-- 日期：`2026-03-23`
-- 作者/Agent：`Codex-B`
-- 关联 spec：`specs/003-opensparrow-ui-reset-hardening/spec.md`
 
-## 概述
-- 修复 USB/UI 链路里的三个高频问题：`openclaw.json` 残留时的安装态误判、全量重置后无法回到安装向导，以及 macOS 双击入口误走 CLI 交互。
-- 本文记录 UI-first 状态契约、cleanup/reset 语义、推荐入口与验证口径。
+- 日期：`2026-04-15`
+- 关联 feature：`F-003`、`F-026`、`F-027`
+- 适用范围：今晚 packaged Mac UI-first 首发
 
-## 前置条件
-- 当前位于仓库根目录 `/Users/eduardogan/Desktop/GHJProject/opensparrow`。
-- `ui/server.mjs`、`platforms/mac/wrappers/01-开始部署.command`、`platforms/mac/wrappers/run-openclaw-usb.command` 已存在。
-- 需要理解以下当前约束：
-  - `installed=true` 仅在 `configExists=true` 且 `daemon === 'running'` 时成立。
-  - `gateway` 端口被占用不再等价于 `daemon running`。
-  - `gateway fallback` 仍会保留在 `runtimeMode` 字段中，但只作为诊断信息，不参与 `installed` 判定。
+## 当前冻结事实
 
-## 操作步骤
-1. 验证 `/api/status` 契约
+- 唯一官方 first-click path：根目录 `01-开始部署.command`
+- `/setup` 是安装向导入口
+- `/dashboard` 是安装后的 canonical 控制面
+- `?force=1` 仍用于强制回到安装向导
+- Dashboard “基本信息”卡片中的端口来自 `/api/status.gatewayPort`
+- `mac/run-openclaw-usb.command` 与 `mac/harden-openclaw-usb.command` 只保留为 handoff，不再承担主安装 / 主 hardening 路径
 
-   ```bash
-   node --check ui/server.mjs
-   OPENCLAW_HOME="$(mktemp -d)" OPENSPARROW_AUTO_OPEN=0 node ui/server.mjs
-   curl http://127.0.0.1:19000/api/status
-   ```
+## 标准使用方式
 
-   - 重点检查空 profile 与仅残留 `openclaw.json` 的场景都不会被误判为 `installed=true`。
+1. 从交付包根目录双击 `01-开始部署.command`。
+2. 浏览器进入 `/setup` 后完成安装。
+3. 安装完成后进入 `/dashboard`。
+4. 如需重新安装或清理，优先在 Dashboard 内完成 reset / cleanup。
 
-2. 验证前端路由约定
+## 推荐检查
 
-   ```bash
-   # 手工在浏览器访问以下路径：
-   # http://127.0.0.1:19000/
-   # http://127.0.0.1:19000/setup
-   # http://127.0.0.1:19000/dashboard?force=1
-   ```
+### 1. 状态接口
 
-   - 应满足的前端路由约定：
-     - `/`：仅在后端确认 `installed=true` 且 `daemon=running` 时自动跳到 `/dashboard`。
-     - `/setup`：始终打开安装向导。
-     - `?force=1`：强制停留安装向导；若从 `/dashboard?force=1` 进入，会立即回跳 `/setup?force=1`。
-     - `/dashboard`：若检测到 `configExists=false`（例如刚做完全量重置），自动回到 `/setup?force=1`。
+访问：
 
-3. 验证 cleanup / reset 语义
+```text
+http://127.0.0.1:<实际端口>/api/status
+```
 
-   ```bash
-   curl -sS -X POST http://127.0.0.1:19000/api/cleanup
-   curl -sS -X POST http://127.0.0.1:19000/api/reset \
-     -H 'Content-Type: application/json' \
-     --data '{"cleanupSkills":true}'
-   ```
+重点确认：
 
-   - 当前语义：
-     - `POST /api/cleanup`：轻量清理，只处理旧 daemon / 端口占用，不删除 profile 配置。
-     - `POST /api/reset`：全量重置，负责卸载 service、删除 profile state/workspace，并让 `/api/status.installed=false`。
+- `installed=true` 只在安装成功且 daemon 正常运行时出现
+- `gatewayPort` 与 Dashboard 展示一致
 
-4. 验证推荐入口
+### 2. 前端路由
 
-   ```bash
-   bash -n platforms/mac/wrappers/01-开始部署.command
-   bash -n platforms/mac/wrappers/run-openclaw-usb.command
-   ```
+重点确认：
 
-   - 当前推荐入口：
-     - macOS UI-first：`platforms/mac/wrappers/01-开始部署.command`
-     - Windows UI-first：`platforms/windows/wrappers/one-click-deploy.cmd`
-     - 高级兼容入口（CLI）：`platforms/mac/wrappers/run-openclaw-usb.command`
+- `/setup` 能稳定打开安装向导
+- `/dashboard` 在未安装或 reset 后不会假装已完成安装
+- `/dashboard?force=1` 会回到安装向导
 
-## 验证方法
-- 启动后可用：
+### 3. Reset / Cleanup
 
-  ```bash
-  curl http://127.0.0.1:19000/api/status
-  ```
+期望语义：
 
-- 重点观察：
-  - 空 profile 时 `installed` 为 `false`。
-  - 仅残留 `openclaw.json` 时 `installed` 仍为 `false`。
-  - reset 后重新访问 `/dashboard` 会被送回 `/setup?force=1`。
+- `cleanup`：轻量处理旧 daemon / 端口占用
+- `reset`：清除当前配置并回到安装向导
+
+### 4. 高级兼容入口
+
+若用户误点：
+
+- `mac/run-openclaw-usb.command`
+- `mac/harden-openclaw-usb.command`
+
+当前期望行为：
+
+- 明确提示这些只是 handoff
+- 自动回到根目录 `01-开始部署.command`
+- 不再直接收凭据或直跑 legacy installer / harden
 
 ## 故障排查
-- `/api/status` 仍返回 `installed=true`：先检查返回体中的 `configExists`、`daemon`、`runtimeMode`，确认是否把“端口占用”误当成“daemon 运行”。
-- reset 后仍停留 Dashboard：检查 profile 目录是否已删除，以及前端是否命中 `/dashboard?force=1` → `/setup?force=1` 的回跳逻辑。
-- 双击入口仍出现 CLI 凭据提示：确认实际启动的是 `platforms/mac/wrappers/01-开始部署.command`，而不是高级兼容入口 `run-openclaw-usb.command`。
 
-## 参考资料
-- `specs/003-opensparrow-ui-reset-hardening/spec.md`
-- `docs/usb-pack/SOP.md`
-- `docs/usb-pack/windows-native-delivery.md`
-- `platforms/mac/wrappers/01-开始部署.command`
+### Dashboard 端口看起来不对
+
+- 先看 `/api/status.gatewayPort`
+- 再看 Dashboard “基本信息”卡片
+- 若前端仍固定展示 `18889`，这是 blocker，不是可接受差异
+
+### Reset 后没有回到安装向导
+
+- 先确认状态接口是否已经反映未安装态
+- 再确认浏览器是否仍停在旧的 `/dashboard` 页面缓存
+
+### 误点高级兼容入口后出现 CLI 凭据提示
+
+这是不符合当前冻结事实的。
+正确行为应是脚本只做 handoff，并把用户带回根目录 `01-开始部署.command`。
+
+## 边界提醒
+
+- 本 runbook 不把 Windows 纳入今晚正式支持面
+- 本 runbook 不把企业微信写成今晚 packaged ready 支持面
+- 本 runbook 不把 companion 纳入今晚正式支持面

@@ -1,0 +1,233 @@
+[
+  {
+    "memory": "OpenSparrow authority order is: latest explicit user instruction > AGENTS.md plus constitution > current feature spec/plan/tasks > longrun project facts > current session execution method > governance templates/runbooks > upstream codeSPEC references.",
+    "metadata": {
+      "project": "opensparrow",
+      "type": "convention",
+      "source": "governance_doc",
+      "source_file": "docs/governance/framework-stack.md",
+      "status": "active",
+      "import_batch": "initial_migration"
+    }
+  },
+  {
+    "memory": "Non-trivial work in OpenSparrow must go through specs/<feature>/spec.md -> plan.md -> tasks.md before code or config changes.",
+    "metadata": {
+      "project": "opensparrow",
+      "type": "convention",
+      "source": "agents",
+      "source_file": "AGENTS.md",
+      "status": "active",
+      "import_batch": "initial_migration"
+    }
+  },
+  {
+    "memory": "longrun is subordinate project memory and workspace contract, not a feature-definition or truth-authority layer; it cannot replace specs or upgrade completion claims by itself.",
+    "metadata": {
+      "project": "opensparrow",
+      "type": "convention",
+      "source": "longrun",
+      "source_file": "longrun/METHOD.zh-CN.md",
+      "status": "active",
+      "import_batch": "initial_migration"
+    }
+  },
+  {
+    "memory": "Commander Mode activates only when the user explicitly says the main thread is commander or equivalent; it is never the default just because past sessions used commander language.",
+    "metadata": {
+      "project": "opensparrow",
+      "type": "convention",
+      "source": "agents",
+      "source_file": ".specify/memory/constitution.md",
+      "status": "active",
+      "import_batch": "initial_migration"
+    }
+  },
+  {
+    "memory": "Implementation, review, verification, and closeout are separate roles in OpenSparrow; longrun or closeout notes may only record facts already supported by spec, code, tests, and fresh evidence.",
+    "metadata": {
+      "project": "opensparrow",
+      "type": "convention",
+      "source": "agents",
+      "source_file": ".specify/memory/constitution.md",
+      "status": "active",
+      "import_batch": "initial_migration"
+    }
+  },
+  {
+    "memory": "PASS or DONE claims in OpenSparrow require fresh verification evidence; summaries, historical logs, or confidence are not acceptable substitutes.",
+    "metadata": {
+      "project": "opensparrow",
+      "type": "convention",
+      "source": "agents",
+      "source_file": ".specify/memory/constitution.md",
+      "status": "active",
+      "import_batch": "initial_migration"
+    }
+  },
+  {
+    "memory": "Packet ownership is serialized: one packet has one primary writer, one file group has one owner at a time, and unclear ownership defaults back to serial execution.",
+    "metadata": {
+      "project": "opensparrow",
+      "type": "convention",
+      "source": "agents",
+      "source_file": ".specify/memory/constitution.md",
+      "status": "active",
+      "import_batch": "initial_migration"
+    }
+  },
+  {
+    "memory": "OpenSparrow is the unified source-of-truth repo: platforms/ holds platform source, scripts/openclaw-usb/ holds shared install and hardening logic, ui/ holds the control surface, docs/specs/longrun/.specify are the documentation and memory skeleton, vendor/ is read-only upstream runtime, and dist/ is generated output only.",
+    "metadata": {
+      "project": "opensparrow",
+      "type": "environmental",
+      "source": "longrun",
+      "source_file": "longrun/workspaces/opensparrow-unified/app_spec.md",
+      "status": "active",
+      "import_batch": "initial_migration"
+    }
+  },
+  {
+    "memory": "Historical directories opensparrow_win/, _push_opensparrow_win/, openclaw-usb-feishu-delivery/, and openclawtest/ are frozen snapshots or experiments and are not current truth sources.",
+    "metadata": {
+      "project": "opensparrow",
+      "type": "decision",
+      "source": "agents",
+      "source_file": "AGENTS.md",
+      "status": "active",
+      "import_batch": "initial_migration"
+    }
+  },
+  {
+    "memory": "The fixed project memory namespace is user_id opensparrow-memory with app_id opensparrow when supported, and all durable memories should carry metadata project=opensparrow.",
+    "metadata": {
+      "project": "opensparrow",
+      "type": "convention",
+      "source": "agents",
+      "source_file": "AGENTS.md",
+      "status": "active",
+      "import_batch": "initial_migration"
+    }
+  },
+  {
+    "memory": "The real F-014 is wecom-channel-integration. Passing means the bot-first long-connection mainline works with Bot ID plus Secret as the minimum real entry; callback or self-built-app enhanced chains are not the default blocking gate.",
+    "metadata": {
+      "project": "opensparrow",
+      "type": "decision",
+      "source": "longrun",
+      "source_file": "longrun/workspaces/opensparrow-unified/claude-progress.txt",
+      "status": "active",
+      "import_batch": "initial_migration"
+    }
+  },
+  {
+    "memory": "F-024 passing only means the baseline canonical contract, shared helpers, direct wording sync, and install/dashboard/read-back closure are frozen. It does not mean full E2E, Windows replay fidelity, or broader docs parity are complete.",
+    "metadata": {
+      "project": "opensparrow",
+      "type": "decision",
+      "source": "longrun",
+      "source_file": "longrun/workspaces/opensparrow-unified/claude-progress.txt",
+      "status": "active",
+      "import_batch": "initial_migration"
+    }
+  },
+  {
+    "memory": "F-025-A is only the replay parity baseline sub-battle closeout. It does not close the whole F-025 feature.",
+    "metadata": {
+      "project": "opensparrow",
+      "type": "decision",
+      "source": "longrun",
+      "source_file": "longrun/workspaces/opensparrow-unified/claude-progress.txt",
+      "status": "active",
+      "import_batch": "initial_migration"
+    }
+  },
+  {
+    "memory": "F-025-B remains blocked on Windows-specific evidence and must never be written as done or passing without fresh Windows-specific proof.",
+    "metadata": {
+      "project": "opensparrow",
+      "type": "anti_pattern",
+      "source": "longrun",
+      "source_file": "longrun/workspaces/opensparrow-unified/claude-progress.txt",
+      "status": "active",
+      "import_batch": "initial_migration"
+    }
+  },
+  {
+    "memory": "F-026 verified closeout only covers MAC-DIV-001, MAC-DIV-002, MAC-DIV-003, and MAC-DIV-006. It explicitly excludes MAC-DIV-004, MAC-DIV-005, MAC-DIV-007, and does not change F-025-B's blocked Windows status.",
+    "metadata": {
+      "project": "opensparrow",
+      "type": "decision",
+      "source": "spec",
+      "source_file": "specs/026-mac-first-platform-parity/spec.md",
+      "status": "active",
+      "import_batch": "initial_migration"
+    }
+  },
+  {
+    "memory": "On the current mac direct user path, 01-开始部署.command is the canonical UI-first launcher; run-openclaw-usb.command and harden-openclaw-usb.command are handoff surfaces, not direct credential-collection entrypoints.",
+    "metadata": {
+      "project": "opensparrow",
+      "type": "decision",
+      "source": "governance_doc",
+      "source_file": "docs/runbooks/F-005-ui-install-reset.md",
+      "status": "active",
+      "import_batch": "initial_migration"
+    }
+  },
+  {
+    "memory": "Current active mainline state is F-027 packaged Mac UI-first release readiness. Tonight's official scope is Mac-only UI-first release preparation; companion is not the default supported surface and Windows is out of scope.",
+    "metadata": {
+      "project": "opensparrow",
+      "type": "session_state",
+      "source": "spec",
+      "source_file": "specs/027-mac-ui-first-release-readiness/spec.md",
+      "status": "active",
+      "import_batch": "initial_migration"
+    }
+  },
+  {
+    "memory": "Project communication and durable documentation should default to Chinese with explicit commands and full paths when giving operational guidance.",
+    "metadata": {
+      "project": "opensparrow",
+      "type": "user_preference",
+      "source": "agents",
+      "source_file": ".specify/memory/constitution.md",
+      "status": "active",
+      "import_batch": "initial_migration"
+    }
+  },
+  {
+    "memory": "This project prefers commander-only collaboration, the minimum agent count needed for the task, no private ad-hoc agent spawning, and a star topology where workers report to commander instead of talking to each other.",
+    "metadata": {
+      "project": "opensparrow",
+      "type": "user_preference",
+      "source": "spec",
+      "source_file": "specs/028-mem0-project-memory-integration/spec.md",
+      "status": "active",
+      "import_batch": "initial_migration"
+    }
+  },
+  {
+    "memory": "When choosing tooling or process changes for OpenSparrow, prefer the fastest stable path with the least extra complexity and avoid self-built backends, daemons, cron jobs, vector databases, or webhook-based memory systems unless a later feature explicitly requires them.",
+    "metadata": {
+      "project": "opensparrow",
+      "type": "user_preference",
+      "source": "spec",
+      "source_file": "specs/028-mem0-project-memory-integration/spec.md",
+      "status": "active",
+      "import_batch": "initial_migration"
+    }
+  },
+  {
+    "memory": "In the current environment, mem0 CLI v0.2.3 add/import uses asynchronous background processing. For immediate verifiable writes during acceptance or migration, use the official Mem0 API with infer=false and async_mode=false, then verify with CLI search/get/list.",
+    "metadata": {
+      "project": "opensparrow",
+      "type": "task_learning",
+      "source": "spec",
+      "source_file": "specs/028-mem0-project-memory-integration/plan.md",
+      "status": "active",
+      "import_batch": "initial_migration"
+    }
+  }
+]

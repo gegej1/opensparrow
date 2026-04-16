@@ -359,10 +359,30 @@ function Ensure-PluginsAllow([string]$ConfigFile, [string[]]$PluginIds) {
   }
 }
 
-function Build-InstallPayload([string]$StateDir) {
+function Get-AuthoritativeConfig([string]$BaseUrl) {
+  try {
+    return Invoke-RestMethod -Method Get -Uri "$BaseUrl/api/config" -TimeoutSec 10
+  }
+  catch {
+    throw ("Unable to read authoritative config from {0}/api/config: {1}" -f $BaseUrl, $_.Exception.Message)
+  }
+}
+
+function New-InstallChannelPayload([string]$Type, [object]$Channel, [string[]]$FieldNames) {
+  $payload = @{
+    type = $Type
+  }
+
+  foreach ($fieldName in $FieldNames) {
+    $payload[$fieldName] = [string](Get-NestedValue $Channel @($fieldName))
+  }
+
+  return $payload
+}
+
+function Build-InstallPayload([string]$StateDir, [string]$BaseUrl) {
   $configFile = Join-Path $StateDir 'openclaw.json'
   $authFile = Join-Path $StateDir 'agents\main\agent\auth-profiles.json'
-  $uiMetaFile = Join-Path $StateDir 'ui-meta.json'
 
   if (-not (Test-Path $configFile)) {
     return $null
@@ -371,22 +391,13 @@ function Build-InstallPayload([string]$StateDir) {
     return $null
   }
 
-  $config = Get-Content -Raw -Path $configFile | ConvertFrom-Json
+  $config = Get-AuthoritativeConfig -BaseUrl $BaseUrl
   $auth = Get-Content -Raw -Path $authFile | ConvertFrom-Json
-  $uiMeta = $null
-  if (Test-Path $uiMetaFile) {
-    try {
-      $uiMeta = Get-Content -Raw -Path $uiMetaFile | ConvertFrom-Json
-    }
-    catch {
-      $uiMeta = $null
-    }
-  }
 
   $apiKey = [string](Get-NestedValue $auth @('profiles', 'openai:default', 'key'))
-  $baseUrl = [string](Get-NestedValue $config @('models', 'providers', 'openai', 'baseUrl'))
-  if ([string]::IsNullOrWhiteSpace($baseUrl)) {
-    $baseUrl = 'https://api.openai.com/v1'
+  $apiBaseUrl = [string](Get-NestedValue $config @('models', 'providers', 'openai', 'baseUrl'))
+  if ([string]::IsNullOrWhiteSpace($apiBaseUrl)) {
+    $apiBaseUrl = 'https://api.openai.com/v1'
   }
 
   $model = ''
@@ -412,67 +423,35 @@ function Build-InstallPayload([string]$StateDir) {
   if ($channelsNode) {
     $feishu = Get-NestedValue $channelsNode @('feishu')
     if ($feishu -and (Is-Enabled (Get-NestedValue $feishu @('enabled')))) {
-      $channels += @{
-        type = 'feishu'
-        appId = [string](Get-NestedValue $feishu @('appId'))
-        appSecret = [string](Get-NestedValue $feishu @('appSecret'))
-      }
+      $channels += New-InstallChannelPayload -Type 'feishu' -Channel $feishu -FieldNames @(
+        'appId',
+        'appSecret'
+      )
     }
 
     $dingtalk = Get-NestedValue $channelsNode @('dingtalk')
     if ($dingtalk -and (Is-Enabled (Get-NestedValue $dingtalk @('enabled')))) {
-      $dingtalkMeta = $null
-      if ($uiMeta) {
-        $dingtalkMeta = Get-NestedValue $uiMeta @('dingtalk')
-      }
-
-      $clientId = [string](Get-NestedValue $dingtalk @('clientId'))
-      if ([string]::IsNullOrWhiteSpace($clientId)) {
-        $clientId = [string](Get-NestedValue $dingtalk @('appKey'))
-      }
-
-      $clientSecret = [string](Get-NestedValue $dingtalk @('clientSecret'))
-      if ([string]::IsNullOrWhiteSpace($clientSecret)) {
-        $clientSecret = [string](Get-NestedValue $dingtalk @('appSecret'))
-      }
-
-      $robotCode = [string](Get-NestedValue $dingtalk @('robotCode'))
-      if ([string]::IsNullOrWhiteSpace($robotCode) -and $dingtalkMeta) {
-        $robotCode = [string](Get-NestedValue $dingtalkMeta @('robotCode'))
-      }
-
-      $corpId = [string](Get-NestedValue $dingtalk @('corpId'))
-      if ([string]::IsNullOrWhiteSpace($corpId)) {
-        $corpId = [string](Get-NestedValue $dingtalk @('cropId'))
-      }
-      if ([string]::IsNullOrWhiteSpace($corpId) -and $dingtalkMeta) {
-        $corpId = [string](Get-NestedValue $dingtalkMeta @('corpId'))
-        if ([string]::IsNullOrWhiteSpace($corpId)) {
-          $corpId = [string](Get-NestedValue $dingtalkMeta @('cropId'))
-        }
-      }
-
-      $dingtalkPayload = @{
-        type = 'dingtalk'
-        clientId = $clientId
-        clientSecret = $clientSecret
-      }
-      if (-not [string]::IsNullOrWhiteSpace($robotCode)) {
-        $dingtalkPayload.robotCode = $robotCode
-      }
-      if (-not [string]::IsNullOrWhiteSpace($corpId)) {
-        $dingtalkPayload.corpId = $corpId
-      }
-      $channels += $dingtalkPayload
+      $channels += New-InstallChannelPayload -Type 'dingtalk' -Channel $dingtalk -FieldNames @(
+        'corpId',
+        'clientId',
+        'robotCode',
+        'clientSecret'
+      )
     }
 
     $wecom = Get-NestedValue $channelsNode @('wecom')
     if ($wecom -and (Is-Enabled (Get-NestedValue $wecom @('enabled')))) {
-      $channels += @{
-        type = 'wecom'
-        botId = [string](Get-NestedValue $wecom @('botId'))
-        secret = [string](Get-NestedValue $wecom @('secret'))
-      }
+      $channels += New-InstallChannelPayload -Type 'wecom' -Channel $wecom -FieldNames @(
+        'botId',
+        'secret',
+        'corpId',
+        'corpSecret',
+        'agentId',
+        'replyFormat',
+        'callbackToken',
+        'encodingAESKey',
+        'callbackPath'
+      )
     }
   }
 
@@ -488,7 +467,7 @@ function Build-InstallPayload([string]$StateDir) {
     payload = @{
       channels = $channels
       api = @{
-        baseUrl = $baseUrl
+        baseUrl = $apiBaseUrl
         apiKey = $apiKey
         model = $model
       }
@@ -747,7 +726,7 @@ try {
     Write-Step ("Deploy service is ready on port {0}." -f [int]$endpoint.port)
   }
 
-  $installData = Build-InstallPayload -StateDir $stateDir
+  $installData = Build-InstallPayload -StateDir $stateDir -BaseUrl $baseUrl
   if ($null -eq $installData) {
     Write-Step 'Config or credentials not found, opening setup page...'
     Start-Process "$browserBaseUrl/" | Out-Null

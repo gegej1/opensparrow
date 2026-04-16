@@ -2,48 +2,29 @@
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "$0")" && pwd)"
-pack_root="$(cd "$script_dir/.." && pwd)"
-repo_root="$(cd "$script_dir/../../.." && pwd)"
-export OPENCLAW_PROFILE_NAME="${OPENCLAW_PROFILE_NAME:-usb-portable}"
-export OPENCLAW_GATEWAY_PORT="${OPENCLAW_GATEWAY_PORT:-18889}"
 
-canonical_script="$repo_root/scripts/openclaw-usb/install-local-feishu.sh"
-canonical_runtime="$repo_root/vendor/mac-openclaw"
-packaged_script="$pack_root/scripts/openclaw-usb/install-local-feishu.sh"
-packaged_runtime="$pack_root/runtime"
+resolve_primary_launcher() {
+  local candidate
+  for candidate in \
+    "$script_dir/01-开始部署.command" \
+    "$script_dir/../01-开始部署.command" \
+    "$script_dir/../../01-开始部署.command" \
+    "$script_dir/../../../01-开始部署.command"; do
+    if [[ -f "$candidate" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
 
-if [[ -f "$canonical_script" && -d "$canonical_runtime" ]]; then
-  install_script="$canonical_script"
-  export USB_RUNTIME_ROOT="${USB_RUNTIME_ROOT:-$canonical_runtime}"
-elif [[ -f "$packaged_script" && -d "$packaged_runtime" ]]; then
-  install_script="$packaged_script"
-  export USB_RUNTIME_ROOT="${USB_RUNTIME_ROOT:-$packaged_runtime}"
-else
-  echo "[ERROR] install-local-feishu.sh not found."
+if ! primary_launcher="$(resolve_primary_launcher)"; then
+  echo "[ERROR] 找不到 01-开始部署.command，无法回到 UI-first 安装链路。" >&2
   exit 1
 fi
 
-if [[ -z "${FEISHU_APP_ID:-}" ]]; then
-  read -r -p "FEISHU_APP_ID: " FEISHU_APP_ID
-  export FEISHU_APP_ID
-fi
-if [[ -z "${FEISHU_APP_SECRET:-}" ]]; then
-  read -r -s -p "FEISHU_APP_SECRET: " FEISHU_APP_SECRET
-  printf '\n'
-  export FEISHU_APP_SECRET
-fi
-if [[ -z "${OPENAI_API_KEY:-}" ]]; then
-  read -r -s -p "OPENAI_API_KEY: " OPENAI_API_KEY
-  printf '\n'
-  export OPENAI_API_KEY
-fi
-if [[ -z "${OPENAI_BASE_URL:-}" ]]; then
-  read -r -p "OPENAI_BASE_URL (optional, press Enter to skip): " OPENAI_BASE_URL || true
-  export OPENAI_BASE_URL
-fi
+printf '提示：run-openclaw-usb.command 现仅作为高级兼容 / handoff 入口。\n'
+printf '今晚正式支持面请从根目录 01-开始部署.command 进入。\n'
+printf '即将转交：%s\n' "$primary_launcher"
 
-bash "$install_script" --profile "$OPENCLAW_PROFILE_NAME" --port "$OPENCLAW_GATEWAY_PORT"
-
-echo
-echo "Done. Press Enter to close."
-read -r _
+exec bash "$primary_launcher" "$@"
