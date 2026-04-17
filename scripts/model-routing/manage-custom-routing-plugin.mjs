@@ -31,6 +31,7 @@ const layout = {
 }
 const sourcePluginRoot = path.join(repoRoot, 'scripts', 'model-routing', 'custom-plugin')
 const openclawVersion = String(process.env.OPENSPARROW_OPENCLAW_VERSION || DEFAULT_OPENCLAW_VERSION).trim() || DEFAULT_OPENCLAW_VERSION
+const defaultTestEntry = path.join(repoRoot, 'scripts', 'tests', 'custom-model-routing-plugin.test.mjs')
 const command = String(process.argv[2] || 'status').trim() || 'status'
 
 try {
@@ -47,11 +48,19 @@ try {
     case 'status':
       await printStatus()
       break
+    case 'test':
+      await runTests()
+      break
+    case 'help':
+    case '--help':
+    case '-h':
+      printUsage()
+      break
     case 'openclaw-env':
       printOpenClawEnv()
       break
     default:
-      console.log('Usage: manage-custom-routing-plugin.mjs <install-runtime|enable|disable|status|openclaw-env>')
+      printUsage()
       process.exitCode = 1
   }
 } catch (error) {
@@ -68,6 +77,44 @@ function resolveRepoRoot() {
     current = parent
   }
   return path.resolve(__dirname, '..', '..')
+}
+
+function toRepoRelative(targetPath) {
+  return path.relative(repoRoot, targetPath).split(path.sep).join('/')
+}
+
+function defaultTestEntryRelative() {
+  return toRepoRelative(defaultTestEntry)
+}
+
+function resolveTestEntry() {
+  const override = String(process.env.OPENSPARROW_CUSTOM_ROUTING_PLUGIN_TEST_FILE || '').trim()
+  const resolved = override
+    ? (path.isAbsolute(override) ? override : path.resolve(repoRoot, override))
+    : defaultTestEntry
+  if (!fs.existsSync(resolved)) {
+    throw new Error(`custom routing plugin test entry 不存在: ${resolved}`)
+  }
+  return resolved
+}
+
+function describeTestCommand() {
+  return `node --test ${defaultTestEntryRelative()}`
+}
+
+function printUsage() {
+  console.log([
+    'Usage: manage-custom-routing-plugin.mjs <install-runtime|enable|disable|status|test|openclaw-env|help>',
+    '',
+    'Commands:',
+    '  install-runtime  Install or refresh the OpenClaw lab runtime',
+    '  enable           Install and trust the custom routing plugin in the lab profile',
+    '  disable          Remove the custom routing plugin from the lab profile',
+    '  status           Print runtime/plugin status JSON',
+    `  test             Run repo-local tests (${describeTestCommand()})`,
+    '  openclaw-env     Print the lab environment exports',
+    '  help             Show this help',
+  ].join('\n'))
 }
 
 function ensureDir(dirPath) {
@@ -333,6 +380,21 @@ async function disablePlugin() {
   }, null, 2))
 }
 
+async function runTests() {
+  const testEntry = resolveTestEntry()
+  const testEnv = { ...process.env }
+  delete testEnv.NODE_TEST_CONTEXT
+  const result = await runCommand(process.execPath, ['--test', testEntry], {
+    cwd: repoRoot,
+    env: testEnv,
+  })
+  if (result.stdout) process.stdout.write(result.stdout)
+  if (result.stderr) process.stderr.write(result.stderr)
+  if (result.code !== 0) {
+    throw new Error(`custom routing plugin tests failed with exit code ${result.code}`)
+  }
+}
+
 async function printStatus() {
   const runtime = resolveRuntime(layout.runtimeRoot)
   const profileConfig = readJson(profileConfigPath(), {}) ?? {}
@@ -355,6 +417,8 @@ async function printStatus() {
       ...profileConfig?.plugins?.entries?.[CUSTOM_ROUTER_PROVIDER_ID]?.config,
       apiKey: profileConfig?.plugins?.entries?.[CUSTOM_ROUTER_PROVIDER_ID]?.config?.apiKey ? '***' : '',
     },
+    testEntry: defaultTestEntryRelative(),
+    testCommand: describeTestCommand(),
     inspect: inspectText,
   }, null, 2))
 }

@@ -1,11 +1,11 @@
 # OpenSparrow Unified Source Repo
 
-![Version](https://img.shields.io/badge/version-0.1.0--alpha-2f81f7)
+![Version](https://img.shields.io/badge/version-1.0.0-2f81f7)
 ![Status](https://img.shields.io/badge/status-M3%20%E5%8F%AF%E4%BA%A4%E4%BB%98-f59e0b)
 
 本目录现在作为 `OpenClaw/OpenSparrow` 的统一真源仓工作根。
 
-当前版本：`0.1.0-alpha`（见 `VERSION`）
+当前版本：`1.0.0`（见 `VERSION`）
 
 ## 快速开始
 

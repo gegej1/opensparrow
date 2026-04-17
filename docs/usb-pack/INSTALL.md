@@ -1,6 +1,6 @@
 # OpenSparrow 安装指南
 
-当前版本：`0.1.0-alpha`
+当前版本：`1.0.0`
 
 这份指南面向第一次安装 OpenSparrow 的用户。
 你不需要安装 Node.js、Python、Docker 或其他开发工具；交付包已经包含运行所需内容。

@@ -233,7 +233,7 @@ const plugin = {
   id: CUSTOM_ROUTER_PROVIDER_ID,
   name: 'OpenSparrow Router',
   description: 'Custom model-routing plugin with external OpenAI-compatible upstream execution.',
-  version: '0.1.0',
+  version: '1.0.0',
   register(api) {
     const config = resolvePluginConfig(api.pluginConfig)
     if (!api.config.models) api.config.models = { providers: {} }

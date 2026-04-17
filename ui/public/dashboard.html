@@ -734,53 +734,185 @@
 
     <!-- Tab 3: API Config -->
     <div x-show="activeTab === 'api'" x-cloak class="tab-content">
-      <div class="glass-card rounded-2xl p-8 max-w-xl card-animate">
+      <div class="glass-card rounded-2xl p-8 max-w-4xl card-animate">
         <h2 class="text-lg font-bold mb-1" style="color:#1D2B4E">API 配置</h2>
         <p class="text-sm mb-6" style="color:#6B7A99">支持任意 OpenAI 兼容接口，包括 Azure、国内中转等</p>
 
-        <div class="space-y-5">
-          <div>
-            <label class="block text-sm font-medium mb-1" style="color:#6B7A99">Base URL</label>
-            <input type="text" x-model="apiForm.baseUrl"
-                   placeholder="https://api.openai.com/v1 或你的中转地址"
-                   class="light-input" />
-          </div>
-          <div>
-            <label class="block text-sm font-medium mb-1" style="color:#6B7A99">API Key</label>
-            <div class="relative">
-              <input
-                :type="showApiKey ? 'text' : 'password'"
-                x-model="apiForm.apiKey"
-                :placeholder="showApiKey ? '请输入 API Key' : 'sk-xxxxxxxxxxxxxxxxxxxxxxxx'"
-                class="light-input"
-                style="padding-right:60px"
-              />
-              <button
-                @click="showApiKey = !showApiKey"
-                class="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium transition-colors"
-                style="color:#1677FF;background:none;border:none;cursor:pointer"
-                onmouseover="this.style.color='#0958D9'"
-                onmouseout="this.style.color='#1677FF'"
-                x-text="showApiKey ? '隐藏' : '显示'"
-              ></button>
+        <div class="space-y-8">
+          <section class="space-y-5">
+            <div class="flex items-start justify-between gap-3 flex-wrap">
+              <div>
+                <h3 class="text-base font-bold" style="color:#1D2B4E">上游连接</h3>
+                <p class="text-sm mt-1" style="color:#6B7A99">这里只负责保存 Base URL / API Key；模型路由模式在下方单独管理</p>
+              </div>
             </div>
-          </div>
-          <div>
-            <label class="block text-sm font-medium mb-1" style="color:#6B7A99">模型名称</label>
-            <input type="text" x-model="apiForm.model"
-                   placeholder="请输入模型名称，如 gpt-4o-mini"
-                   class="light-input" />
-          </div>
 
-          <button
-            @click="saveApiConfig()"
-            :disabled="apiSaving"
-            class="blue-btn w-full font-semibold py-3 rounded-xl flex items-center justify-center gap-2"
-            style="box-shadow:0 4px 16px rgba(22,119,255,0.25)"
-          >
-            <span x-show="apiSaving" class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin inline-block"></span>
-            <span x-text="apiSaving ? '保存中…' : '保存配置'"></span>
-          </button>
+            <div>
+              <label class="block text-sm font-medium mb-1" style="color:#6B7A99">Base URL</label>
+              <input type="text" x-model="apiForm.baseUrl"
+                     placeholder="https://api.openai.com/v1 或你的中转地址"
+                     class="light-input" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-1" style="color:#6B7A99">API Key</label>
+              <div class="relative">
+                <input
+                  :type="showApiKey ? 'text' : 'password'"
+                  x-model="apiForm.apiKey"
+                  :placeholder="showApiKey ? '请输入 API Key' : 'sk-xxxxxxxxxxxxxxxxxxxxxxxx'"
+                  class="light-input"
+                  style="padding-right:60px"
+                />
+                <button
+                  @click="showApiKey = !showApiKey"
+                  class="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium transition-colors"
+                  style="color:#1677FF;background:none;border:none;cursor:pointer"
+                  onmouseover="this.style.color='#0958D9'"
+                  onmouseout="this.style.color='#1677FF'"
+                  x-text="showApiKey ? '隐藏' : '显示'"
+                ></button>
+              </div>
+            </div>
+
+            <button
+              @click="saveApiConfig()"
+              :disabled="apiSaving"
+              class="blue-btn w-full font-semibold py-3 rounded-xl flex items-center justify-center gap-2"
+              style="box-shadow:0 4px 16px rgba(22,119,255,0.25)"
+            >
+              <span x-show="apiSaving" class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin inline-block"></span>
+              <span x-text="apiSaving ? '保存中…' : '保存 Base URL / API Key'"></span>
+            </button>
+          </section>
+
+          <section class="space-y-5 pt-8" style="border-top:1px solid #E0EEFF">
+            <div class="flex items-start justify-between gap-3 flex-wrap">
+              <div>
+                <h3 class="text-base font-bold" style="color:#1D2B4E">模型智能路由</h3>
+                <p class="text-sm mt-1" style="color:#6B7A99">在普通单模型和智能路由之间切换，保存时只读取上方最后一次成功保存的连接配置</p>
+              </div>
+              <div class="text-xs" style="color:#6B7A99">
+                当前主模型：
+                <span class="font-mono break-all" style="color:#1D2B4E" x-text="modelRoutingState?.saved?.effectivePrimaryModel || '—'"></span>
+              </div>
+            </div>
+
+            <div x-show="modelRoutingLoading" class="rounded-xl px-4 py-5 flex items-center gap-3" style="background:#F7FAFF;border:1px solid #E0EEFF;color:#6B7A99">
+              <span class="inline-block w-5 h-5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></span>
+              <span class="text-sm">正在加载模型智能路由配置…</span>
+            </div>
+
+            <div x-show="!modelRoutingLoading" class="space-y-5">
+              <div class="rounded-xl px-4 py-4 space-y-2" style="background:#F7FAFF;border:1px solid #E0EEFF">
+                <p class="text-sm font-medium" style="color:#1D2B4E">复用上方 API 配置区最后一次成功保存的 Base URL / API Key</p>
+                <div class="text-xs space-y-2" style="color:#6B7A99">
+                  <div class="flex items-start justify-between gap-4">
+                    <span>Base URL（已保存）</span>
+                    <span class="font-mono break-all text-right" style="color:#1D2B4E" x-text="modelRoutingView().connection.baseUrlConfigured ? (modelRoutingView().connection.baseUrl || '已配置') : '未配置'"></span>
+                  </div>
+                  <div class="flex items-start justify-between gap-4">
+                    <span>API Key（已保存）</span>
+                    <span class="font-medium text-right" style="color:#1D2B4E" x-text="modelRoutingView().connection.apiKeyConfigured ? '已配置' : '未配置'"></span>
+                  </div>
+                </div>
+                <p
+                  x-show="modelRoutingView().connection.showUnsavedDraftNotice"
+                  class="text-xs"
+                  style="color:#D4380D"
+                >
+                  当前智能路由仍使用上次已保存的 Base URL / API Key；上方有未保存改动
+                </p>
+              </div>
+
+              <div class="flex flex-wrap gap-3">
+                <button
+                  @click="setModelRoutingMode('single')"
+                  class="px-4 py-2 text-sm font-medium rounded-xl transition-all"
+                  :class="modelRoutingState?.mode === 'single' ? 'blue-btn' : 'outline-btn'"
+                >普通单模型</button>
+                <button
+                  @click="setModelRoutingMode('smart')"
+                  class="px-4 py-2 text-sm font-medium rounded-xl transition-all"
+                  :class="modelRoutingState?.mode === 'smart' ? 'blue-btn' : 'outline-btn'"
+                >智能路由</button>
+              </div>
+
+              <div x-show="modelRoutingState?.mode === 'single'" x-cloak class="space-y-4">
+                <div>
+                  <label class="block text-sm font-medium mb-1" style="color:#6B7A99">singleModeDefaultModel</label>
+                  <input
+                    type="text"
+                    :value="modelRoutingState?.draft?.single?.singleModeDefaultModel || ''"
+                    @input="setModelRoutingSingle($event.target.value)"
+                    placeholder="请输入普通单模型，如 gpt-4o-mini"
+                    class="light-input"
+                  />
+                </div>
+              </div>
+
+              <div x-show="modelRoutingState?.mode === 'smart'" x-cloak class="space-y-4">
+                <div class="grid md:grid-cols-2 gap-4">
+                  <template x-for="tier in ['SIMPLE', 'MEDIUM', 'COMPLEX', 'REASONING']" :key="tier">
+                    <div>
+                      <label class="block text-sm font-medium mb-1" style="color:#6B7A99" x-text="tier"></label>
+                      <input
+                        type="text"
+                        :value="modelRoutingState?.draft?.smart?.tierModelMap?.[tier] || ''"
+                        @input="setModelRoutingTier(tier, $event.target.value)"
+                        :placeholder="`请输入 ${tier} 模型`"
+                        class="light-input"
+                      />
+                    </div>
+                  </template>
+                </div>
+
+                <div>
+                  <label class="block text-sm font-medium mb-1" style="color:#6B7A99">routing JSON</label>
+                  <textarea
+                    :value="modelRoutingState?.draft?.smart?.routingText || '{}'"
+                    @input="setModelRoutingRoutingText($event.target.value)"
+                    class="light-input font-mono text-sm"
+                    style="min-height:220px;line-height:1.5"
+                    placeholder='{"classifierModel":"gpt-4o-mini","tiers":{"coding":"COMPLEX"}}'
+                  ></textarea>
+                  <p
+                    x-show="modelRoutingState?.draft?.smart?.routingParseError"
+                    class="text-xs mt-2"
+                    style="color:#D4380D"
+                    x-text="'routing JSON 解析失败：' + modelRoutingState.draft.smart.routingParseError"
+                  ></p>
+                  <p
+                    x-show="!modelRoutingState?.draft?.smart?.routingParseError && modelRoutingState && modelRoutingState.draft.smart.routingTopLevelObject === false"
+                    class="text-xs mt-2"
+                    style="color:#D4380D"
+                  >
+                    routing JSON 顶层必须是对象
+                  </p>
+                </div>
+              </div>
+
+              <template x-if="modelRoutingDisabledReasonMessages().length > 0">
+                <div class="rounded-xl px-4 py-3 space-y-1" style="background:#FFF7E6;border:1px solid #FFE7BA">
+                  <template x-for="message in modelRoutingDisabledReasonMessages()" :key="message">
+                    <p class="text-xs" style="color:#D46B08" x-text="message"></p>
+                  </template>
+                </div>
+              </template>
+
+              <div x-show="modelRoutingState?.saveState?.error" class="rounded-xl px-4 py-3 text-sm" style="background:#FFF1F0;border:1px solid #FFCCC7;color:#CF1322" x-text="modelRoutingState?.saveState?.error"></div>
+              <div x-show="modelRoutingState?.saveState?.success" class="rounded-xl px-4 py-3 text-sm" style="background:#F6FFED;border:1px solid #B7EB8F;color:#389E0D" x-text="modelRoutingState?.saveState?.success"></div>
+
+              <button
+                @click="saveModelRoutingConfig()"
+                :disabled="modelRoutingView().saveDisabled"
+                class="blue-btn w-full font-semibold py-3 rounded-xl flex items-center justify-center gap-2"
+                style="box-shadow:0 4px 16px rgba(22,119,255,0.25)"
+              >
+                <span x-show="modelRoutingState?.saveState?.loading" class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin inline-block"></span>
+                <span x-text="modelRoutingState?.saveState?.loading ? '保存中…' : '保存模型智能路由'"></span>
+              </button>
+            </div>
+          </section>
         </div>
       </div>
     </div>
@@ -939,7 +1071,49 @@
 
   </main>
 
+  <script type="module">
+    import { createDashboardModelRoutingState } from './dashboard-model-routing-state.mjs'
+
+    window.dashboardModelRoutingState = {
+      createDashboardModelRoutingState,
+    }
+  </script>
+
   <script>
+    function createEmptyModelRoutingView() {
+      return {
+        mode: 'single',
+        connection: {
+          baseUrl: '',
+          baseUrlConfigured: false,
+          apiKeyConfigured: false,
+          hasSavedApiConfig: false,
+          apiDraftDirty: false,
+          showUnsavedDraftNotice: false,
+        },
+        singleModeDefaultModel: '',
+        tierModelMap: {
+          SIMPLE: '',
+          MEDIUM: '',
+          COMPLEX: '',
+          REASONING: '',
+        },
+        routingText: '{}',
+        routingParsed: null,
+        routingParseError: '',
+        routingTopLevelObject: true,
+        dirty: false,
+        saveDisabled: true,
+        disabledReasons: ['stateUnavailable'],
+      };
+    }
+
+    function createModelRoutingUiState() {
+      const factory = window.dashboardModelRoutingState?.createDashboardModelRoutingState;
+      if (typeof factory !== 'function') return null;
+      return factory({ savedConfig: {} });
+    }
+
     function dashboard() {
       return {
         // Navigation
@@ -1010,9 +1184,11 @@
         ],
 
         // API Tab
-        apiForm: { baseUrl: '', apiKey: '', model: '' },
+        apiForm: { baseUrl: '', apiKey: '' },
         apiSaving: false,
         showApiKey: false,
+        modelRoutingState: createModelRoutingUiState(),
+        modelRoutingLoading: false,
 
         // Skill Store Tab
         skillList: [],
@@ -1055,6 +1231,7 @@
           const keepOnDashboard = await this.loadStatus({ redirectOnReset: true });
           if (!keepOnDashboard) return;
           await this.loadConfig();
+          await this.loadModelRoutingConfig();
           this.$nextTick(() => this._animateCards());
         },
 
@@ -1127,9 +1304,6 @@
             const openai = data?.models?.providers?.openai;
             if (openai) {
               this.apiForm.baseUrl = openai.baseUrl || '';
-              // model name comes from the models array
-              const firstModel = Array.isArray(openai.models) ? openai.models[0] : null;
-              this.apiForm.model = firstModel?.id || '';
             }
             // apiKey is in auth-profiles.json (not in main config) — leave blank
 
@@ -1274,6 +1448,132 @@
             return await fetch(url, { ...options, signal: controller.signal });
           } finally {
             clearTimeout(timer);
+          }
+        },
+
+        // ─── Model Routing UI State ─────────────────────────────────
+
+        ensureModelRoutingState() {
+          if (!this.modelRoutingState) {
+            this.modelRoutingState = createModelRoutingUiState();
+          }
+          return this.modelRoutingState;
+        },
+
+        getApiDraft() {
+          return {
+            baseUrl: this.apiForm.baseUrl,
+            apiKey: this.apiForm.apiKey,
+          };
+        },
+
+        modelRoutingView() {
+          const state = this.ensureModelRoutingState();
+          if (!state) return createEmptyModelRoutingView();
+          return state.getActiveView({ apiDraft: this.getApiDraft() });
+        },
+
+        modelRoutingReasonMessage(reason) {
+          if (reason === 'missingSavedBaseUrl') return '请先在上方 API 配置区保存 Base URL';
+          if (reason === 'missingSavedApiKey') return '请先在上方 API 配置区保存 API Key';
+          if (reason === 'missingSingleModeDefaultModel') return 'singleModeDefaultModel 不能为空';
+          if (reason === 'routingParseError') return 'routing JSON 不是合法 JSON';
+          if (reason === 'routingTopLevelNotObject') return 'routing JSON 顶层必须是对象';
+          if (reason === 'noDirtyChanges') return '当前没有需要保存的变更';
+          if (reason === 'saving') return '正在保存，请勿重复提交';
+          if (reason === 'stateUnavailable') return '模型智能路由状态模块未加载';
+          if (String(reason || '').startsWith('missingTierModel:')) {
+            return `${String(reason).split(':')[1]} 模型不能为空`;
+          }
+          return '';
+        },
+
+        modelRoutingDisabledReasonMessages() {
+          const messages = this.modelRoutingView().disabledReasons
+            .filter(reason => !['noDirtyChanges', 'saving'].includes(reason))
+            .map(reason => this.modelRoutingReasonMessage(reason))
+            .filter(Boolean);
+          return [...new Set(messages)];
+        },
+
+        setModelRoutingMode(mode) {
+          const state = this.ensureModelRoutingState();
+          if (!state) return;
+          state.setMode(mode);
+          state.saveState.error = '';
+          state.saveState.success = '';
+        },
+
+        setModelRoutingSingle(value) {
+          const state = this.ensureModelRoutingState();
+          if (!state) return;
+          state.setSingleModeDefaultModel(value);
+        },
+
+        setModelRoutingTier(tier, value) {
+          const state = this.ensureModelRoutingState();
+          if (!state) return;
+          state.setTierModel(tier, value);
+        },
+
+        setModelRoutingRoutingText(value) {
+          const state = this.ensureModelRoutingState();
+          if (!state) return;
+          state.setRoutingText(value);
+        },
+
+        async loadModelRoutingConfig() {
+          const state = this.ensureModelRoutingState();
+          if (!state) return;
+
+          this.modelRoutingLoading = true;
+          try {
+            const res = await this.fetchWithTimeout('/api/config/model-routing', {}, this.requestTimeout.status);
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || data.ok === false) {
+              state.applySaveFailure(data.errors || data.message || '模型智能路由配置加载失败');
+              return;
+            }
+
+            state.replaceSavedConfig(data);
+            if (!this.apiForm.baseUrl && data?.connection?.baseUrl) {
+              this.apiForm.baseUrl = data.connection.baseUrl;
+            }
+          } catch (e) {
+            state.applySaveFailure(`模型智能路由配置加载失败：${e.message}`);
+          } finally {
+            this.modelRoutingLoading = false;
+          }
+        },
+
+        async saveModelRoutingConfig() {
+          const state = this.ensureModelRoutingState();
+          if (!state) {
+            this.showToast('模型智能路由状态模块未加载', 'error');
+            return;
+          }
+
+          const payload = state.buildSavePayload({ apiDraft: this.getApiDraft() });
+          if (!payload) return;
+
+          state.beginSave();
+          try {
+            const res = await this.fetchWithTimeout('/api/config/model-routing', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            }, this.requestTimeout.save);
+            const data = await res.json().catch(() => ({}));
+            if (res.ok && data.ok !== false) {
+              state.applySaveSuccess(data);
+              this.showToast(data.message || state.saveState.success);
+            } else {
+              state.applySaveFailure(data.errors || data.message || '模型智能路由保存失败');
+              this.showToast(state.saveState.error, 'error');
+            }
+          } catch (e) {
+            state.applySaveFailure(`无法连接到服务：${e.message}`);
+            this.showToast(state.saveState.error, 'error');
           }
         },
 
@@ -1648,12 +1948,29 @@
         async saveApiConfig() {
           this.apiSaving = true;
           try {
+            const state = this.ensureModelRoutingState();
+            const trimmedBaseUrl = String(this.apiForm.baseUrl || '').trim();
+            const trimmedApiKey = String(this.apiForm.apiKey || '').trim();
+            const payload = {
+              baseUrl: trimmedBaseUrl,
+            };
+            if (trimmedApiKey) payload.apiKey = trimmedApiKey;
+
             const res = await this.fetchWithTimeout('/api/config/api', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(this.apiForm),
+              body: JSON.stringify(payload),
             }, this.requestTimeout.save);
             if (res.ok) {
+              if (state) {
+                state.setApiSavedSnapshot({
+                  baseUrl: trimmedBaseUrl,
+                  baseUrlConfigured: Boolean(trimmedBaseUrl),
+                  apiKeyConfigured: trimmedApiKey ? true : state.apiSavedSnapshot.apiKeyConfigured,
+                });
+              }
+              this.apiForm.baseUrl = trimmedBaseUrl;
+              this.apiForm.apiKey = '';
               this.showToast('API 配置已保存');
             } else {
               const err = await res.json().catch(() => ({}));

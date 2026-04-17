@@ -11,6 +11,11 @@ import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import os from 'node:os'
 
+import {
+  getModelRoutingConfig,
+  saveModelRoutingConfig,
+} from './lib/model-routing-config.mjs'
+
 // ---------------------------------------------------------------------------
 // Path setup
 // ---------------------------------------------------------------------------
@@ -73,6 +78,7 @@ const PROFILE_DIR = path.join(OPENCLAW_HOME, `.openclaw-${PROFILE}`)
 const CONFIG_FILE = path.join(PROFILE_DIR, 'openclaw.json')
 const UI_META_FILE = path.join(PROFILE_DIR, 'ui-meta.json')
 const WORKSPACE_DIR = path.join(PROFILE_DIR, 'workspace')
+const AUTH_PROFILES_FILE = path.join(PROFILE_DIR, 'agents', 'main', 'agent', 'auth-profiles.json')
 const PUBLIC_DIR  = path.join(__dirname, 'public')
 
 const SKILLS_SRC = path.join(PACK_ROOT, 'skills', 'superpowers')
@@ -344,6 +350,16 @@ function normalizeOpenAIBaseUrl(rawInput, fallback = 'https://api.openai.com/v1'
   parsed.hash = ''
 
   return parsed.toString().replace(/\/+$/, '')
+}
+
+function extractOpenAIModelId(rawValue, fallback = 'gpt-4o-mini') {
+  const value = String(rawValue ?? '').trim()
+  if (!value) return fallback
+  if (value.startsWith('openai/')) {
+    const stripped = value.slice('openai/'.length).trim()
+    return stripped || fallback
+  }
+  return value
 }
 
 /**
@@ -1680,10 +1696,14 @@ async function installSkills() {
     for (const dest of SKILL_TARGETS) {
       try {
         fs.mkdirSync(dest, { recursive: true })
-        const files = fs.readdirSync(SKILLS_SRC)
-        for (const file of files) {
-          const src = path.join(SKILLS_SRC, file)
-          const dst = path.join(dest, file)
+        const entries = fs.readdirSync(SKILLS_SRC, { withFileTypes: true })
+        for (const entry of entries) {
+          const src = path.join(SKILLS_SRC, entry.name)
+          const dst = path.join(dest, entry.name)
+          if (entry.isDirectory()) {
+            copyDirRecursive(src, dst)
+            continue
+          }
           fs.copyFileSync(src, dst)
         }
       } catch (e) {
@@ -2232,36 +2252,58 @@ function handleGetConfig(res) {
   }
 }
 
+function createModelRoutingHelperOptions() {
+  return {
+    configFile: CONFIG_FILE,
+    authFile: AUTH_PROFILES_FILE,
+    uiMetaFile: UI_META_FILE,
+    defaultModel: DEFAULT_MODEL,
+  }
+}
+
+/** GET /api/config/model-routing */
+function handleGetModelRouting(res) {
+  try {
+    const payload = getModelRoutingConfig(createModelRoutingHelperOptions())
+    sendJson(res, 200, payload)
+  } catch (error) {
+    sendJson(res, 500, {
+      ok: false,
+      errors: [`读取模型智能路由配置失败：${error?.message ?? String(error)}`],
+    })
+  }
+}
+
 /** POST /api/config/api */
 async function handleUpdateApi(res, body) {
   const { baseUrl, apiKey, model } = body
   const errors = []
 
-  // Write baseUrl and models together so openclaw validation passes
+  // Keep legacy compatibility for the old dashboard API form:
+  // it may still submit baseUrl/apiKey/model together, and provider model updates
+  // must continue to work even though model-routing owns the new authority surface.
   if (baseUrl !== undefined || model !== undefined) {
-    // Read current config to avoid overwriting fields not being updated
     let currentBaseUrl = baseUrl
     let currentModel = model
 
-    if (currentBaseUrl === undefined || currentModel === undefined) {
-      try {
-        const raw = fs.readFileSync(CONFIG_FILE, 'utf8')
-        const cfg = JSON.parse(raw)
-        const openai = cfg?.models?.providers?.openai ?? {}
-        if (currentBaseUrl === undefined) currentBaseUrl = openai.baseUrl ?? 'https://api.openai.com/v1'
-        if (currentModel === undefined) {
-          const m = Array.isArray(openai.models) ? openai.models[0]?.id : null
-          currentModel = m ?? DEFAULT_MODEL
-        }
-      } catch {
-        currentBaseUrl = currentBaseUrl ?? 'https://api.openai.com/v1'
-        currentModel   = currentModel   ?? DEFAULT_MODEL
+    try {
+      const raw = fs.readFileSync(CONFIG_FILE, 'utf8')
+      const cfg = JSON.parse(raw)
+      const openai = cfg?.models?.providers?.openai ?? {}
+      if (currentBaseUrl === undefined) {
+        currentBaseUrl = typeof openai.baseUrl === 'string' ? openai.baseUrl.trim() : ''
       }
+      if (currentModel === undefined) {
+        const savedModel = Array.isArray(openai.models) ? openai.models[0]?.id : null
+        currentModel = typeof savedModel === 'string' ? savedModel.trim() : ''
+      }
+    } catch {
+      currentBaseUrl = currentBaseUrl ?? ''
+      currentModel = currentModel ?? ''
     }
 
     currentBaseUrl = normalizeOpenAIBaseUrl(currentBaseUrl)
-    currentModel = typeof currentModel === 'string' ? currentModel.trim() : ''
-    if (!currentModel) currentModel = DEFAULT_MODEL
+    currentModel = extractOpenAIModelId(currentModel, extractOpenAIModelId(DEFAULT_MODEL))
 
     const providerJson = JSON.stringify({
       baseUrl: currentBaseUrl,
@@ -2280,10 +2322,8 @@ async function handleUpdateApi(res, body) {
   }
 
   if (apiKey !== undefined) {
-    const authDir  = path.join(OPENCLAW_HOME, `.openclaw-${PROFILE}`, 'agents', 'main', 'agent')
-    const authFile = path.join(authDir, 'auth-profiles.json')
     try {
-      fs.mkdirSync(authDir, { recursive: true })
+      fs.mkdirSync(path.dirname(AUTH_PROFILES_FILE), { recursive: true })
       const authData = {
         version: 1,
         profiles: {
@@ -2291,7 +2331,7 @@ async function handleUpdateApi(res, body) {
         },
         order: { openai: ['openai:default'] },
       }
-      fs.writeFileSync(authFile, JSON.stringify(authData, null, 2), 'utf8')
+      fs.writeFileSync(AUTH_PROFILES_FILE, JSON.stringify(authData, null, 2), 'utf8')
     } catch (e) {
       errors.push(`writing auth-profiles.json failed: ${e.message}`)
     }
@@ -2308,6 +2348,41 @@ async function handleUpdateApi(res, body) {
   } else {
     sendJson(res, 200, { ok: true })
   }
+}
+
+/** POST /api/config/model-routing */
+async function handleUpdateModelRouting(res, body) {
+  const result = saveModelRoutingConfig(createModelRoutingHelperOptions(), body)
+  if (!result.ok) {
+    sendJson(res, result.status ?? 400, {
+      ok: false,
+      errors: Array.isArray(result.errors) ? result.errors : ['模型智能路由保存失败'],
+    })
+    return
+  }
+
+  const restartResult = await restartGatewayRuntimeWithFallback()
+  if (!restartResult.ok) {
+    sendJson(res, 500, {
+      ok: false,
+      errors: [restartResult.error ?? 'daemon restart failed'],
+    })
+    return
+  }
+
+  const payload = {
+    ok: true,
+    mode: result.mode,
+    effectivePrimaryModel: result.effectivePrimaryModel,
+    message: result.message,
+  }
+  if (restartResult.mode && restartResult.mode !== 'daemon') {
+    payload.runtimeMode = restartResult.mode
+  }
+  if (restartResult.warning) {
+    payload.warning = restartResult.warning
+  }
+  sendJson(res, 200, payload)
 }
 
 /** GET /api/config/channels */
@@ -3094,9 +3169,20 @@ async function requestHandler(req, res) {
       return
     }
 
+    if (method === 'GET' && pathname === '/api/config/model-routing') {
+      handleGetModelRouting(res)
+      return
+    }
+
     if (method === 'POST' && pathname === '/api/config/api') {
       const body = await readBody(req)
       await handleUpdateApi(res, body)
+      return
+    }
+
+    if (method === 'POST' && pathname === '/api/config/model-routing') {
+      const body = await readBody(req)
+      await handleUpdateModelRouting(res, body)
       return
     }
 
