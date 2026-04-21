@@ -1154,11 +1154,15 @@
             this.statusSnapshot.runtimeMode = data.runtimeMode || 'unknown';
             this.statusSnapshot.configExists = data.configExists !== false;
             this.statusSnapshot.profileDirExists = data.profileDirExists !== false;
-            this.serviceStatus = data.daemon === 'running' ? 'running' : 'stopped';
+            this.serviceStatus = (
+              data.daemon === 'running' ||
+              data.runtimeMode === 'gateway-fallback' ||
+              data.gatewayHealthy === true
+            ) ? 'running' : 'stopped';
             this.version = data.version || '1.0.0';
-            this.serviceInfo.profile = data.profile || 'usb-portable';
+            this.serviceInfo.profile = data.profile || '';
             this.serviceInfo.configPath = data.configPath || '';
-            this.serviceInfo.port = String(data.gatewayPort ?? '') || '—';
+            this.serviceInfo.port = String(data.gatewayPort ?? '');
 
             if (options.redirectOnReset === true && this.shouldRedirectToSetup(this.statusSnapshot)) {
               window.location.replace('/setup?force=1');

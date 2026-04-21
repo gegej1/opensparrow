@@ -338,6 +338,106 @@ test('wizard install keeps DingTalk probe evidence from packaged install respons
   })
 })
 
+test('wizard waitUntilInstalled accepts gateway fallback runtime as install-complete', async () => {
+  const { context, factory } = loadPageFactory('ui/public/index.html', 'wizard')
+  const instance = factory()
+
+  let callCount = 0
+  instance.fetchWithTimeout = async (url) => {
+    assert.equal(url, '/api/status')
+    callCount += 1
+    if (callCount < 4) {
+      return createResponse({
+        installed: true,
+        daemon: 'stopped',
+        runtimeMode: 'gateway-fallback',
+        gatewayHealthy: true,
+      })
+    }
+    return createResponse({
+      installed: true,
+      daemon: 'running',
+      runtimeMode: 'daemon',
+      gatewayHealthy: true,
+    })
+  }
+
+  const originalSetTimeout = context.setTimeout
+  const originalWindowSetTimeout = context.window.setTimeout
+  context.setTimeout = (fn) => {
+    if (typeof fn === 'function') fn()
+    return 0
+  }
+  context.window.setTimeout = context.setTimeout
+
+  try {
+    const result = await instance.waitUntilInstalled()
+    assert.equal(result, true)
+    assert.equal(callCount, 1)
+  } finally {
+    context.setTimeout = originalSetTimeout
+    context.window.setTimeout = originalWindowSetTimeout
+  }
+})
+
+test('wizard applyInstallStatus maps backend step states onto install tasks', () => {
+  const { factory } = loadPageFactory('ui/public/index.html', 'wizard')
+  const instance = factory()
+
+  assert.equal(typeof instance.applyInstallStatus, 'function')
+
+  instance.applyInstallStatus({
+    status: 'running',
+    summary: '正在启动服务',
+    steps: [
+      { key: 'plugins', status: 'done' },
+      { key: 'config', status: 'done' },
+      { key: 'channels', status: 'done' },
+      { key: 'runtime', status: 'running' },
+      { key: 'probe', status: 'pending' },
+    ],
+  })
+
+  assert.deepEqual(
+    toPlain(instance.installTasks.map((task) => task.status)),
+    ['done', 'done', 'done', 'running', 'pending'],
+  )
+  assert.equal(instance.installLoadingMessage, '正在启动服务')
+})
+
+test('wizard pollInstallStatusOnce reads backend install status instead of simulated progress', async () => {
+  const { factory } = loadPageFactory('ui/public/index.html', 'wizard')
+  const instance = factory()
+
+  assert.equal(typeof instance.pollInstallStatusOnce, 'function')
+
+  const calls = []
+  instance.fetchWithTimeout = async (url) => {
+    calls.push(url)
+    assert.equal(url, '/api/install/status')
+    return createResponse({
+      status: 'running',
+      summary: '正在验证连接',
+      steps: [
+        { key: 'plugins', status: 'done' },
+        { key: 'config', status: 'done' },
+        { key: 'channels', status: 'done' },
+        { key: 'runtime', status: 'done' },
+        { key: 'probe', status: 'running' },
+      ],
+    })
+  }
+
+  await instance.pollInstallStatusOnce()
+
+  assert.deepEqual(calls, ['/api/install/status'])
+  assert.deepEqual(
+    toPlain(instance.installTasks.map((task) => task.status)),
+    ['done', 'done', 'done', 'done', 'running'],
+  )
+  assert.equal(instance.installLoadingMessage, '正在验证连接')
+})
+
 test('dashboard daemon lifecycle refresh keeps DingTalk diagnostics aligned with packaged state', async () => {
   const { factory } = loadPageFactory('ui/public/dashboard.html', 'dashboard')
   const instance = factory()

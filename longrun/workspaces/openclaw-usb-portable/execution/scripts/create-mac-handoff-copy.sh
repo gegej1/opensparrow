@@ -17,13 +17,14 @@ case "$arch" in
 esac
 
 stage_dir="${project_root}/dist/usb-pack/opensparrow-${version}"
-export_root="${project_root}/dist/handoff/opensparrow-mac-ui-full-${artifact_arch}-$(date +%Y%m%d-%H%M%S)"
+output_base="${GTCLAW_RELEASE_OUTPUT_DIR:-${project_root}/dist/handoff}"
+export_root="${output_base}/gtclaw-mac-release-${artifact_arch}-$(date +%Y%m%d-%H%M%S)"
 archive_path="${export_root}.zip"
-artifact_dir="${export_root}/opensparrow-${version}-mac-ui-${artifact_arch}"
+artifact_dir="${export_root}/GTClaw-${version}-macOS-${artifact_arch}"
 node_version="$(usb_vendor_node_version "$project_root")"
 openclaw_version="$(usb_vendor_openclaw_version "$project_root")"
 
-mkdir -p "${project_root}/dist/handoff"
+mkdir -p "$output_base"
 
 echo "[INFO] Building fresh Mac UI-first USB pack..."
 bash "${project_root}/scripts/build-usb-pack.sh" --platform mac
@@ -38,13 +39,14 @@ mkdir -p "$artifact_dir"
 rsync -a --delete "${stage_dir}/" "$artifact_dir/"
 
 cat > "${export_root}/README-FIRST.txt" <<README
-OpenSparrow Mac UI-first packaged release
-=========================================
+GTClaw macOS release
+====================
 
-本次导出只覆盖今晚的 Mac UI-first 首发 cut：
+本次导出只覆盖当前对外 macOS release cut：
 
 - 唯一官方 first-click path：根目录 01-开始部署.command
 - 今晚正式支持渠道：飞书、钉钉
+- Dashboard 内含 GTClaw API 配置与模型智能路由
 - 企业微信不纳入今晚 packaged outward promise
 - mac/run-openclaw-usb.command 与 mac/harden-openclaw-usb.command 仅作为 advanced compatibility / handoff
 - companion 不纳入今晚正式支持面
@@ -54,9 +56,11 @@ OpenSparrow Mac UI-first packaged release
 - macOS arch: ${artifact_arch}
 - bundled Node: v${node_version}
 - bundled OpenClaw: ${openclaw_version}
+- default package state dir: .gtclaw-state/
+- default package profile: gtclaw-portable
 
 建议使用方式：
-1. 进入 opensparrow-${version}-mac-ui-${artifact_arch}/
+1. 进入 GTClaw-${version}-macOS-${artifact_arch}/
 2. 双击 01-开始部署.command
 3. 在浏览器安装向导中完成飞书 / 钉钉配置
 
@@ -73,6 +77,6 @@ usb_write_checksums "$export_root"
   fi
 )
 
-echo "[DONE] Mac UI-first candidate created: $export_root"
+echo "[DONE] macOS release folder created: $export_root"
 echo "[DONE] Archive created: $archive_path"
 echo "[INFO] Packaged artifact dir: $artifact_dir"

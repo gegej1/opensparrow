@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# build-usb-pack.sh — Build the OpenSparrow USB deliverable pack
+# build-usb-pack.sh — Build the GTClaw macOS/USB deliverable pack
 #
 # Usage:
 #   scripts/build-usb-pack.sh [--platform mac|windows|all] [--skip-skills]
@@ -109,6 +109,36 @@ read_version() {
     log_info "Version: ${_C_BOLD}${VERSION}${_C_RESET}"
 }
 
+read_package_version() {
+    local package_json="$1"
+    if [[ ! -f "$package_json" ]]; then
+        return 1
+    fi
+    sed -nE 's/.*"version": "([^"]+)".*/\1/p' "$package_json" | head -n 1
+}
+
+assert_mac_runtime_version_truth() {
+    local lib_pkg="${PROJECT_ROOT}/vendor/mac-openclaw/lib/node_modules/openclaw/package.json"
+    local bin_pkg="${PROJECT_ROOT}/vendor/mac-openclaw/bin/node_modules/openclaw/package.json"
+    local lib_version=""
+    local bin_version=""
+
+    [[ -f "$lib_pkg" ]] && lib_version="$(read_package_version "$lib_pkg")"
+    [[ -f "$bin_pkg" ]] && bin_version="$(read_package_version "$bin_pkg")"
+
+    if [[ -n "$lib_version" && -n "$bin_version" && "$lib_version" != "$bin_version" ]]; then
+        log_error "mac runtime version drift guard failed: lib=${lib_version}, bin=${bin_version}"
+        log_error "Fix bundled runtime truth before packaging; do not ship split-brain mac artifacts."
+        exit 1
+    fi
+
+    if [[ -n "$lib_version" ]]; then
+        log_info "mac runtime truth: lib/node_modules/openclaw=${lib_version}"
+    elif [[ -n "$bin_version" ]]; then
+        log_warn "mac runtime truth fallback: only bin/node_modules/openclaw=${bin_version}"
+    fi
+}
+
 # ---------------------------------------------------------------------------
 # Step: Prepare staging directory
 # ---------------------------------------------------------------------------
@@ -151,32 +181,47 @@ copy_common() {
     cp "${PROJECT_ROOT}/VERSION"    "${STAGING_DIR}/VERSION"
     cp "${PROJECT_ROOT}/README.md"  "${STAGING_DIR}/README.md"
 
-    # b. ui/ → ui/  (exclude node_modules)
+    # b. ui/ → ui/  (exclude dev/test-only files)
     log_info "Copying ui/"
     rsyncp "${PROJECT_ROOT}/ui" "${STAGING_DIR}/ui" \
         --exclude='node_modules' \
+        --exclude='tests' \
+        --exclude='*.test.mjs' \
         --exclude='.DS_Store'
 
-    # c. docs/usb-pack/ → docs/
-    log_info "Copying docs/usb-pack/ → docs/"
-    rsyncp "${PROJECT_ROOT}/docs/usb-pack" "${STAGING_DIR}/docs"
+    # c. release-facing docs only
+    log_info "Copying release-facing docs"
+    mkdir -p "${STAGING_DIR}/docs"
+    for doc_file in INSTALL.md SOP.md; do
+        if [[ -f "${PROJECT_ROOT}/docs/usb-pack/${doc_file}" ]]; then
+            cp "${PROJECT_ROOT}/docs/usb-pack/${doc_file}" "${STAGING_DIR}/docs/${doc_file}"
+        else
+            log_warn "docs/usb-pack/${doc_file} not found — skipping"
+        fi
+    done
 
-    if [[ -f "${PROJECT_ROOT}/docs/release-checklist.md" ]]; then
-        log_info "Copying docs/release-checklist.md → docs/release-checklist.md"
-        cp "${PROJECT_ROOT}/docs/release-checklist.md" "${STAGING_DIR}/docs/release-checklist.md"
-    fi
-
-    # d. docs/runbooks/ → runbooks/
-    log_info "Copying docs/runbooks/ → runbooks/"
-    if [[ -d "${PROJECT_ROOT}/docs/runbooks" ]]; then
-        rsyncp "${PROJECT_ROOT}/docs/runbooks" "${STAGING_DIR}/runbooks"
+    # d. release-facing runbook only
+    log_info "Copying release-facing runbook"
+    mkdir -p "${STAGING_DIR}/runbooks"
+    if [[ -f "${PROJECT_ROOT}/docs/runbooks/F-005-ui-install-reset.md" ]]; then
+        cp "${PROJECT_ROOT}/docs/runbooks/F-005-ui-install-reset.md" "${STAGING_DIR}/runbooks/F-005-ui-install-reset.md"
     else
-        log_warn "docs/runbooks/ not found — skipping"
+        log_warn "docs/runbooks/F-005-ui-install-reset.md not found — skipping"
     fi
 
     # e. scripts/openclaw-usb/ → scripts/openclaw-usb/
     log_info "Copying scripts/openclaw-usb/"
     rsyncp "${PROJECT_ROOT}/scripts/openclaw-usb" "${STAGING_DIR}/scripts/openclaw-usb"
+
+    # e2. scripts/model-routing/ → scripts/model-routing/
+    # F-034 live router runtime imports this tree at package runtime.
+    if [[ -d "${PROJECT_ROOT}/scripts/model-routing" ]]; then
+        log_info "Copying scripts/model-routing/"
+        rsyncp "${PROJECT_ROOT}/scripts/model-routing" "${STAGING_DIR}/scripts/model-routing" \
+            --exclude='.DS_Store'
+    else
+        log_warn "scripts/model-routing/ not found — smart routing runtime may be incomplete"
+    fi
 
     # f. skills/openclaw-local-feishu-usb/ → skills/openclaw-local-feishu-usb/
     log_info "Copying skills/openclaw-local-feishu-usb/"
@@ -222,10 +267,15 @@ copy_skills() {
     log_info "Syncing 424 MB / 60k+ files — this may take a minute…"
     mkdir -p "$skills_dst"
 
+    # In non-interactive runs, keep output quiet so automation/log review stays usable.
+    if [[ ! -t 1 ]]; then
+        rsync -a --delete \
+            --exclude='.DS_Store' \
+            "${skills_src}/" "${skills_dst}/"
     # Use --info=progress2 for a single-line progress indicator; fall back
     # gracefully if this rsync version doesn't support it.
-    if rsync --info=progress2 --version &>/dev/null 2>&1 && \
-       rsync --info=progress2 -a --dry-run "${skills_src}/" "${skills_dst}/" &>/dev/null 2>&1; then
+    elif rsync --info=progress2 --version &>/dev/null 2>&1 && \
+         rsync --info=progress2 -a --dry-run "${skills_src}/" "${skills_dst}/" &>/dev/null 2>&1; then
         rsync -a --delete \
             --info=progress2 \
             --exclude='.DS_Store' \
@@ -379,6 +429,34 @@ fix_permissions() {
 }
 
 # ---------------------------------------------------------------------------
+# Step: Strip runtime state and local machine residue from the pack
+# ---------------------------------------------------------------------------
+strip_runtime_state() {
+    log_step "Stripping runtime state and local residue"
+
+    find "$STAGING_DIR" -type f \
+        \( -name 'auth-profiles.json' \
+        -o -name 'openclaw.json' \
+        -o -name 'ui-meta.json' \
+        -o -name 'openclaw-ui.pid' \
+        -o -name 'openclaw-gateway.pid' \
+        -o -name '.DS_Store' \) \
+        -print -delete | while IFS= read -r removed; do
+            log_info "Removed state file: ${removed#${STAGING_DIR}/}"
+        done
+
+    find "$STAGING_DIR" -type d \
+        \( -name 'test-results' \
+        -o -name '.pytest_cache' \) \
+        -print0 | while IFS= read -r -d '' removed_dir; do
+            rm -rf "$removed_dir"
+            log_info "Removed state dir: ${removed_dir#${STAGING_DIR}/}"
+        done
+
+    log_done "Runtime residue stripped"
+}
+
+# ---------------------------------------------------------------------------
 # Step: Generate README.txt quick-start guide at pack root
 # ---------------------------------------------------------------------------
 generate_readme_txt() {
@@ -387,7 +465,7 @@ generate_readme_txt() {
     if [[ "$PLATFORM" == "mac" ]]; then
         cat > "${STAGING_DIR}/README.txt" << 'EOF'
 ========================================================================
-  OpenSparrow — Mac UI-first Deployment Pack
+  GTClaw — macOS Release Pack
   Version: __VERSION__
 ========================================================================
 
@@ -395,6 +473,7 @@ TONIGHT'S OFFICIAL SUPPORT SURFACE
   • Platform: macOS
   • Official first-click path: root "01-开始部署.command"
   • Supported channels tonight: Feishu / DingTalk
+  • Dashboard includes GTClaw API configuration + model smart routing
   • WeCom is NOT part of tonight's packaged support promise
   • Companion is NOT part of tonight's official support surface
 
@@ -427,7 +506,7 @@ EOF
     else
         cat > "${STAGING_DIR}/README.txt" << 'EOF'
 ========================================================================
-  OpenSparrow — USB AI Bot Deployment Pack
+  GTClaw — USB AI Bot Deployment Pack
   Version: __VERSION__
 ========================================================================
 
@@ -497,7 +576,7 @@ generate_readme_md() {
     log_step "Generating packaged README.md"
 
     cat > "${STAGING_DIR}/README.md" << 'EOF'
-# OpenSparrow Mac UI-first Deployment Pack
+# GTClaw macOS Release Pack
 
 Version: `__VERSION__`
 
@@ -506,6 +585,7 @@ Version: `__VERSION__`
 - Platform: `macOS`
 - Official first-click path: root `01-开始部署.command`
 - Supported channels tonight: `飞书`、`钉钉`
+- Dashboard includes GTClaw API configuration and model smart routing
 - `mac/run-openclaw-usb.command` and `mac/harden-openclaw-usb.command` are retained only as advanced compatibility / handoff surfaces
 - WeCom is not part of tonight's packaged support promise
 - Companion is not part of tonight's official support surface
@@ -529,8 +609,6 @@ Version: `__VERSION__`
 - `docs/INSTALL.md`
 - `docs/SOP.md`
 - `runbooks/F-005-ui-install-reset.md`
-- `runbooks/release-process.md`
-- `docs/release-checklist.md`
 EOF
 
     if command -v sed &>/dev/null; then
@@ -560,7 +638,7 @@ print_summary() {
 
     echo ""
     echo -e "${_C_BOLD}╔══════════════════════════════════════════╗${_C_RESET}"
-    echo -e "${_C_BOLD}║       OpenSparrow USB Pack — Built       ║${_C_RESET}"
+    echo -e "${_C_BOLD}║          GTClaw Pack — Built            ║${_C_RESET}"
     echo -e "${_C_BOLD}╠══════════════════════════════════════════╣${_C_RESET}"
     printf "${_C_BOLD}║${_C_RESET}  %-10s  %-30s${_C_BOLD}║${_C_RESET}\n" "Platform:"  "$PLATFORM"
     printf "${_C_BOLD}║${_C_RESET}  %-10s  %-30s${_C_BOLD}║${_C_RESET}\n" "Version:"   "$VERSION"
@@ -577,7 +655,7 @@ print_summary() {
 # ---------------------------------------------------------------------------
 main() {
     echo ""
-    echo -e "${_C_BOLD}OpenSparrow USB Pack Builder${_C_RESET}"
+    echo -e "${_C_BOLD}GTClaw Pack Builder${_C_RESET}"
     echo -e "Project root: ${PROJECT_ROOT}"
     echo ""
 
@@ -587,6 +665,7 @@ main() {
     log_info "Skip skills: ${_C_BOLD}${SKIP_SKILLS}${_C_RESET}"
 
     read_version
+    assert_mac_runtime_version_truth
     prepare_staging
     copy_common
     copy_skills
@@ -606,6 +685,7 @@ main() {
     esac
 
     fix_permissions
+    strip_runtime_state
     generate_readme_txt
     generate_readme_md
 

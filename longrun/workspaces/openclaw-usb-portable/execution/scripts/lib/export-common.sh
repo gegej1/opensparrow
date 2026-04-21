@@ -105,8 +105,14 @@ usb_vendor_node_version() {
 
 usb_vendor_openclaw_version() {
   local project_root="$1"
-  local openclaw_package_json="${project_root}/vendor/linux-openclaw/bin/node_modules/openclaw/package.json"
+  local openclaw_package_json="${project_root}/vendor/linux-openclaw/lib/node_modules/openclaw/package.json"
 
+  if [[ ! -f "$openclaw_package_json" ]]; then
+    openclaw_package_json="${project_root}/vendor/linux-openclaw/bin/node_modules/openclaw/package.json"
+  fi
+  if [[ ! -f "$openclaw_package_json" ]]; then
+    openclaw_package_json="${project_root}/vendor/mac-openclaw/lib/node_modules/openclaw/package.json"
+  fi
   if [[ ! -f "$openclaw_package_json" ]]; then
     openclaw_package_json="${project_root}/vendor/mac-openclaw/bin/node_modules/openclaw/package.json"
   fi

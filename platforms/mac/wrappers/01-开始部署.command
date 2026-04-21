@@ -57,13 +57,19 @@ if [[ -z "$node_bin" || ! -x "$node_bin" ]]; then
   exit 1
 fi
 
-export OPENCLAW_PROFILE="${OPENCLAW_PROFILE:-usb-portable}"
-export OPENCLAW_GATEWAY_PORT="${OPENCLAW_GATEWAY_PORT:-18889}"
+export OPENCLAW_HOME="${OPENCLAW_HOME:-$pack_root/.gtclaw-state}"
+mkdir -p "$OPENCLAW_HOME"
+export OPENCLAW_PROFILE="${OPENCLAW_PROFILE:-gtclaw-portable}"
+export OPENCLAW_GATEWAY_PORT="${OPENCLAW_GATEWAY_PORT:-18929}"
+export OPENSPARROW_ROUTER_PORT="${OPENSPARROW_ROUTER_PORT:-18412}"
 export USB_RUNTIME_ROOT="${USB_RUNTIME_ROOT:-$runtime_root}"
 export OPENSPARROW_AUTO_OPEN="${OPENSPARROW_AUTO_OPEN:-1}"
 
-printf '正在启动 OpenSparrow 管理界面...\n'
+printf '正在启动 GTClaw 管理界面...\n'
+printf 'Home: %s\n' "$OPENCLAW_HOME"
 printf 'Profile: %s\n' "$OPENCLAW_PROFILE"
+printf 'Gateway: %s\n' "$OPENCLAW_GATEWAY_PORT"
+printf 'Router: %s\n' "$OPENSPARROW_ROUTER_PORT"
 printf 'Runtime: %s\n' "$USB_RUNTIME_ROOT"
 
 exec "$node_bin" "$server_file"
