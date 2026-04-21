@@ -5,6 +5,15 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${script_dir}/lib/export-common.sh"
 
+readonly REQUIRED_PACKAGED_RUNTIME_FILES=(
+  'ui/server.mjs'
+  'ui/install-helpers.mjs'
+  'ui/lib/model-routing-config.mjs'
+  'ui/lib/openai-provider.mjs'
+  'scripts/model-routing/lib/custom-plugin-routing.mjs'
+  'vendor/mac-openclaw/RUNTIME_TRUTH.json'
+)
+
 workspace_dir="$(usb_exec_workspace_dir)"
 project_root="$(usb_project_root "$workspace_dir")"
 version="$(tr -d '[:space:]' < "${project_root}/VERSION")"
@@ -24,6 +33,14 @@ artifact_dir="${export_root}/GTClaw-${version}-macOS-${artifact_arch}"
 node_version="$(usb_vendor_node_version "$project_root")"
 openclaw_version="$(usb_vendor_openclaw_version "$project_root")"
 
+require_artifact_file() {
+  local relative_path="$1"
+  if [[ ! -f "${artifact_dir}/${relative_path}" ]]; then
+    echo "[ERROR] Required packaged runtime dependency missing from artifact: ${relative_path}" >&2
+    exit 1
+  fi
+}
+
 mkdir -p "$output_base"
 
 echo "[INFO] Building fresh Mac UI-first USB pack..."
@@ -37,6 +54,9 @@ fi
 usb_prepare_export_root "$export_root" "$archive_path"
 mkdir -p "$artifact_dir"
 rsync -a --delete "${stage_dir}/" "$artifact_dir/"
+for relative_path in "${REQUIRED_PACKAGED_RUNTIME_FILES[@]}"; do
+  require_artifact_file "$relative_path"
+done
 
 cat > "${export_root}/README-FIRST.txt" <<README
 GTClaw macOS release

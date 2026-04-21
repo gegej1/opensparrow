@@ -48,6 +48,15 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 PLATFORM="all"
 SKIP_SKILLS=false
 STAGING_DIR=""   # set after version is read
+MAC_RUNTIME_LIB_VERSION=""
+MAC_RUNTIME_BIN_VERSION=""
+readonly REQUIRED_PACKAGED_RUNTIME_FILES=(
+    'ui/server.mjs'
+    'ui/install-helpers.mjs'
+    'ui/lib/model-routing-config.mjs'
+    'ui/lib/openai-provider.mjs'
+    'scripts/model-routing/lib/custom-plugin-routing.mjs'
+)
 
 # ---------------------------------------------------------------------------
 # Parse arguments
@@ -118,6 +127,10 @@ read_package_version() {
 }
 
 assert_mac_runtime_version_truth() {
+    if [[ "$PLATFORM" == "windows" ]]; then
+        return 0
+    fi
+
     local lib_pkg="${PROJECT_ROOT}/vendor/mac-openclaw/lib/node_modules/openclaw/package.json"
     local bin_pkg="${PROJECT_ROOT}/vendor/mac-openclaw/bin/node_modules/openclaw/package.json"
     local lib_version=""
@@ -126,17 +139,76 @@ assert_mac_runtime_version_truth() {
     [[ -f "$lib_pkg" ]] && lib_version="$(read_package_version "$lib_pkg")"
     [[ -f "$bin_pkg" ]] && bin_version="$(read_package_version "$bin_pkg")"
 
-    if [[ -n "$lib_version" && -n "$bin_version" && "$lib_version" != "$bin_version" ]]; then
+    if [[ -z "$lib_version" ]]; then
+        log_error "mac runtime truth guard failed: missing canonical lib runtime package at ${lib_pkg}"
+        exit 1
+    fi
+
+    if [[ -z "$bin_version" ]]; then
+        log_error "mac runtime truth guard failed: missing bin runtime package at ${bin_pkg}"
+        exit 1
+    fi
+
+    if [[ "$lib_version" != "$bin_version" ]]; then
         log_error "mac runtime version drift guard failed: lib=${lib_version}, bin=${bin_version}"
         log_error "Fix bundled runtime truth before packaging; do not ship split-brain mac artifacts."
         exit 1
     fi
 
-    if [[ -n "$lib_version" ]]; then
-        log_info "mac runtime truth: lib/node_modules/openclaw=${lib_version}"
-    elif [[ -n "$bin_version" ]]; then
-        log_warn "mac runtime truth fallback: only bin/node_modules/openclaw=${bin_version}"
+    MAC_RUNTIME_LIB_VERSION="$lib_version"
+    MAC_RUNTIME_BIN_VERSION="$bin_version"
+    log_info "mac runtime truth: lib/node_modules/openclaw=${lib_version}"
+    log_info "mac runtime truth: bin/node_modules/openclaw=${bin_version}"
+}
+
+require_packaged_file() {
+    local relative_path="$1"
+    if [[ ! -f "${PROJECT_ROOT}/${relative_path}" ]]; then
+        log_error "Required packaged runtime dependency missing: ${relative_path}"
+        exit 1
     fi
+}
+
+require_staged_packaged_file() {
+    local relative_path="$1"
+    if [[ ! -f "${STAGING_DIR}/${relative_path}" ]]; then
+        log_error "Required packaged runtime dependency missing from staged pack: ${relative_path}"
+        exit 1
+    fi
+}
+
+verify_required_packaged_source_files() {
+    local relative_path
+    for relative_path in "${REQUIRED_PACKAGED_RUNTIME_FILES[@]}"; do
+        require_packaged_file "$relative_path"
+    done
+}
+
+verify_required_staged_packaged_source_files() {
+    local relative_path
+    for relative_path in "${REQUIRED_PACKAGED_RUNTIME_FILES[@]}"; do
+        require_staged_packaged_file "$relative_path"
+    done
+}
+
+emit_mac_runtime_truth_manifest() {
+    if [[ "$PLATFORM" == "windows" ]]; then
+        return 0
+    fi
+
+    local manifest_path="${STAGING_DIR}/vendor/mac-openclaw/RUNTIME_TRUTH.json"
+    mkdir -p "$(dirname "$manifest_path")"
+    cat > "$manifest_path" <<EOF
+{
+  "platform": "mac",
+  "canonicalRuntimeSource": "lib",
+  "libOpenclawVersion": "${MAC_RUNTIME_LIB_VERSION}",
+  "binOpenclawVersion": "${MAC_RUNTIME_BIN_VERSION}",
+  "versionConsistent": true
+}
+EOF
+    require_staged_packaged_file 'vendor/mac-openclaw/RUNTIME_TRUTH.json'
+    log_info "Emitted mac runtime truth manifest: vendor/mac-openclaw/RUNTIME_TRUTH.json"
 }
 
 # ---------------------------------------------------------------------------
@@ -174,6 +246,7 @@ rsyncp() {
 # ---------------------------------------------------------------------------
 copy_common() {
     log_step "Copying common files"
+    verify_required_packaged_source_files
 
     # a. VERSION and README.md → staging root
     # README.md may be overwritten later with a packaged release-facing version.
@@ -242,6 +315,7 @@ copy_common() {
         log_warn "superpowers/ not found — skipping"
     fi
 
+    verify_required_staged_packaged_source_files
     log_done "Common files copied"
 }
 
@@ -345,8 +419,10 @@ copy_mac() {
     if [[ -d "$vendor_src" ]]; then
         log_info "Copying vendor/mac-openclaw/"
         rsyncp "$vendor_src" "${STAGING_DIR}/vendor/mac-openclaw"
+        emit_mac_runtime_truth_manifest
     else
-        log_warn "vendor/mac-openclaw/ not found — skipping"
+        log_error "vendor/mac-openclaw/ not found — cannot build packaged mac artifact"
+        exit 1
     fi
 
     # platforms/mac/wrappers/* → mac/
