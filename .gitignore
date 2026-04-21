@@ -67,6 +67,10 @@ yarn-error.log*
 # =============================================
 openclaw-*.log
 .tmp-*
+chatgpt_review_bundle/
+chatgpt_review_bundle.zip
+repo_review_slim/
+repo_review_slim.zip
 
 # =============================================
 # Vendor runtime binaries (too large for git; consider Git LFS later)
