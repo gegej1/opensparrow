@@ -90,7 +90,7 @@ find "$artifact_dir" -type d \
   -print0 | while IFS= read -r -d '' removed_dir; do
     rm -rf "$removed_dir"
     echo "[INFO] Removed package-local state dir: ${removed_dir#${artifact_dir}/}"
-  done
+done
 for relative_path in "${REQUIRED_PACKAGED_RUNTIME_FILES[@]}"; do
   require_artifact_file "$relative_path"
 done

@@ -287,6 +287,48 @@ EOF
     log_info "Emitted mac runtime truth manifest: vendor/mac-openclaw/RUNTIME_TRUTH.json"
 }
 
+require_staged_packaged_file() {
+    local relative_path="$1"
+    if [[ ! -f "${STAGING_DIR}/${relative_path}" ]]; then
+        log_error "Required packaged runtime dependency missing from staged pack: ${relative_path}"
+        exit 1
+    fi
+}
+
+verify_required_packaged_source_files() {
+    local relative_path
+    for relative_path in "${REQUIRED_PACKAGED_RUNTIME_FILES[@]}"; do
+        require_packaged_file "$relative_path"
+    done
+}
+
+verify_required_staged_packaged_source_files() {
+    local relative_path
+    for relative_path in "${REQUIRED_PACKAGED_RUNTIME_FILES[@]}"; do
+        require_staged_packaged_file "$relative_path"
+    done
+}
+
+emit_mac_runtime_truth_manifest() {
+    if [[ "$PLATFORM" == "windows" ]]; then
+        return 0
+    fi
+
+    local manifest_path="${STAGING_DIR}/vendor/mac-openclaw/RUNTIME_TRUTH.json"
+    mkdir -p "$(dirname "$manifest_path")"
+    cat > "$manifest_path" <<EOF
+{
+  "platform": "mac",
+  "canonicalRuntimeSource": "lib",
+  "libOpenclawVersion": "${MAC_RUNTIME_LIB_VERSION}",
+  "binOpenclawVersion": "${MAC_RUNTIME_BIN_VERSION}",
+  "versionConsistent": true
+}
+EOF
+    require_staged_packaged_file 'vendor/mac-openclaw/RUNTIME_TRUTH.json'
+    log_info "Emitted mac runtime truth manifest: vendor/mac-openclaw/RUNTIME_TRUTH.json"
+}
+
 # ---------------------------------------------------------------------------
 # Step: Prepare staging directory
 # ---------------------------------------------------------------------------
