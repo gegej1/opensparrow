@@ -67,12 +67,16 @@ ui/server.mjs
 
 当前实现特征：
 
-- 安装步骤 UI 有前端模拟进度
+- 安装步骤 UI 会轮询 `GET /api/install/status` 读取后端真实 step 状态
 - 但完成判定现在会接受：
   - `daemon=running`
   - `runtimeMode=gateway-fallback`
   - `gatewayHealthy=true`
 - `/api/install` 会优先安装包内离线 `plugins/*.tgz`
+- package-local 诊断文件：
+  - `install-state.json`
+  - `install.log`
+  - `diagnostic-bundle.json`
 
 ## 4. Dashboard 链路
 
@@ -156,6 +160,13 @@ sidecar 再根据 tier connection map 访问真实 upstream。
 但当前仍有一个明确 blocker：
 
 - packaged WeCom 安装会命中 mac bundled runtime split-brain
+
+### P0 diagnostics additions
+
+- `GET /api/diagnostics`
+- `GET /api/diagnostics/export`
+- build-time mac runtime drift guard
+- export-time bundled OpenClaw version probe 优先 `lib/node_modules/openclaw`
 
 ## 8. Docker Flow
 

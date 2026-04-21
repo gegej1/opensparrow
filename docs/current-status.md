@@ -95,6 +95,19 @@
 3. 让 server / version probe / export / README / release artifact 口径一致
 4. 重新打包并做 packaged WeCom fresh verification
 
+### P0：packaged mac diagnosis surface
+
+当前已经开始收口到以下 surface：
+
+- `GET /api/install/status`
+- `GET /api/diagnostics`
+- `GET /api/diagnostics/export`
+- package-local `install-state.json`
+- package-local `install.log`
+- package-local `diagnostic-bundle.json`
+
+这层的目标是把“安装卡住 / 服务停掉 / 版本不一致 / probe 异常”变成可读证据，而不是只看前端转圈。
+
 ## 当前 dirty workspace 摘要
 
 ### 已跟踪修改
@@ -141,6 +154,7 @@
 - F-031 root repo 最小前后端闭环已存在
 - F-035 packaged isolation + install stall hotfix 已有 fresh evidence
 - packaged WeCom 当前 blocker 是 **runtime/version truth**，不是单纯 UI 文案
+- packaged mac 当前优先级是 **P0 diagnostics surface + runtime truth**，不是直接宣称 channels full closure
 
 ### 未确认
 
