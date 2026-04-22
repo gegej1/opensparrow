@@ -31,18 +31,16 @@
 
 GPT Pro 做 Windows 的**主基线**应该看这里：
 
-- 仓库路径：`/Users/eduardogan/Desktop/GHJProject/opensparrow`
 - 当前 branch：`017-codespec-framework-adaptation`
 - 推荐固定锚点 commit：`0c28abb1167d4f57b30e3e06280f36e02ff6a7c9`
 - upstream：`origin/017-codespec-framework-adaptation`
 
 这条是当前最适合 GPT Pro 读取、设计、修改、提交的 GitHub 视角基线。
 
-### 2.2 本地只读参考线
+### 2.2 packaged-mac 只读参考线
 
 还有一条**只读参考线**，用于理解当前 mac packaged/channel 最新真相：
 
-- worktree：`/Users/eduardogan/.config/superpowers/worktrees/opensparrow/feature-p0-packaged-mac-diagnostics`
 - branch：`feature/p0-packaged-mac-diagnostics`
 - latest pushed HEAD：`aa4403ac0fc07bd1563440906a2f1025396b9fed`
 - latest pushed commit message：`feat(packaged-mac): close dingtalk and wecom packaged evidence`
@@ -62,37 +60,60 @@ GPT Pro 做 Windows 的**主基线**应该看这里：
 2. 新开自己的 Windows 工作分支，例如：
    - `feature/p0-windows-flagship-design`
 3. 以根仓为主做设计和实现；
-4. 只把 packaged-mac worktree 当只读参考，不要在那条线直接开发。
+4. 只把 packaged-mac 参考提交和附件包当只读参考，不要把那条线当 Windows 开发基线。
 
 ---
 
-## 3. GPT Pro 必看交接包（zip / 目录）
+## 3. GPT Pro 必看交接材料（PRD + Git + zip 附件）
 
-### 3.1 必看：最新成功证据包
+### 3.1 标准交付形态
 
-这是**现在最重要、最应该先看**的交接包：
+给 GPT Pro 的标准交付形态只有三类：
 
-- [opensparrow-gptpro-handoff-20260422-1518-dingtalk-wecom-pass.zip](/Users/eduardogan/Desktop/GHJProject/opensparrow-gptpro-handoff-20260422-1518-dingtalk-wecom-pass.zip)
-- 对应目录：
-  - [opensparrow-gptpro-handoff-20260422-1518-dingtalk-wecom-pass](/Users/eduardogan/Desktop/GHJProject/opensparrow-gptpro-handoff-20260422-1518-dingtalk-wecom-pass)
+1. **PRD**
+   - `specs/025-channel-replay-doc-parity/windows-flagship-b-mode-design.md`
+2. **GitHub / Git 参考**
+   - Windows 主基线：`017-codespec-framework-adaptation`
+   - 根仓固定锚点：`0c28abb1167d4f57b30e3e06280f36e02ff6a7c9`
+   - packaged-mac 只读参考：`feature/p0-packaged-mac-diagnostics @ aa4403ac0fc07bd1563440906a2f1025396b9fed`
+3. **zip 附件**
+   - `opensparrow-gptpro-attachment-20260422-channel-pass-evidence.zip`
+   - `opensparrow-gptpro-attachment-20260422-packaged-mac-reference-source-aa4403ac0.zip`
+   - `opensparrow-gptpro-attachment-20260422-packaged-mac-reference-docs-aa4403ac0.zip`
 
-这个包的价值：
+这三类材料组合起来，应该足够让 GPT Pro 在**不读取你本机绝对路径**的前提下开工。
 
-1. 它证明最新 fresh mac artifact 上，DingTalk 和 WeCom 都已经走通 real `/api/install`。
-2. 它证明 `/api/install`、`install-state.json`、`diagnostic-bundle.json`、`/api/diagnostics/export` 这些面如何保持一致。
-3. 它是 Windows 设计时最重要的“方法论参考”，尤其适合拿来定义 Windows diagnostics parity。
-4. 它对应的 packaged-mac 代码参考提交是：
-   - branch：`feature/p0-packaged-mac-diagnostics`
-   - commit：`aa4403ac0fc07bd1563440906a2f1025396b9fed`
-   - remote：`origin/feature/p0-packaged-mac-diagnostics`
+### 3.2 三个 zip 附件分别是什么
 
-### 3.1.1 重要说明：如果 GPT Pro 无法访问本地 zip
+#### 3.2.1 `opensparrow-gptpro-attachment-20260422-channel-pass-evidence.zip`
 
-如果 GPT Pro 所在环境**不能直接访问你的本地路径**，那么上面的 zip 和目录路径只能作为你本机的交接锚点，**不能假设 GPT Pro 能直接读取**。
+这是最重要的附件。它的价值是：
 
-因此，这份 PRD 里同时内嵌一份最小必要证据摘要，确保即使只看 Git 仓库，GPT Pro 也能拿到当前最关键的 packaged 事实，不会因为本地 zip 不可见而断层。
+1. 证明最新 fresh mac artifact 上，DingTalk 和 WeCom 都已经走通 real `/api/install`。
+2. 证明 `/api/install`、`install-state.json`、`diagnostic-bundle.json`、`/api/diagnostics/export` 这些面如何保持一致。
+3. 适合直接拿来定义 Windows diagnostics parity。
 
-### 3.1.2 内嵌证据摘要（可替代直接读 zip）
+#### 3.2.2 `opensparrow-gptpro-attachment-20260422-packaged-mac-reference-source-aa4403ac0.zip`
+
+这个附件是 packaged-mac 成功线的最小源码参考。它的价值是：
+
+1. 让 GPT Pro 看懂 packaged-mac 这轮成功时，server/build/test 三类关键写面长什么样。
+2. 帮助 GPT Pro 借鉴实现方式，而不是只看抽象结论。
+
+#### 3.2.3 `opensparrow-gptpro-attachment-20260422-packaged-mac-reference-docs-aa4403ac0.zip`
+
+这个附件是 packaged-mac 成功线的最新文档与 longrun 参考。它的价值是：
+
+1. 帮助 GPT Pro 理解 DingTalk / WeCom packaged 线最终是如何写回文档、spec、runbook、longrun 的。
+2. 明确哪些结论属于 mac packaged 局部 truth，哪些只是方法论可复用。
+
+### 3.3 重要说明：如果 GPT Pro 无法直接访问附件
+
+如果 GPT Pro 所在环境**不能直接访问你的本机路径**，那就不要再给它任何 `/Users/...` 形式的路径。你应该直接把上面三个 zip 作为附件上传给它。
+
+因此，这份 PRD 里同时内嵌一份最小必要证据摘要，确保即使附件暂时没上传，GPT Pro 只看 Git 仓库也能开始工作，不会因为本机路径不可见而断层。
+
+### 3.4 内嵌证据摘要（可替代直接读 zip）
 
 下面这些事实已经在最新成功证据包中成立，可作为 GPT Pro 做 Windows 设计时的只读方法论参考：
 
@@ -126,14 +147,14 @@ GPT Pro 做 Windows 的**主基线**应该看这里：
    - runtime truth
    都必须描述同一份状态
 
-如果 GPT Pro 不能读本地 zip，就直接以这段摘要 + 对应 Git 分支/提交为准。
+如果 GPT Pro 还没拿到 zip 附件，就直接以这段摘要 + 对应 Git 分支/提交为准。
 
-### 3.2 次优先：WeCom 历史堵塞演进包
+### 3.5 次优先：WeCom 历史堵塞演进包
 
 如果 GPT Pro 需要理解“一个 channel 是怎么从 blocker 变成 pass 的”，可以再看：
 
-- [opensparrow-gptpro-handoff-20260422-1247-wecom-gate-hardening.zip](/Users/eduardogan/Desktop/GHJProject/opensparrow-gptpro-handoff-20260422-1247-wecom-gate-hardening.zip)
-- [opensparrow-gptpro-handoff-20260422-1136-wecom-plugin-block](/Users/eduardogan/Desktop/GHJProject/opensparrow-gptpro-handoff-20260422-1136-wecom-plugin-block)
+- `opensparrow-gptpro-handoff-20260422-1247-wecom-gate-hardening.zip`
+- `opensparrow-gptpro-handoff-20260422-1136-wecom-plugin-block.zip` 或其同名目录导出包
 
 这两个包的意义：
 
@@ -141,7 +162,7 @@ GPT Pro 做 Windows 的**主基线**应该看这里：
 2. 说明“follow-on error” 为什么比真实 blocker 更糟；
 3. 可作为 Windows 侧错误设计的反例参考。
 
-### 3.3 可以忽略的旧包
+### 3.6 可以忽略的旧包
 
 下面这些更早的 handoff，默认不是 GPT Pro 的首选输入：
 
@@ -151,9 +172,9 @@ GPT Pro 做 Windows 的**主基线**应该看这里：
 
 除非要回溯历史，否则不建议优先看它们。
 
-### 3.4 GPT Pro 无需人工补充的最小上下文
+### 3.7 GPT Pro 无需人工补充的最小上下文
 
-如果 GPT Pro 只能看到 Git 仓库，而**看不到你本机的 zip、目录或 worktree 路径**，那么它也应该直接基于这份 PRD 开工，不需要等待额外的人工口头补充。
+如果 GPT Pro 只能看到 Git 仓库，而**暂时看不到你上传的 zip 附件**，那么它也应该直接基于这份 PRD 开工，不需要等待额外的人工口头补充。
 
 对 GPT Pro 来说，这份文档已经明确了下面这些关键事实：
 
@@ -175,17 +196,17 @@ GPT Pro 做 Windows 的**主基线**应该看这里：
 
 换句话说：
 
-- **如果本地 zip 可见，就把它当加分参考材料**
-- **如果本地 zip 不可见，就直接以这份 PRD + 上述 Git 分支/提交信息为准**
+- **如果 zip 附件已经上传，就把它们和 Git 一起用**
+- **如果 zip 附件暂时还没上传，就直接以这份 PRD + 上述 Git 分支/提交信息为准**
 
-不允许因为“读不到本地 zip”就停在“无法开始”。
+不允许因为“读不到本机路径”就停在“无法开始”。
 
-### 3.5 给 GPT Pro 的直接开工指令
+### 3.8 给 GPT Pro 的直接开工指令
 
 如果你是 GPT Pro，并且你正在直接阅读这份 PRD，那么你应当按下面这条命令式理解执行：
 
 1. 从 `017-codespec-framework-adaptation` 最新分支 tip 开始；如需固定锚点，则使用 `0c28abb1167d4f57b30e3e06280f36e02ff6a7c9`；
-2. 把 `feature/p0-packaged-mac-diagnostics @ aa4403ac0fc07bd1563440906a2f1025396b9fed` 当成只读参考；
+2. 把 `feature/p0-packaged-mac-diagnostics @ aa4403ac0fc07bd1563440906a2f1025396b9fed` 和三个 zip 附件当成只读参考；
 3. 用本 PRD 作为 Windows 设计 + 第一阶段实现的主要 authority；
 4. 允许修改 Windows 相关 surfaces；
 5. 不要修改当前本地正在收口的 Mac packaged / Mac channel 代码和文档；
@@ -356,8 +377,7 @@ Windows 不只要“第一次安装能跑”，还要明确这些生命周期：
 
 只保护下面这些面：
 
-1. 不要改当前本地正在工作的 mac packaged worktree：
-   - `/Users/eduardogan/.config/superpowers/worktrees/opensparrow/feature-p0-packaged-mac-diagnostics/**`
+1. 不要改当前本地正在工作的 mac packaged 收口线；
 2. 不要改当前 Mac channel 收口文档：
    - `specs/030-packaged-dingtalk-wecom-support-closure/**`
 3. 不要主动改我当前本地 Mac packaged 这条线的结论文档与证据材料。
@@ -368,7 +388,7 @@ Windows 不只要“第一次安装能跑”，还要明确这些生命周期：
 唯一要求是：
 
 1. 不能把当前 Mac packaged 行为搞回归；
-2. 不能去改本地 worktree 的 Mac 收口线；
+2. 不能去改当前本地正在收口的 Mac 代码线；
 3. 改完必须给 fresh verification 证据。
 
 ---
@@ -503,4 +523,4 @@ GPT Pro 最后不要给一堆零散信息，而是按下面结构交付：
 
 你可以把这次 Windows 任务理解成：
 
-> 基于根仓 `017-codespec-framework-adaptation` 最新分支 tip（如需固定锚点，可用 `0c28abb1167d4f57b30e3e06280f36e02ff6a7c9`），参考最新成功的 mac packaged 证据包 `opensparrow-gptpro-handoff-20260422-1518-dingtalk-wecom-pass.zip`，以及 packaged-mac 只读参考提交 `feature/p0-packaged-mac-diagnostics @ aa4403ac0fc07bd1563440906a2f1025396b9fed`，完成一份面向产品和开发都能消费的 Windows 旗舰版设计，并直接推进第一阶段实现；除当前本地正在收口的 Mac packaged / Mac channel 文档与代码外，其余 Windows 相关范围都可以调整，但必须用 fresh verification 证明改动有效，且不能把 Windows 写成已通过验证。
+> 基于根仓 `017-codespec-framework-adaptation` 最新分支 tip（如需固定锚点，可用 `0c28abb1167d4f57b30e3e06280f36e02ff6a7c9`），参考三个附件 zip：`opensparrow-gptpro-attachment-20260422-channel-pass-evidence.zip`、`opensparrow-gptpro-attachment-20260422-packaged-mac-reference-source-aa4403ac0.zip`、`opensparrow-gptpro-attachment-20260422-packaged-mac-reference-docs-aa4403ac0.zip`，以及 packaged-mac 只读参考提交 `feature/p0-packaged-mac-diagnostics @ aa4403ac0fc07bd1563440906a2f1025396b9fed`，完成一份面向产品和开发都能消费的 Windows 旗舰版设计，并直接推进第一阶段实现；除当前本地正在收口的 Mac packaged / Mac channel 文档与代码外，其余 Windows 相关范围都可以调整，但必须用 fresh verification 证明改动有效，且不能把 Windows 写成已通过验证。
