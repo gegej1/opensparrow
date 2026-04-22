@@ -1110,6 +1110,9 @@
               this.installWarnings = Array.isArray(payload.warnings) ? payload.warnings : [];
               await new Promise(r => setTimeout(r, 400));
               this.installDone = true;
+              setTimeout(() => {
+                window.location.href = '/dashboard';
+              }, 600);
             } else {
               const errorText = this.buildInstallErrorText(payload, res.status);
               if (this.isInstallTimeoutLike(errorText)) {

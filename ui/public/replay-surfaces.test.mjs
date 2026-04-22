@@ -363,6 +363,70 @@ test('wizard install keeps DingTalk probe evidence from packaged install respons
   })
 })
 
+test('wizard install redirects to dashboard after a successful install response completes', async () => {
+  const { context, factory } = loadPageFactory('ui/public/index.html', 'wizard')
+  const instance = factory()
+  instance.$nextTick = (fn) => (typeof fn === 'function' ? fn() : undefined)
+
+  instance.selectedChannels = ['dingtalk']
+  instance.credentials.dingtalk = {
+    corpId: 'ding-corp',
+    clientId: 'ding-client',
+    robotCode: 'ding-robot',
+    clientSecret: 'ding-secret',
+  }
+
+  instance.startInstallStatusPolling = () => {}
+  instance.stopInstallStatusPolling = () => {}
+
+  const originalSetTimeout = context.setTimeout
+  const originalWindowSetTimeout = context.window.setTimeout
+  context.setTimeout = (fn) => {
+    if (typeof fn === 'function') fn()
+    return 0
+  }
+  context.window.setTimeout = context.setTimeout
+
+  instance.fetchWithTimeout = async (url, options = {}) => {
+    if (url === '/api/install/status') {
+      return createResponse({
+        status: 'running',
+        summary: '正在部署中',
+        steps: [
+          { key: 'plugins', status: 'running' },
+        ],
+      })
+    }
+    if (url === '/api/install' && options.method === 'POST') {
+      return createResponse({
+        ok: true,
+        warnings: [],
+        installStatus: {
+          status: 'completed',
+          summary: '安装完成，可导出诊断信息',
+          steps: [
+            { key: 'plugins', status: 'done' },
+            { key: 'config', status: 'done' },
+            { key: 'channels', status: 'done' },
+            { key: 'runtime', status: 'done' },
+            { key: 'probe', status: 'done' },
+          ],
+        },
+      })
+    }
+    throw new Error(`Unexpected request: ${url}`)
+  }
+
+  try {
+    await instance.startInstall()
+    assert.equal(instance.installDone, true)
+    assert.equal(context.window.location.href, '/dashboard')
+  } finally {
+    context.setTimeout = originalSetTimeout
+    context.window.setTimeout = originalWindowSetTimeout
+  }
+})
+
 test('wizard waitUntilInstalled accepts gateway fallback runtime as install-complete', async () => {
   const { context, factory } = loadPageFactory('ui/public/index.html', 'wizard')
   const instance = factory()
