@@ -33,7 +33,7 @@ GPT Pro 做 Windows 的**主基线**应该看这里：
 
 - 仓库路径：`/Users/eduardogan/Desktop/GHJProject/opensparrow`
 - 当前 branch：`017-codespec-framework-adaptation`
-- 当前 HEAD：`45868270605da48139d83defe9d7c3fffc518ade`
+- 当前 HEAD：`a29011ec85a732239c8ac878a390a9af4ed854c2`
 - upstream：`origin/017-codespec-framework-adaptation`
 
 这条是当前最适合 GPT Pro 读取、设计、修改、提交的 GitHub 视角基线。
@@ -150,6 +150,45 @@ GPT Pro 做 Windows 的**主基线**应该看这里：
 - `opensparrow-gptpro-handoff-20260422-1103-wecom`
 
 除非要回溯历史，否则不建议优先看它们。
+
+### 3.4 GPT Pro 无需人工补充的最小上下文
+
+如果 GPT Pro 只能看到 Git 仓库，而**看不到你本机的 zip、目录或 worktree 路径**，那么它也应该直接基于这份 PRD 开工，不需要等待额外的人工口头补充。
+
+对 GPT Pro 来说，这份文档已经明确了下面这些关键事实：
+
+1. **主开发基线**
+   - 使用：`017-codespec-framework-adaptation @ a29011ec85a732239c8ac878a390a9af4ed854c2`
+2. **只读参考基线**
+   - 参考：`feature/p0-packaged-mac-diagnostics @ aa4403ac0fc07bd1563440906a2f1025396b9fed`
+3. **最新 packaged 成功事实**
+   - DingTalk / WeCom 在 latest packaged mac artifact 上都已经拿到 same-session fresh PASS
+   - 共同方法论是：`install truth + diagnostics truth + package-local truth + probe truth + runtime truth` 必须一致
+4. **不能误推导的结论**
+   - mac packaged PASS 不等于 Windows 已通过
+   - true `F-014` 仍然是 WeCom bot-first / 长连接主链
+   - `F-025-B` 仍然 blocked on Windows-specific evidence
+5. **本轮实施边界**
+   - GPT Pro 可以推进 Windows 全量设计和第一阶段实现
+   - 但不要去改当前本地正在收口的 Mac packaged / Mac channel 文档与代码
+
+换句话说：
+
+- **如果本地 zip 可见，就把它当加分参考材料**
+- **如果本地 zip 不可见，就直接以这份 PRD + 上述 Git 分支/提交信息为准**
+
+不允许因为“读不到本地 zip”就停在“无法开始”。
+
+### 3.5 给 GPT Pro 的直接开工指令
+
+如果你是 GPT Pro，并且你正在直接阅读这份 PRD，那么你应当按下面这条命令式理解执行：
+
+1. 从 `017-codespec-framework-adaptation @ a29011ec85a732239c8ac878a390a9af4ed854c2` 开始；
+2. 把 `feature/p0-packaged-mac-diagnostics @ aa4403ac0fc07bd1563440906a2f1025396b9fed` 当成只读参考；
+3. 用本 PRD 作为 Windows 设计 + 第一阶段实现的主要 authority；
+4. 允许修改 Windows 相关 surfaces；
+5. 不要修改当前本地正在收口的 Mac packaged / Mac channel 代码和文档；
+6. 所有“完成 / ready / pass”结论必须建立在 fresh verification evidence 上。
 
 ---
 
