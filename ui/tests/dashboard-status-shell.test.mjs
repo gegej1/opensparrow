@@ -25,3 +25,9 @@ test('status endpoint reports the real config path and gateway port', () => {
   assert.match(serverSource, /configPath:\s*toUserPath\(CONFIG_FILE\)/)
   assert.doesNotMatch(serverSource, /configPath:\s*`~\/\.openclaw-\$\{PROFILE\}\/openclaw\.json`/)
 })
+
+test('browser launch and html responses use cache-busting semantics', () => {
+  assert.match(serverSource, /const launchToken = encodeURIComponent\(SERVER_STARTED_AT\)/)
+  assert.match(serverSource, /const url = `http:\/\/localhost:\$\{port\}\/\?launch=\$\{launchToken\}`/)
+  assert.match(serverSource, /if \(ext === '\.html'\) \{\s*headers\['Cache-Control'\] = 'no-store, max-age=0'/)
+})

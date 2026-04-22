@@ -834,7 +834,7 @@
                   || data.gatewayHealthy === true
                 )
               ) {
-                window.location.href = '/dashboard';
+                window.location.href = this.buildDashboardUrl();
                 return;
               }
             }
@@ -1056,6 +1056,11 @@
           }
         },
 
+        buildDashboardUrl() {
+          const search = String(window.location.search || '').trim();
+          return search ? `/dashboard${search}` : '/dashboard';
+        },
+
         async startInstall() {
           const preflightErrors = this.selectedChannels.flatMap((key) => {
             const result = window.OpenSparrowChannels.validateUiFields(key, this.credentials[key]);
@@ -1111,7 +1116,7 @@
               await new Promise(r => setTimeout(r, 400));
               this.installDone = true;
               setTimeout(() => {
-                window.location.href = '/dashboard';
+                window.location.href = this.buildDashboardUrl();
               }, 600);
             } else {
               const errorText = this.buildInstallErrorText(payload, res.status);
@@ -1133,7 +1138,7 @@
                 this.installTasks.forEach(t => t.status = 'done');
                 this.installDone = true;
                 setTimeout(() => {
-                  window.location.href = '/dashboard';
+                  window.location.href = this.buildDashboardUrl();
                 }, 600);
                 return;
               }
@@ -1177,7 +1182,7 @@
               this.installTasks.forEach(t => t.status = 'done');
               this.installDone = true;
               setTimeout(() => {
-                window.location.href = '/dashboard';
+                window.location.href = this.buildDashboardUrl();
               }, 600);
               return;
             }

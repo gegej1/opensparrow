@@ -124,6 +124,7 @@ test('wizard init keeps API fields blank/default even when authoritative config 
 
 test('wizard init redirects to dashboard when gateway fallback runtime is already healthy', async () => {
   const { context, factory } = loadPageFactory('ui/public/index.html', 'wizard')
+  context.window.location.search = '?launch=abc123'
   const instance = factory()
   instance.$nextTick = (fn) => (typeof fn === 'function' ? fn() : undefined)
 
@@ -143,7 +144,7 @@ test('wizard init redirects to dashboard when gateway fallback runtime is alread
 
   await instance.init()
 
-  assert.equal(context.window.location.href, '/dashboard')
+  assert.equal(context.window.location.href, '/dashboard?launch=abc123')
   assert.deepEqual(calls, ['/api/status'])
 })
 
@@ -365,6 +366,7 @@ test('wizard install keeps DingTalk probe evidence from packaged install respons
 
 test('wizard install redirects to dashboard after a successful install response completes', async () => {
   const { context, factory } = loadPageFactory('ui/public/index.html', 'wizard')
+  context.window.location.search = '?launch=abc123'
   const instance = factory()
   instance.$nextTick = (fn) => (typeof fn === 'function' ? fn() : undefined)
 
@@ -420,7 +422,7 @@ test('wizard install redirects to dashboard after a successful install response 
   try {
     await instance.startInstall()
     assert.equal(instance.installDone, true)
-    assert.equal(context.window.location.href, '/dashboard')
+    assert.equal(context.window.location.href, '/dashboard?launch=abc123')
   } finally {
     context.setTimeout = originalSetTimeout
     context.window.setTimeout = originalWindowSetTimeout

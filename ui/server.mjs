@@ -2390,10 +2390,16 @@ function sendFile(res, filePath) {
       res.end('Not Found')
       return
     }
-    res.writeHead(200, {
+    const headers = {
       'Content-Type': contentType,
       'Content-Length': data.length,
-    })
+    }
+    if (ext === '.html') {
+      headers['Cache-Control'] = 'no-store, max-age=0'
+      headers.Pragma = 'no-cache'
+      headers.Expires = '0'
+    }
+    res.writeHead(200, headers)
     res.end(data)
   })
 }
@@ -4314,7 +4320,8 @@ async function startServer() {
   }
 
   server.listen(port, '127.0.0.1', () => {
-    const url = `http://localhost:${port}`
+    const launchToken = encodeURIComponent(SERVER_STARTED_AT)
+    const url = `http://localhost:${port}/?launch=${launchToken}`
     console.log(`\nClawBot UI server started`)
     console.log(`  Profile  : ${PROFILE}`)
     console.log(`  Node Bin : ${NODE_BIN}`)
