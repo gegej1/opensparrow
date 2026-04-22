@@ -23,3 +23,9 @@ test('packaged mac wrapper verifies node tool symlinks and picks free gateway or
   assert.match(wrapperSource, /resolve_free_port 18929/)
   assert.match(wrapperSource, /resolve_free_port 18412/)
 })
+
+test('packaged mac wrapper skips recursive quarantine cleanup when launched from a git checkout', () => {
+  assert.match(wrapperSource, /is_git_checkout\(\)/)
+  assert.match(wrapperSource, /if is_git_checkout "\$target"; then/)
+  assert.match(wrapperSource, /xattr -d com\.apple\.quarantine "\$target"/)
+})
