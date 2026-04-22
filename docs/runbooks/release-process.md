@@ -128,3 +128,5 @@ rg -n "Windows|windows|WeCom|企业微信|run-openclaw-usb.command" \
 - 一旦你在某个展开后的 artifact 目录里执行过 `01-开始部署.command`，该目录就会生成 package-local `.gtclaw-state`；
 - **不要把一个已经启动过的展开目录直接继续发给别人**；
 - 对外交付应优先使用未运行过的 zip，或重新从 zip 解压得到的干净目录。
+- 如果还需要把 release、证据和文档再打成“最外层桌面总包 zip”，也必须使用保留 symlink 的归档方式；
+- **不要使用普通 `zip -qr` 去压最外层总包**，否则 `vendor/mac-openclaw/bin/npm|npx|corepack` 这类 symlink 会被压扁成普通文件，导致新机器上出现 `Cannot find module '../lib/cli.js'`。

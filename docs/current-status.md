@@ -48,6 +48,22 @@
 - 安装页在 `/api/install` 超时后，必须继续轮询 `/api/install/status` 的 terminal state，而不是无限等待 `installed=true`
 - 安装失败时，UI 必须尽快显示失败，而不是继续显示“正在部署中…”
 
+### 2026-04-22 外层桌面总包 zip symlink 压扁事故
+
+同日还确认了一轮“外层汇总包”级别的打包事故：
+
+- 内层 handoff zip 本身保留了 `vendor/mac-openclaw/bin/npm`、`npx`、`corepack` 的 symlink
+- 但如果再用普通 `zip -qr` 去打最外层桌面总包，会把这些 symlink 压扁成普通文件
+- 新机器从这个错误外层 zip 解压后，插件安装会报：
+  - `npm install failed`
+  - `Cannot find module '../lib/cli.js'`
+
+从这一轮起，以下规则同样升级为 release blocker：
+
+- 最外层汇总包 zip 也必须保留 symlink
+- 不允许再用普通 `zip -qr` 去打包含 `vendor/mac-openclaw/bin/npm|npx|corepack` 的外层交付包
+- 外层汇总包应使用 `ditto -c -k --keepParent` 或其他明确保留 symlink 的归档方式
+
 ## 总体状态
 
 项目当前处于：

@@ -68,3 +68,4 @@ rg -n "Windows|windows|WeCom|企业微信|run-openclaw-usb.command|harden-opencl
 - [ ] 任意对外交付包都没有把 package-local `.gtclaw-state` / `.openclaw*` 状态重新打进去
 - [ ] 发生安装失败时，可直接在 `GTClaw-*/.gtclaw-state/.openclaw-gtclaw-portable/` 下找到 `install-state.json`、`install.log`、`diagnostic-bundle.json`
 - [ ] 对外交付使用的是未运行过的 zip 或重新解压的干净目录，而不是已经在本机跑出 `.gtclaw-state` 的展开目录
+- [ ] 如果还要再打最外层桌面总包 zip，必须使用保留 symlink 的归档方式；不能用普通 `zip -qr` 把 `vendor/mac-openclaw/bin/npm|npx|corepack` 压扁
