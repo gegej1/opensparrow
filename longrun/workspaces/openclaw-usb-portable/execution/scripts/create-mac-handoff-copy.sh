@@ -41,6 +41,35 @@ require_artifact_file() {
   fi
 }
 
+assert_artifact_runtime_arch_truth() {
+  local node_bin="${artifact_dir}/vendor/mac-openclaw/bin/node"
+  local expected_slice=""
+  local file_output=""
+
+  if [[ ! -x "$node_bin" ]]; then
+    echo "[ERROR] artifact node architecture guard failed: runtime node missing or not executable: ${node_bin}" >&2
+    exit 1
+  fi
+
+  if ! command -v file >/dev/null 2>&1; then
+    echo "[ERROR] artifact node architecture guard failed: 'file' command is unavailable" >&2
+    exit 1
+  fi
+
+  case "$artifact_arch" in
+    arm64) expected_slice='arm64' ;;
+    x64) expected_slice='x86_64' ;;
+    *) echo "[ERROR] artifact node architecture guard failed: unsupported artifact arch ${artifact_arch}" >&2; exit 1 ;;
+  esac
+
+  file_output="$(file "$node_bin")"
+  if [[ "$file_output" != *"$expected_slice"* ]]; then
+    echo "[ERROR] artifact node architecture guard failed: expected runtime slice '${expected_slice}' in ${node_bin}" >&2
+    echo "[ERROR] actual: ${file_output}" >&2
+    exit 1
+  fi
+}
+
 mkdir -p "$output_base"
 
 echo "[INFO] Building fresh Mac UI-first USB pack..."
@@ -54,9 +83,18 @@ fi
 usb_prepare_export_root "$export_root" "$archive_path"
 mkdir -p "$artifact_dir"
 rsync -a --delete "${stage_dir}/" "$artifact_dir/"
+find "$artifact_dir" -type d \
+  \( -name '.gtclaw-state' \
+  -o -name '.openclaw' \
+  -o -name '.openclaw-*' \) \
+  -print0 | while IFS= read -r -d '' removed_dir; do
+    rm -rf "$removed_dir"
+    echo "[INFO] Removed package-local state dir: ${removed_dir#${artifact_dir}/}"
+  done
 for relative_path in "${REQUIRED_PACKAGED_RUNTIME_FILES[@]}"; do
   require_artifact_file "$relative_path"
 done
+assert_artifact_runtime_arch_truth
 
 cat > "${export_root}/README-FIRST.txt" <<README
 GTClaw macOS release
@@ -65,9 +103,9 @@ GTClaw macOS release
 本次导出只覆盖当前对外 macOS release cut：
 
 - 唯一官方 first-click path：根目录 01-开始部署.command
-- 今晚正式支持渠道：飞书、钉钉
+- 今晚正式支持渠道：飞书、钉钉、企业微信
 - Dashboard 内含 GTClaw API 配置与模型智能路由
-- 企业微信不纳入今晚 packaged outward promise
+- 企业微信 packaged 路线使用随包官方插件归档
 - mac/run-openclaw-usb.command 与 mac/harden-openclaw-usb.command 仅作为 advanced compatibility / handoff
 - companion 不纳入今晚正式支持面
 

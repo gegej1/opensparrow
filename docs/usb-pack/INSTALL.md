@@ -4,13 +4,35 @@
 
 这份指南只覆盖今晚的 **Mac UI-first 首发 cut**。
 
+## 严重事故提示
+
+`2026-04-22` 已发生过一轮严重 packaged 事故：
+
+- 旧错误 Desktop bundle：`opensparrow-mac-full-package-20260422-170758-skills100`
+- 旧错误 release：`gtclaw-mac-release-arm64-20260422-170758`
+
+它们的包名虽然写着 `arm64`，但 bundled `vendor/mac-openclaw/bin/node` 实际只有 `x86_64` slice。
+
+在新的 Apple Silicon Mac（未安装 Rosetta）上，这会直接报：
+
+- `Bad CPU type in executable`
+- `01-开始部署.command` first-click 立即退出
+
+从这一轮起，任何人都不得再把 artifact 名称当成 CPU 架构 truth。
+真正的检查方式只有两个：
+
+- `file ./vendor/mac-openclaw/bin/node`
+- `cat ./vendor/mac-openclaw/RUNTIME_TRUTH.json`
+
+如果你拿到的是上面那份旧错误包，直接停止使用，改用最新有效包。
+
 ## 今晚正式支持面
 
 - 平台：`macOS 12+`
 - 唯一官方 first-click path：根目录 `01-开始部署.command`
-- 今晚正式支持渠道：`飞书`、`钉钉`
+- 今晚正式支持渠道：`飞书`、`钉钉`、`企业微信`
 - `mac/run-openclaw-usb.command` 与 `mac/harden-openclaw-usb.command` 仅作为高级兼容 / handoff 入口
-- 企业微信入口即使仍出现在 UI 中，也**不属于今晚 packaged 正式支持面**
+- 企业微信 packaged 路线使用随包官方插件归档
 - companion 不纳入今晚正式支持面
 
 ## 开始前准备
@@ -19,12 +41,15 @@
 
 - 飞书：`App ID` + `App Secret`
 - 钉钉：`Client ID / AppKey` + `Client Secret / AppSecret`
+- 企业微信：`Bot ID / 企业 ID` + `Secret`
 
 同时确认：
 
 - 设备可以联网
 - 浏览器可访问本机 `http://localhost:19000`
 - 你将从交付包根目录启动，而不是从 `mac/run-openclaw-usb.command` 直接开始安装
+- bundled `vendor/mac-openclaw/bin/node` 的 `file` 结果包含 `arm64`，或显示为包含 `arm64` slice 的 universal binary
+- 交付包内不存在 `.gtclaw-state`、`.openclaw`、`.openclaw-*` 等 package-local 状态目录
 
 ## 安装步骤
 
@@ -34,7 +59,7 @@
 4. 稍等片刻，浏览器会自动打开安装向导：
    - 默认地址：`http://localhost:19000`
    - 若 `19000` 已占用，系统会自动切换到下一个可用端口
-5. 在安装向导中选择 **飞书** 或 **钉钉**。
+5. 在安装向导中选择 **飞书**、**钉钉** 或 **企业微信**。
 6. 按页面提示填写对应凭据。
 7. 点击“安装”并等待流程完成。
 8. 安装成功后，页面会自动跳转到 Dashboard。
@@ -69,21 +94,52 @@
 - 手动在浏览器访问该地址
 - 若 `19000` 被占用，UI 可能已切到 `19001`、`19002` 等后续端口
 
+### 1.1 启动后立刻退出并出现 `Bad CPU type in executable`
+
+这不是正常现象，说明你拿到的 packaged runtime CPU 架构是错的。
+
+立即执行：
+
+```bash
+file ./vendor/mac-openclaw/bin/node
+cat ./vendor/mac-openclaw/RUNTIME_TRUTH.json
+```
+
+若 `file` 结果里没有 `arm64`，或者 `RUNTIME_TRUTH.json` 没记录 `nodeBinaryArchitectures`，直接停止使用该包并回收；不要再继续尝试安装。
+
 ### 2. 想重新安装
 
 - 进入 Dashboard
 - 使用“重置配置 / 全量重置”
 - 页面会回到安装向导
 
+### 2.1 安装页长时间停在“正在部署中…”
+
+如果页面超过预期时间仍停在“正在部署中…”，不要继续盲等，先检查 package-local 日志：
+
+```bash
+find . -type d -name ".gtclaw-state"
+find ./.gtclaw-state -maxdepth 3 \( -name "install-state.json" -o -name "install.log" -o -name "diagnostic-bundle.json" \)
+```
+
+默认日志位置是：
+
+- `GTClaw-*/.gtclaw-state/.openclaw-gtclaw-portable/install-state.json`
+- `GTClaw-*/.gtclaw-state/.openclaw-gtclaw-portable/install.log`
+- `GTClaw-*/.gtclaw-state/.openclaw-gtclaw-portable/diagnostic-bundle.json`
+
+如果 `install-state.json.status = error`，说明后端已经失败结束，不是“还在继续安装”。
+这时应直接按 packaged install regression 处理。
+
 ### 3. 误点了 `mac/run-openclaw-usb.command`
 
 这是高级兼容入口，不是今晚正式主路径。
 当前脚本会把你转回根目录 `01-开始部署.command`。
 
-### 4. 企业微信为什么不在今晚正式支持面
+### 4. 企业微信如何走 packaged 安装
 
-这是 **packaged outward promise de-scope**，不是把真正 `F-014` 改写成失败。
-今晚首发只承诺 Mac UI-first + 飞书/钉钉支持面；企业微信留待后续单独补证 / 放行。
+当前 packaged 线路会优先使用随包官方插件归档完成企业微信安装。
+若安装失败，应以 UI / diagnostics 给出的真实错误为准，而不是回退到旧的手动 CLI 假路径。
 
 ## 问题反馈建议
 
@@ -93,3 +149,4 @@
 - 当前打开的本地地址
 - 页面报错截图
 - 启动终端最近输出
+- `install-state.json`、`install.log`、`diagnostic-bundle.json`

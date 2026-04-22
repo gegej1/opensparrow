@@ -3,8 +3,10 @@
 **Feature ID**: `F-030`  
 **Feature Branch**: `030-packaged-dingtalk-wecom-support-closure`  
 **Created**: 2026-04-16  
-**Status**: Verified closeout reference (`2026-04-22` fresh packaged evidence + facts-only writeback)
+**Status**: Historical closeout reference (`2026-04-22` clean-state fresh packaged evidence + facts-only writeback), with same-day packaged install retry / timeout hardening re-verified on artifact lineage `gtclaw-mac-release-arm64-20260422-193047`
 **Input**: Commander 已明确要求把 DingTalk 与 WeCom 的 packaged 支持收口为一个新的独立 feature；本 feature 先完成 `spec / plan / tasks` 冻结，再完成 implementation / verification / closeout。当前文档保留冻结规则，同时同步 `2026-04-22` 的最新 packaged verdict。
+
+> 注意：本 spec 记录的是 clean-state packaged DingTalk / WeCom closure 的 historical truth。后续同日又发现新的 user-facing packaged regression：package-local Sparrow 状态残留会让 retry / reinstall 命中 `plugin already exists`，同时安装页 timeout path 会把后端失败伪装成“正在部署中…”。该 regression 已在 artifact lineage `gtclaw-mac-release-arm64-20260422-193047` 上通过 same-package 双次 real `/api/install` 与前端 terminal-state 收口完成 fresh re-verification；后续若再外发，仍建议补独立新机 smoke。
 
 ## F-030 一句话定义
 

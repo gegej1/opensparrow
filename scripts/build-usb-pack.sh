@@ -50,6 +50,7 @@ SKIP_SKILLS=false
 STAGING_DIR=""   # set after version is read
 MAC_RUNTIME_LIB_VERSION=""
 MAC_RUNTIME_BIN_VERSION=""
+MAC_RUNTIME_NODE_ARCHITECTURES=""
 readonly REQUIRED_PACKAGED_RUNTIME_FILES=(
     'ui/server.mjs'
     'ui/install-helpers.mjs'
@@ -126,6 +127,20 @@ read_package_version() {
     sed -nE 's/.*"version": "([^"]+)".*/\1/p' "$package_json" | head -n 1
 }
 
+read_mach_binary_description() {
+    local binary_path="$1"
+    if ! command -v file >/dev/null 2>&1; then
+        log_error "mac runtime architecture guard failed: 'file' command is unavailable"
+        exit 1
+    fi
+    file "$binary_path"
+}
+
+extract_mach_architectures() {
+    local file_output="$1"
+    printf '%s\n' "$file_output" | grep -Eo 'arm64|x86_64' | awk '!seen[$0]++' | paste -sd, -
+}
+
 assert_mac_runtime_version_truth() {
     if [[ "$PLATFORM" == "windows" ]]; then
         return 0
@@ -159,6 +174,57 @@ assert_mac_runtime_version_truth() {
     MAC_RUNTIME_BIN_VERSION="$bin_version"
     log_info "mac runtime truth: lib/node_modules/openclaw=${lib_version}"
     log_info "mac runtime truth: bin/node_modules/openclaw=${bin_version}"
+}
+
+assert_mac_runtime_arch_truth() {
+    if [[ "$PLATFORM" == "windows" ]]; then
+        return 0
+    fi
+
+    local node_bin="${PROJECT_ROOT}/vendor/mac-openclaw/bin/node"
+    local host_arch
+    local expected_slice
+    local file_output
+    local arch_list
+
+    if [[ ! -x "$node_bin" ]]; then
+        log_error "mac runtime architecture guard failed: missing executable runtime node at ${node_bin}"
+        exit 1
+    fi
+
+    host_arch="$(uname -m)"
+    case "$host_arch" in
+        arm64|x86_64)
+            expected_slice="$host_arch"
+            ;;
+        *)
+            log_error "mac runtime architecture guard failed: unsupported host arch '${host_arch}'"
+            exit 1
+            ;;
+    esac
+
+    file_output="$(read_mach_binary_description "$node_bin")"
+    if [[ "$file_output" != *"Mach-O"* ]]; then
+        log_error "mac runtime architecture guard failed: expected a Mach-O runtime binary at ${node_bin}"
+        log_error "actual: ${file_output}"
+        exit 1
+    fi
+
+    if [[ "$file_output" != *"$expected_slice"* ]]; then
+        log_error "mac runtime architecture guard failed: expected runtime slice '${expected_slice}' in ${node_bin}"
+        log_error "actual: ${file_output}"
+        exit 1
+    fi
+
+    arch_list="$(extract_mach_architectures "$file_output")"
+    if [[ -z "$arch_list" ]]; then
+        log_error "mac runtime architecture guard failed: unable to parse runtime node architectures"
+        log_error "actual: ${file_output}"
+        exit 1
+    fi
+
+    MAC_RUNTIME_NODE_ARCHITECTURES="$arch_list"
+    log_info "mac runtime node: ${file_output}"
 }
 
 require_packaged_file() {
@@ -197,6 +263,15 @@ emit_mac_runtime_truth_manifest() {
     fi
 
     local manifest_path="${STAGING_DIR}/vendor/mac-openclaw/RUNTIME_TRUTH.json"
+    local arch_json=""
+    local arch_item
+
+    IFS=',' read -r -a _arch_items <<< "$MAC_RUNTIME_NODE_ARCHITECTURES"
+    for arch_item in "${_arch_items[@]}"; do
+        [[ -n "$arch_json" ]] && arch_json+=", "
+        arch_json+="\"${arch_item}\""
+    done
+
     mkdir -p "$(dirname "$manifest_path")"
     cat > "$manifest_path" <<EOF
 {
@@ -204,6 +279,7 @@ emit_mac_runtime_truth_manifest() {
   "canonicalRuntimeSource": "lib",
   "libOpenclawVersion": "${MAC_RUNTIME_LIB_VERSION}",
   "binOpenclawVersion": "${MAC_RUNTIME_BIN_VERSION}",
+  "nodeBinaryArchitectures": [${arch_json}],
   "versionConsistent": true
 }
 EOF
@@ -530,6 +606,15 @@ strip_runtime_state() {
             log_info "Removed state dir: ${removed_dir#${STAGING_DIR}/}"
         done
 
+    find "$STAGING_DIR" -type d \
+        \( -name '.gtclaw-state' \
+        -o -name '.openclaw' \
+        -o -name '.openclaw-*' \) \
+        -print0 | while IFS= read -r -d '' removed_dir; do
+            rm -rf "$removed_dir"
+            log_info "Removed package-local state dir: ${removed_dir#${STAGING_DIR}/}"
+        done
+
     log_done "Runtime residue stripped"
 }
 
@@ -549,9 +634,9 @@ generate_readme_txt() {
 TONIGHT'S OFFICIAL SUPPORT SURFACE
   • Platform: macOS
   • Official first-click path: root "01-开始部署.command"
-  • Supported channels tonight: Feishu / DingTalk
+  • Supported channels tonight: Feishu / DingTalk / WeCom
   • Dashboard includes GTClaw API configuration + model smart routing
-  • WeCom is NOT part of tonight's packaged support promise
+  • WeCom packaged route uses the bundled official plugin archive
   • Companion is NOT part of tonight's official support surface
 
 QUICK START — macOS
@@ -661,10 +746,10 @@ Version: `__VERSION__`
 
 - Platform: `macOS`
 - Official first-click path: root `01-开始部署.command`
-- Supported channels tonight: `飞书`、`钉钉`
+- Supported channels tonight: `飞书`、`钉钉`、`企业微信`
 - Dashboard includes GTClaw API configuration and model smart routing
 - `mac/run-openclaw-usb.command` and `mac/harden-openclaw-usb.command` are retained only as advanced compatibility / handoff surfaces
-- WeCom is not part of tonight's packaged support promise
+- WeCom packaged route uses the bundled official plugin archive
 - Companion is not part of tonight's official support surface
 
 ## Start here
@@ -678,7 +763,7 @@ Version: `__VERSION__`
 
 - Do not treat Windows paths as part of tonight's package surface.
 - Do not treat the advanced compatibility wrappers as the main install path.
-- Do not treat WeCom as tonight-ready packaged support.
+- Do not bypass the UI-first install flow when configuring WeCom.
 
 ## Included docs
 
@@ -743,6 +828,7 @@ main() {
 
     read_version
     assert_mac_runtime_version_truth
+    assert_mac_runtime_arch_truth
     prepare_staging
     copy_common
     copy_skills

@@ -804,6 +804,8 @@
         requestTimeout: {
           status: 10000,
           install: 120000,
+          installTerminal: 180000,
+          installedWait: 180000,
         },
 
         async fetchWithTimeout(url, options = {}, timeoutMs = 30000) {
@@ -905,6 +907,7 @@
 
         buildInstallErrorText(payload, statusCode) {
           const parts = [];
+          if (typeof payload?.summary === 'string' && payload.summary.trim()) parts.push(payload.summary.trim());
           if (Array.isArray(payload?.errors)) parts.push(...payload.errors);
           if (typeof payload?.error === 'string' && payload.error.trim()) parts.push(payload.error.trim());
           if (typeof payload?.message === 'string' && payload.message.trim()) parts.push(payload.message.trim());
@@ -968,9 +971,9 @@
           return 'background:#FEF2F2;color:#B91C1C;border:1px solid #FECACA';
         },
 
-        async waitUntilInstalled() {
+        async waitUntilInstalled(maxWaitMs = this.requestTimeout.installedWait) {
           const startedAt = Date.now();
-          while (true) {
+          while (Date.now() - startedAt < maxWaitMs) {
             try {
               const res = await this.fetchWithTimeout('/api/status', {}, this.requestTimeout.status);
               if (res.ok) {
@@ -995,6 +998,19 @@
 
             await new Promise(r => setTimeout(r, 2000));
           }
+          return false;
+        },
+
+        async waitForInstallTerminalState(timeoutMs = this.requestTimeout.installTerminal) {
+          const startedAt = Date.now();
+          while (Date.now() - startedAt < timeoutMs) {
+            const payload = await this.pollInstallStatusOnce().catch(() => false);
+            if (payload && (payload.status === 'error' || payload.status === 'completed' || payload.status === 'done')) {
+              return payload;
+            }
+            await new Promise(r => setTimeout(r, 2000));
+          }
+          return false;
         },
 
         applyInstallStatus(payload = {}) {
@@ -1094,7 +1110,15 @@
                   task.status = idx < last ? 'done' : 'running';
                 });
                 this.installLoadingMessage = '服务正在后台完成启动，正在自动检测状态，请稍候…';
-                await this.waitUntilInstalled();
+                const installed = await this.waitUntilInstalled();
+                if (!installed) {
+                  this.installTasks.forEach(t => {
+                    if (t.status === 'running') t.status = 'error';
+                  });
+                  this.installError = true;
+                  this.installErrorMsg = '安装请求超时，且服务未在限定时间内进入已安装状态；请查看 package-local 日志后重试。';
+                  return;
+                }
                 this.installTasks.forEach(t => t.status = 'done');
                 this.installDone = true;
                 setTimeout(() => {
@@ -1112,12 +1136,33 @@
             }
           } catch (e) {
             if (e?.name === 'AbortError') {
-              const last = this.installTasks.length - 1;
-              this.installTasks.forEach((task, idx) => {
-                task.status = idx < last ? 'done' : 'running';
-              });
               this.installLoadingMessage = '部署请求超时，但服务可能仍在后台启动，正在自动检测状态…';
-              await this.waitUntilInstalled();
+              const terminal = await this.waitForInstallTerminalState();
+              if (terminal?.status === 'error') {
+                this.installTasks.forEach(t => {
+                  if (t.status === 'running') t.status = 'error';
+                });
+                this.installError = true;
+                this.installErrorMsg = this.buildInstallErrorText(terminal, 500);
+                return;
+              }
+              if (!terminal) {
+                this.installTasks.forEach(t => {
+                  if (t.status === 'running') t.status = 'error';
+                });
+                this.installError = true;
+                this.installErrorMsg = '部署请求超时，且未能在限定时间内从 /api/install/status 读取到最终状态；请查看 package-local 日志后重试。';
+                return;
+              }
+              const installed = await this.waitUntilInstalled();
+              if (!installed) {
+                this.installTasks.forEach(t => {
+                  if (t.status === 'running') t.status = 'error';
+                });
+                this.installError = true;
+                this.installErrorMsg = '部署请求已完成，但服务未在限定时间内进入已安装状态；请查看 package-local 日志后重试。';
+                return;
+              }
               this.installTasks.forEach(t => t.status = 'done');
               this.installDone = true;
               setTimeout(() => {

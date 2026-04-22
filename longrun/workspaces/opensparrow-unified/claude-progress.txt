@@ -899,3 +899,98 @@
 - Next follow-up:
   - 若后续出现新的 packaged regression，必须基于新的 artifact lineage 与 fresh evidence 另开 packet；不要回退到旧 `@sunnoy/wecom` packaged blocker 叙事。
   - Windows 线继续单独推进，不得借 `F-030` 的 mac packaged PASS 自动 closeout。
+
+## Session 27 (F-020 mac packaged runtime architecture truth hardening)
+- Date: 2026-04-22
+- Goal: 修复 latest Desktop mac release bundle 把 x86_64 bundled `node` 误标成 `arm64` 包的问题，补齐 build/export CPU 架构 fail-fast，并重切一份真实可启动的 arm64 packaged artifact。
+- Selected feature id: `F-020`
+- Root cause:
+  - `create-mac-handoff-copy.sh` 只按宿主机 `uname -m` 给 artifact 命名为 `arm64 / x64`，但并没有校验 `vendor/mac-openclaw/bin/node` 的真实 CPU 架构。
+  - 当前 local vendor runtime 的 `bin/node` 实际是 `Mach-O 64-bit executable x86_64`，因此会生成“目录名是 arm64、payload 却是 x86_64 node”的假 arm64 包。
+  - 新的 Apple Silicon Mac 在没有 Rosetta 的情况下执行该 bundled `node`，会直接报 `Bad CPU type in executable`，随后 `01-开始部署.command` 因 `set -euo pipefail` 立即退出。
+- Changes made:
+  - 新增 `ui/tests/packaged-mac-runtime-arch.test.mjs`，把 bundled mac runtime `node` 必须带 `arm64` slice、build script 必须有 runtime arch guard、export script 必须在 ship 前校验 artifact runtime slice 锁成回归测试。
+  - `scripts/build-usb-pack.sh`
+    - 新增 `assert_mac_runtime_arch_truth()`，在 staging 前读取 `vendor/mac-openclaw/bin/node` 的 Mach-O 描述并校验当前宿主所需 slice。
+    - `vendor/mac-openclaw/RUNTIME_TRUTH.json` 新增 `nodeBinaryArchitectures`，把 packaged runtime CPU 架构 truth 落入 artifact。
+    - release-facing `README.txt` / `README.md` 已同步 latest packaged truth，不再继续写旧的 WeCom de-scope 口径。
+  - `create-mac-handoff-copy.sh`
+    - 新增 `assert_artifact_runtime_arch_truth()`，在最终 artifact 目录生成后再次校验 `vendor/mac-openclaw/bin/node` 是否包含与 artifact 命名一致的 CPU slice。
+    - `README-FIRST.txt` 已同步 latest packaged truth。
+  - `docs/usb-pack/{INSTALL,SOP}.md` 已同步 latest packaged truth：今晚正式支持渠道包含企业微信，且 authoritative packaged route 是 bundled official plugin archive。
+  - local `vendor/mac-openclaw/bin/node` 已升级为 `v24.14.0` 的 universal binary（`x86_64 + arm64`），不再是假 arm64 包源。
+- Fresh artifact / evidence:
+  - latest artifact lineage：`dist/handoff/gtclaw-mac-release-arm64-20260422-174834/GTClaw-0.1.0-alpha-macOS-arm64`
+  - latest archive：`dist/handoff/gtclaw-mac-release-arm64-20260422-174834.zip`
+  - isolated launch smoke:
+    - `OPENSPARROW_UI_PORT=19021`
+    - `OPENCLAW_GATEWAY_PORT=18941`
+    - `OPENSPARROW_ROUTER_PORT=18441`
+    - `OPENCLAW_HOME=/tmp/gtclaw-arch-fix-smoke-20260422-1755/home`
+    - `/api/status` returned `installed:false` with server running and no `Bad CPU type in executable`
+- Validation:
+  - `node --test ui/tests/packaged-mac-runtime-arch.test.mjs ui/tests/packaged-mac-runtime-deps.test.mjs ui/tests/packaged-mac-diagnostics-shell.test.mjs ui/tests/install-helpers.test.mjs ui/tests/packaged-wecom-official-plugin.test.mjs ui/tests/packaged-dingtalk-install-gate.test.mjs ui/tests/packaged-channel-probe-diagnostics.test.mjs` → PASS
+  - `bash -n scripts/build-usb-pack.sh` → PASS
+  - `bash -n longrun/workspaces/openclaw-usb-portable/execution/scripts/create-mac-handoff-copy.sh` → PASS
+  - `bash -n platforms/mac/wrappers/01-开始部署.command` → PASS
+  - `node --check ui/server.mjs` → PASS
+  - `file vendor/mac-openclaw/bin/node` → `Mach-O universal binary ... [x86_64] [arm64]`
+  - `file dist/handoff/gtclaw-mac-release-arm64-20260422-174834/.../vendor/mac-openclaw/bin/node` → `Mach-O universal binary ... [x86_64] [arm64]`
+  - isolated `01-开始部署.command` launch smoke on `19021` → PASS
+- Current status:
+  - latest Desktop mac bundle failure 的真实根因已经被修掉：不再会把 x86_64 bundled `node` 误打成 arm64 artifact。
+  - packaged build/export 现在会在 runtime CPU 架构不匹配时 fail fast，而不是把坏包继续切出来。
+  - 下一步只剩重新导出 Desktop full package 并替换旧错误 bundle，避免用户继续拿到坏包。
+
+## Session 28 (F-020 packaged install retry / timeout / Sparrow-state hygiene hardening)
+- Date: 2026-04-22
+- Goal: 修复 mac packaged release candidate 在新机上暴露的两类严重回归：package-local Sparrow/OpenClaw 状态导致 retry / reinstall 不幂等，以及安装页在 `/api/install` 超时后把后端失败伪装成“正在部署中…”。
+- Selected feature id: `F-020`
+- User-visible incident:
+  - 新机使用 `opensparrow-mac-full-package-20260422-180702-skills100` 时，安装页停在“正在部署中…”约 20 分钟。
+  - package-local 日志显示后端其实已经在约 `171s` 后结束，`install-state.json.status = error`，并记录 `plugin already exists` 级错误。
+- Root cause:
+  - release 交付包本身没有 shipping `.gtclaw-state`，但 package-local 状态一旦在用户机器上生成，后续 retry / reinstall 会命中旧插件目录。
+  - 旧实现对 bundled plugin retry 处理不幂等，用户可见错误是 `plugin already exists: .../.openclaw/extensions/channels` 与 `plugin already exists: .../.openclaw/extensions/wecom-openclaw-plugin`。
+  - 尝试手工删插件目录会进一步导致 `channels.dingtalk/wecom: unknown channel id`，说明正确修复应依赖 OpenClaw 原生替换语义，而不是手工清目录。
+  - 前端 `POST /api/install` 只等 `120000ms`；一旦超时就误判“后台仍在继续”，继续等待 `installed=true`，从而把后端已失败的 authoritative verdict 伪装成“正在部署中…”。
+- Changes made:
+  - `ui/server.mjs`
+    - `installPluginPackage(...)` 改为始终走 `openclaw plugins install ... --force` 的原生替换语义；
+    - 不再手工删插件目录，避免 same-package retry 触发 `unknown channel id`。
+  - `ui/public/index.html`
+    - 新增 install timeout 后的 terminal-state 收口；
+    - `AbortError` 不再无限等待 `installed=true`，而是轮询 `/api/install/status`，若 `status=error` 立即显示失败。
+  - `scripts/build-usb-pack.sh`
+    - `strip_runtime_state()` 现清理 `.gtclaw-state`、`.openclaw`、`.openclaw-*`，防止 package-local Sparrow/OpenClaw 状态进入 release artifact。
+  - `longrun/workspaces/openclaw-usb-portable/execution/scripts/create-mac-handoff-copy.sh`
+    - handoff export 后再次清理 `.gtclaw-state`、`.openclaw`、`.openclaw-*`，堵住二次打包把状态目录带回 release 的路径。
+  - 新增回归测试：
+    - `ui/tests/packaged-install-retry-guards.test.mjs`
+      - 校验 `plugins install --force`
+      - 校验 install timeout 后会收口到 `/api/install/status` terminal state
+      - 校验 build/export 与 handoff export 会 strip package-local Sparrow/OpenClaw 状态目录
+- Fresh artifact / evidence:
+  - latest hardened artifact lineage：`dist/handoff/gtclaw-mac-release-arm64-20260422-193047/GTClaw-0.1.0-alpha-macOS-arm64`
+  - paired zip：`dist/handoff/gtclaw-mac-release-arm64-20260422-193047.zip`
+  - `unzip -tq dist/handoff/gtclaw-mac-release-arm64-20260422-193047.zip` → `No errors detected in compressed data`
+  - `find dist/handoff/gtclaw-mac-release-arm64-20260422-193047 -type d \\( -name '.gtclaw-state' -o -name '.openclaw' -o -name '.openclaw-*' \\)` → no matches
+  - same-package real install verification on the fresh artifact:
+    - package-local server ports:
+      - `OPENSPARROW_UI_PORT=19041`
+      - `OPENCLAW_GATEWAY_PORT=18961`
+      - `OPENSPARROW_ROUTER_PORT=18461`
+    - first `/api/install` → `HTTP 200`, `installStatus.status = completed`
+    - second `/api/install` on the exact same artifact/profile → `HTTP 200`, `installStatus.status = completed`
+    - second install did **not** reproduce `plugin already exists`
+    - second install did **not** reproduce `unknown channel id`
+- Validation:
+  - `node --test ui/tests/packaged-install-retry-guards.test.mjs` → PASS
+  - `node --test ui/tests/packaged-install-retry-guards.test.mjs ui/tests/packaged-dingtalk-install-gate.test.mjs ui/tests/packaged-wecom-install-gate.test.mjs ui/tests/packaged-plugin-profile-sync.test.mjs ui/tests/packaged-channel-probe-diagnostics.test.mjs ui/tests/packaged-runtime-state-stability.test.mjs ui/tests/packaged-wecom-official-plugin.test.mjs ui/tests/install-helpers.test.mjs ui/tests/packaged-mac-runtime-arch.test.mjs` → `24/24 pass`
+  - `node --check ui/server.mjs` → PASS
+  - `bash -n scripts/build-usb-pack.sh` → PASS
+  - `bash -n longrun/workspaces/openclaw-usb-portable/execution/scripts/create-mac-handoff-copy.sh` → PASS
+- Current status:
+  - `2026-04-22` 同日暴露的 packaged install retry / timeout / Sparrow-state hygiene regression 已在 fresh artifact `193047` 上完成 re-verification。
+  - 事故记录必须继续保留在 `docs/current-status.md`、`docs/release-checklist.md`、`docs/runbooks/release-process.md`、`docs/usb-pack/{INSTALL,SOP}.md`、`docs/vendor-source-inventory.md` 中，作为长期 anti-pattern 与 release blocker 检查项。
+  - mac packaged 当前可重新 cut release candidate；但对外再次分发前，仍建议补一轮独立新机 smoke，而不是把本地 fresh 验证直接表述成“永不出错”的正式版。

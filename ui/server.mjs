@@ -1756,6 +1756,7 @@ async function installPluginPackage(spec, pluginId, options = {}) {
   const installSpec = findBundledPluginArchive(BUNDLED_PLUGINS_DIR, packageSpec) ?? packageSpec
   const args = ['plugins', 'install', installSpec]
   if (options?.pin) args.push('--pin')
+  args.push('--force')
 
   const result = await runOc(args, {
     timeoutMs: OC_TIMEOUT.PLUGIN_INSTALL,

@@ -467,7 +467,7 @@
     "priority": 1,
     "category": "packaging",
     "component": "mac-arm64-installer-hardening",
-    "description": "Harden the macOS arm64 UI package so bundled superpowers copy recursively, DingTalk/WeCom install from bundled plugin archives instead of ClawHub-first resolution, and plugin-backed channel config is skipped unless the plugin is ready.",
+    "description": "Harden the macOS arm64 UI package so bundled superpowers copy recursively, DingTalk/WeCom install from bundled plugin archives instead of ClawHub-first resolution, plugin-backed channel config is skipped unless the plugin is ready, package-local Sparrow/OpenClaw state never ships in release artifacts, retry/reinstall uses idempotent plugin replacement semantics, install timeout follows `/api/install/status` terminal authority, and mac packaged release cuts fail fast on runtime CPU architecture mismatch.",
     "depends_on": [
       "F-012",
       "F-019"
@@ -475,15 +475,15 @@
     "acceptance_criteria": [
       "`ui/install-helpers.mjs` plus `ui/tests/install-helpers.test.mjs` cover recursive skill copy and bundled plugin archive resolution.",
       "`ui/server.mjs` prefers packaged `.tgz` plugin archives, skips DingTalk/WeCom channel config when plugin install fails, and uses a longer plugin install timeout suitable for WeCom local archive installs.",
-      "A fresh arm64 package exists at `dist/handoff/opensparrow-mac-ui-full-arm64-20260414-162747.zip` and its bundled `vendor/mac-openclaw/bin/node` reports `arm64`.",
+      "A fresh packaged mac artifact exists at `dist/handoff/gtclaw-mac-release-arm64-20260422-174834.zip`, its bundled `vendor/mac-openclaw/bin/node` includes an `arm64` slice, and the export script refuses to ship an artifact whose runtime node lacks the expected CPU slice.",
       "Smoke evidence shows local `.tgz` plugin install works for DingTalk and WeCom, and package launch still reaches the UI listening state."
     ],
     "steps": [
       "Add pure install helpers and a focused node:test regression for recursive skill copy and plugin archive discovery.",
       "Wire UI install and channel-update flows to local plugin archives, plugin-ready gating, corrected OpenClaw entry preference, and a longer plugin install timeout.",
-      "Rebuild the mac arm64 UI package, bundle local DingTalk/WeCom plugin archives, validate launch, and retain only the latest good ZIP."
+      "Rebuild the mac arm64 UI package, bundle local DingTalk/WeCom plugin archives, validate launch, harden runtime architecture truth, and retain only the latest good ZIP."
     ],
-    "evidence_hint": "`node --test ui/tests/install-helpers.test.mjs` + local `.tgz` plugin smoke + `FINAL_ENTRY_SMOKE=PASS` + final zip path",
+    "evidence_hint": "Fresh artifact lineage `gtclaw-mac-release-arm64-20260422-193047` + `node --test ui/tests/install-helpers.test.mjs ui/tests/packaged-mac-runtime-arch.test.mjs ui/tests/packaged-install-retry-guards.test.mjs` + package-local first/second real `/api/install` both `completed` + zip integrity/state-strip checks",
     "risk": "medium",
     "passes": true
   },

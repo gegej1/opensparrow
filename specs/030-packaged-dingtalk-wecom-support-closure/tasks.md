@@ -13,6 +13,13 @@
 - `T030-D-1 / D-2 / D-3`：已完成；DingTalk / WeCom 均已拿到 `PASS` verdict，feature-level gate 已满足。
 - `T030-E-1`：本轮执行 docs / longrun facts-only writeback。
 
+同日后续追加说明：
+
+- 上述快照只代表 clean-state packaged evidence 的 historical truth；
+- latest user-facing release candidate 随后又暴露出 packaged install retry / timeout regression；
+- 该 regression 现已在 fresh artifact lineage `gtclaw-mac-release-arm64-20260422-193047` 上通过 same-package 双次 real `/api/install` 与 install-status terminal-state 收口完成 re-verification；
+- 因此 release 线当前不再被该 regression 阻塞，但对外重新分发前仍建议补独立新机 smoke，而不是把最新桌面包视为“永不出错”的无条件正式版。
+
 ## 派工前统一约束
 
 - `F-030` 是新 feature，不是 `F-027` 的补丁注释；

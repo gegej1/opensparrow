@@ -2,7 +2,7 @@
 
 ## 元数据
 
-- 日期：`2026-04-15`
+- 日期：`2026-04-22`
 - Feature：`F-027`
 - 适用对象：今晚 Mac packaged release 的操作者 / 支持人员
 
@@ -10,11 +10,38 @@
 
 - 这是 **Mac-only UI-first 首发 cut**
 - 唯一官方 first-click path：根目录 `01-开始部署.command`
-- 今晚正式支持渠道：`飞书`、`钉钉`
+- 今晚正式支持渠道：`飞书`、`钉钉`、`企业微信`
 - `mac/run-openclaw-usb.command` 与 `mac/harden-openclaw-usb.command` 只保留为 **advanced compatibility / handoff**
-- 企业微信不纳入今晚 packaged outward promise
+- 企业微信 packaged 路线使用随包官方插件归档
 - companion 不纳入今晚正式支持面
 - 不把 bundled runtime / plugin mismatch 反写成真正 `F-014` 失败
+
+## 严重事故防线
+
+`2026-04-22` 已确认发生过一轮严重 packaged 事故：
+
+- 旧错误 Desktop bundle：`opensparrow-mac-full-package-20260422-170758-skills100`
+- 旧错误 release：`gtclaw-mac-release-arm64-20260422-170758`
+- 根因：artifact 名称虽然是 `arm64`，但 bundled `vendor/mac-openclaw/bin/node` 实际只有 `x86_64`
+- 新 Apple Silicon Mac 无 Rosetta 时会直接报：`Bad CPU type in executable`
+
+这轮事故后，以下规则已经升级为 SOP 级硬门槛：
+
+- 不得只看 artifact 名称中的 `arm64`
+- 必须执行 `file ./vendor/mac-openclaw/bin/node`
+- 必须执行 `cat ./vendor/mac-openclaw/RUNTIME_TRUTH.json`
+- 只要 bundled runtime CPU 架构与宣称平台不一致，立即阻断外发
+- 旧错误包仅保留作事故证据，不得再次发给任何新机器
+
+同日还确认了一轮安装态严重回归：
+
+- package-local `.gtclaw-state/.openclaw*` 残留会让 retry / reinstall 命中 `plugin already exists`
+- `/api/install` 超时后，页面若仍无限显示“正在部署中…”，说明 UI 没有正确回读 terminal install state
+
+从这一轮起，以下也属于 SOP 级 blocker：
+
+- 对外交付包中出现 `.gtclaw-state`、`.openclaw`、`.openclaw-*`
+- 用户侧 install failure 已结束，但页面仍继续显示“正在部署中…”
 
 ## 交付包应包含什么
 
@@ -42,7 +69,7 @@ opensparrow-<version>-mac-ui-<arch>/
 - 根目录 `01-开始部署.command` 是唯一官方起点
 - `mac/*.command` 不是主安装路径
 - 文档不得继续把 Windows 当作今晚支持面
-- 文档不得继续把企业微信写成今晚 packaged ready 支持面
+- 文档不得把企业微信重新写回旧 `sunnoy-wecom` 阻断口径
 
 ## 标准操作
 
@@ -52,6 +79,7 @@ opensparrow-<version>-mac-ui-<arch>/
 4. 只按今晚正式支持面选择：
    - 飞书
    - 钉钉
+   - 企业微信
 5. 完成安装后进入 Dashboard。
 6. 如需重置或再次安装，在 Dashboard 中完成，不回退到 legacy CLI 流程。
 
@@ -73,10 +101,13 @@ opensparrow-<version>-mac-ui-<arch>/
 在今晚 release gate 中，至少确认：
 
 - 根目录 `01-开始部署.command` 存在
+- `file ./vendor/mac-openclaw/bin/node` 明确包含 `arm64` slice
+- `RUNTIME_TRUTH.json` 明确带 `nodeBinaryArchitectures`
+- 交付包内没有 package-local `.gtclaw-state`、`.openclaw`、`.openclaw-*`
 - Dashboard “基本信息”卡片中的端口来自 authoritative read-back，而不是前端写死 `18889`
 - `README.txt`、`docs/INSTALL.md`、`docs/SOP.md` 不再把 Windows 写成今晚正式支持面
 - `docs/SOP.md` 不再把 `mac/run-openclaw-usb.command` 写成主安装入口
-- packaged outward promise 已去掉企业微信 tonight-ready 承诺
+- packaged outward promise 已与最新 WeCom packaged PASS 事实一致
 
 ## 故障排查
 
@@ -84,6 +115,19 @@ opensparrow-<version>-mac-ui-<arch>/
 
 这是允许的。若默认端口占用，系统会自动切到下一个可用端口。
 以启动输出和 Dashboard 展示的实际端口为准。
+
+### 启动后立刻退出并出现 `Bad CPU type in executable`
+
+这代表 packaged runtime CPU 架构 truth 已经失真。
+
+处置方式：
+
+1. 立即停止继续安装。
+2. 执行：
+   - `file ./vendor/mac-openclaw/bin/node`
+   - `cat ./vendor/mac-openclaw/RUNTIME_TRUTH.json`
+3. 若缺少 `arm64` slice，直接判定为 release blocker。
+4. 回收该包，不允许继续外发或让用户自行安装 Rosetta 作为“正式解决方案”。
 
 ### 仍然看到高级兼容入口
 
@@ -95,5 +139,22 @@ opensparrow-<version>-mac-ui-<arch>/
 统一口径：
 
 - 真正 `F-014` 没有被改写
-- 今晚只是 packaged outward promise de-scope
-- 当前 cut 不把企业微信作为正式可交付支持面
+- 当前 packaged cut 已有企业微信 fresh evidence
+- 企业微信 authoritative packaged route 是随包官方插件归档，不再是旧 `sunnoy-wecom` 路线
+
+### 安装页长时间停在“正在部署中…”
+
+先查 package-local 日志，而不是继续让用户盲等：
+
+```bash
+find . -type d -name ".gtclaw-state"
+find ./.gtclaw-state -maxdepth 3 \( -name "install-state.json" -o -name "install.log" -o -name "diagnostic-bundle.json" \)
+```
+
+权威日志位置：
+
+- `GTClaw-*/.gtclaw-state/.openclaw-gtclaw-portable/install-state.json`
+- `GTClaw-*/.gtclaw-state/.openclaw-gtclaw-portable/install.log`
+- `GTClaw-*/.gtclaw-state/.openclaw-gtclaw-portable/diagnostic-bundle.json`
+
+若 `install-state.json.status = error`，说明后端已经结束失败，不能继续把页面当成“还在部署中”。

@@ -2,7 +2,7 @@
 
 **Feature ID**: `F-030`  
 **Feature Branch**: `030-packaged-dingtalk-wecom-support-closure`  
-**Plan Status**: Completed with fresh packaged evidence (`2026-04-22`)
+**Plan Status**: Historical clean-state completion reference (`2026-04-22`), with same-day packaged install retry / timeout regression re-hardened on fresh artifact lineage `gtclaw-mac-release-arm64-20260422-193047`
 
 ## `2026-04-22` 执行结论
 
@@ -11,6 +11,13 @@
 - `PKT-030-C` 已完成：WeCom packaged implementation closure 已切到官方插件路线，并完成 bot-first packaged install / diagnostics 收口。
 - `PKT-030-D` 已完成：DingTalk / WeCom 均已拿到 same-session fresh packaged verdict，且 verdict 都是 `PASS`。
 - `PKT-030-E` 本轮同步 docs / longrun facts-only writeback；这不重开 `F-025-B`、`F-026`、`F-027` 或 true `F-014`。
+
+同日后续追加说明：
+
+- 上述结论仍然成立于 clean-state packaged evidence；
+- 但 latest user-facing release candidate 之后又暴露了独立 regression：package-local Sparrow 状态残留导致 retry / reinstall 不幂等，安装页 timeout path 还会把后端失败伪装成“正在部署中…”；
+- 上述 regression 现已在 fresh artifact lineage `gtclaw-mac-release-arm64-20260422-193047` 上通过 same-package 双次 real `/api/install`、package-local state hygiene 检查与 install-status terminal-state 收口完成 re-verification；
+- 因此外发口径不再是“被该 regression 阻塞”，而是“允许重新 cut mac RC，但对外分发前仍建议补独立新机 smoke”。
 
 ## 战役摘要
 
