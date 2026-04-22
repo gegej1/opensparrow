@@ -90,6 +90,8 @@ function resolveOpenclawHome() {
 
 const OPENCLAW_HOME = resolveOpenclawHome()
 const PROFILE_DIR = path.join(OPENCLAW_HOME, `.openclaw-${PROFILE}`)
+const PROFILE_EXTENSIONS_DIR = path.join(PROFILE_DIR, 'extensions')
+const EXTENSIONS_DIR = path.join(OPENCLAW_HOME, '.openclaw', 'extensions')
 const CONFIG_FILE = path.join(PROFILE_DIR, 'openclaw.json')
 const UI_META_FILE = path.join(PROFILE_DIR, 'ui-meta.json')
 const WORKSPACE_DIR = path.join(PROFILE_DIR, 'workspace')
@@ -128,8 +130,9 @@ function getIndustrySkillCategoryMeta(key) {
 const DEFAULT_MODEL = process.env.OPENCLAW_MODEL ?? 'openai/gpt-4o-mini'
 const DINGTALK_PLUGIN_PACKAGE = '@openclaw-china/channels'
 const DINGTALK_PLUGIN_ID = 'channels'
-const WECOM_PLUGIN_PACKAGE = '@sunnoy/wecom'
-const WECOM_PLUGIN_ID = 'wecom'
+const WECOM_PLUGIN_PACKAGE = '@wecom/wecom-openclaw-plugin'
+const WECOM_PLUGIN_ID = 'wecom-openclaw-plugin'
+const WECOM_PLUGIN_ENTRY_ENABLED_PATH = `plugins.entries.${WECOM_PLUGIN_ID}.enabled`
 const WECOM_MIN_OPENCLAW_VERSION = '2026.3.23'
 
 const DEFAULT_PORT = resolvePortFromEnv('OPENSPARROW_UI_PORT', 19000)
@@ -484,16 +487,55 @@ function saveDingtalkUiMeta(patch = {}) {
 }
 
 function resolveDingtalkPluginDistFile() {
-  return path.join(
-    PROFILE_DIR,
-    'extensions',
-    'channels',
-    'node_modules',
-    '@openclaw-china',
-    'dingtalk',
-    'dist',
-    'index.js'
-  )
+  const candidates = [
+    path.join(
+      PROFILE_EXTENSIONS_DIR,
+      'channels',
+      'node_modules',
+      '@openclaw-china',
+      'dingtalk',
+      'dist',
+      'index.js'
+    ),
+    path.join(
+      EXTENSIONS_DIR,
+      'channels',
+      'node_modules',
+      '@openclaw-china',
+      'dingtalk',
+      'dist',
+      'index.js'
+    ),
+  ]
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate
+  }
+  return candidates[0]
+}
+
+function syncInstalledPluginIntoProfile(pluginId) {
+  const id = String(pluginId ?? '').trim()
+  if (!id) return { ok: false, errors: ['plugin id 无效，无法同步到 profile 扩展目录'] }
+
+  const sharedExtDir = path.join(EXTENSIONS_DIR, id)
+  const profileExtDir = path.join(PROFILE_EXTENSIONS_DIR, id)
+  if (!fs.existsSync(sharedExtDir)) {
+    return { ok: false, errors: [`共享扩展目录不存在：${toUserPath(sharedExtDir)}`] }
+  }
+
+  try {
+    fs.mkdirSync(PROFILE_EXTENSIONS_DIR, { recursive: true })
+    const removal = removeDirIfExists(profileExtDir)
+    if (removal.error) {
+      return { ok: false, errors: [`清理 profile 扩展目录失败：${toUserPath(profileExtDir)} (${removal.error})`] }
+    }
+    fs.cpSync(sharedExtDir, profileExtDir, { recursive: true, force: true })
+  } catch (e) {
+    return { ok: false, errors: [`同步插件到 profile 扩展目录失败：${toUserPath(profileExtDir)} (${e?.message ?? String(e)})`] }
+  }
+
+  return { ok: true, errors: [] }
 }
 
 function patchDingtalkPluginDist() {
@@ -957,6 +999,16 @@ async function resolveRuntimeState() {
     gatewayHealthy,
     gatewayPortBusy,
   }
+}
+
+async function resolveStableRuntimeState({ attempts = 6, delayMs = 500 } = {}) {
+  let runtimeState = await resolveRuntimeState()
+  for (let attempt = 1; attempt < attempts; attempt += 1) {
+    if (runtimeState.daemon !== 'unknown' || !runtimeState.gatewayHealthy) return runtimeState
+    await new Promise((resolve) => setTimeout(resolve, delayMs))
+    runtimeState = await resolveRuntimeState()
+  }
+  return runtimeState
 }
 
 const INSTALL_STEP_DEFS = Object.freeze([
@@ -1656,7 +1708,7 @@ async function ensurePluginsAllowIncludes(ids) {
 
   const merged = [...current]
   for (const id of pluginIds) {
-    const extDir = path.join(PROFILE_DIR, 'extensions', id)
+    const extDir = path.join(EXTENSIONS_DIR, id)
     const installed = fs.existsSync(extDir)
     if (installed) {
       if (!merged.includes(id)) merged.push(id)
@@ -1717,11 +1769,19 @@ ${result.stderr}`) || `exit code ${result.code}`}`],
     }
   }
 
-  const extDir = path.join(PROFILE_DIR, 'extensions', id)
+  const extDir = path.join(EXTENSIONS_DIR, id)
   if (!fs.existsSync(extDir)) {
     return {
       ok: false,
       errors: [`插件 ${packageSpec} 安装完成，但未找到扩展目录：${toUserPath(extDir)}`],
+    }
+  }
+
+  const profileSync = syncInstalledPluginIntoProfile(id)
+  if (!profileSync.ok) {
+    return {
+      ok: false,
+      errors: profileSync.errors,
     }
   }
 
@@ -1777,7 +1837,7 @@ async function buildDingtalkProbeReport() {
     checks.push('钉钉 CorpId 已填写')
   }
 
-  const { daemon, runtimeMode, gatewayHealthy, gatewayPortBusy } = await resolveRuntimeState()
+  const { daemon, runtimeMode, gatewayHealthy, gatewayPortBusy } = await resolveStableRuntimeState()
 
   if (daemon === 'running') {
     checks.push('daemon 服务运行中')
@@ -1880,7 +1940,7 @@ async function buildWecomProbeReport() {
   const pluginsAllow = Array.isArray(config?.plugins?.allow)
     ? config.plugins.allow.map(v => String(v ?? '').trim())
     : []
-  const pluginEntryValue = config?.plugins?.entries?.wecom?.enabled
+  const pluginEntryValue = config?.plugins?.entries?.[WECOM_PLUGIN_ID]?.enabled
   const groupChat = wecom?.groupChat && typeof wecom.groupChat === 'object' ? wecom.groupChat : {}
   const groupChatEnabled = groupChat.enabled !== false
   const requireMention = groupChat.requireMention !== false
@@ -1898,19 +1958,19 @@ async function buildWecomProbeReport() {
   }
 
   if (pluginEntryValue === false) {
-    errors.push('plugins.entries.wecom.enabled=false，请重新保存企业微信配置或重新安装企微插件')
+    errors.push(`${WECOM_PLUGIN_ENTRY_ENABLED_PATH}=false，请重新保存企业微信配置或重新安装企微插件`)
   } else if (pluginEntryValue === true) {
     checks.push('企业微信插件入口已启用')
   } else if (config) {
-    warnings.push('plugins.entries.wecom.enabled 未显式写入：建议重新保存企业微信配置以固定插件入口')
+    warnings.push(`${WECOM_PLUGIN_ENTRY_ENABLED_PATH} 未显式写入：建议重新保存企业微信配置以固定插件入口`)
   }
 
   if (pluginsAllow.length === 0) {
-    warnings.push('plugins.allow 为空：当前依赖 OpenClaw auto-load 发现企微插件，建议显式包含 wecom')
+    warnings.push(`plugins.allow 为空：当前依赖 OpenClaw auto-load 发现企微插件，建议显式包含 ${WECOM_PLUGIN_ID}`)
   } else if (pluginsAllow.includes(WECOM_PLUGIN_ID)) {
-    checks.push('plugins.allow 已显式包含 wecom')
+    checks.push(`plugins.allow 已显式包含 ${WECOM_PLUGIN_ID}`)
   } else {
-    warnings.push('plugins.allow 未显式包含 wecom，可能在更严格的 profile 中导致插件不加载')
+    warnings.push(`plugins.allow 未显式包含 ${WECOM_PLUGIN_ID}，可能在更严格的 profile 中导致插件不加载`)
   }
 
   if (!botId || !secret) {
@@ -1947,7 +2007,7 @@ async function buildWecomProbeReport() {
     }
   }
 
-  const { daemon, runtimeMode, gatewayHealthy, gatewayPortBusy } = await resolveRuntimeState()
+  const { daemon, runtimeMode, gatewayHealthy, gatewayPortBusy } = await resolveStableRuntimeState()
 
   if (daemon === 'running') {
     checks.push('daemon 服务运行中')
@@ -2646,6 +2706,8 @@ async function handleInstall(res, body) {
 
   const requestedHasDingtalk = channels.some((ch) => ch.type === 'dingtalk')
   const requestedHasWecom = channels.some((ch) => ch.type === 'wecom')
+  let dingtalkPluginReady = !requestedHasDingtalk
+  let wecomPluginReady = !requestedHasWecom
   installTracker.note('渠道与 API 输入校验通过', 'info', {
     requestedHasDingtalk,
     requestedHasWecom,
@@ -2696,6 +2758,7 @@ async function handleInstall(res, body) {
 
   if (requestedHasDingtalk) {
     const dingtalkInstall = await installPluginPackage(DINGTALK_PLUGIN_PACKAGE, DINGTALK_PLUGIN_ID)
+    dingtalkPluginReady = dingtalkInstall.ok
     errors.push(...dingtalkInstall.errors)
     if (dingtalkInstall.ok) {
       const patch = patchDingtalkPluginDist()
@@ -2706,6 +2769,7 @@ async function handleInstall(res, body) {
 
   if (requestedHasWecom) {
     const wecomInstall = await installPluginPackage(WECOM_PLUGIN_PACKAGE, WECOM_PLUGIN_ID, { pin: true })
+    wecomPluginReady = wecomInstall.ok
     errors.push(...wecomInstall.errors)
   }
   if (errors.length > 0) {
@@ -2797,7 +2861,26 @@ async function handleInstall(res, body) {
 
   // Step 5: Write per-channel config
   installTracker.startStep('channels', '正在写入渠道配置')
+  const channelWarnings = []
   for (const ch of channels) {
+    if (ch.type === 'dingtalk' && !dingtalkPluginReady) {
+      warnings.push('钉钉插件未安装成功，跳过钉钉渠道配置')
+      channelWarnings.push('钉钉插件未安装成功，跳过钉钉渠道配置')
+      installTracker.note('钉钉插件未安装成功，跳过钉钉渠道配置', 'warn', {
+        channel: 'dingtalk',
+        gate: 'plugin',
+      })
+      continue
+    }
+    if (ch.type === 'wecom' && !wecomPluginReady) {
+      warnings.push('企微插件未安装成功，跳过企业微信渠道配置')
+      channelWarnings.push('企微插件未安装成功，跳过企业微信渠道配置')
+      installTracker.note('企微插件未安装成功，跳过企业微信渠道配置', 'warn', {
+        channel: 'wecom',
+        gate: 'plugin',
+      })
+      continue
+    }
     const chErrors = await configureChannel(ch)
     errors.push(...chErrors)
   }
@@ -2805,6 +2888,8 @@ async function handleInstall(res, body) {
     const channelErrors = errors.filter((message) => message.includes('Unknown channel type') || message.includes('channels.') || message.includes('plugins.entries'))
     if (channelErrors.length > 0) {
       installTracker.finishStep('channels', '渠道配置写入失败', { error: channelErrors[0] })
+    } else if (channelWarnings.length > 0) {
+      installTracker.finishStep('channels', '部分渠道配置已跳过', { warning: channelWarnings[0] })
     } else {
       installTracker.finishStep('channels', '渠道配置写入完成')
     }
@@ -2987,7 +3072,7 @@ async function configureChannel(channel) {
       errors.push(...await ensurePluginsAllowIncludes([WECOM_PLUGIN_ID]))
       const wecom = normalizeWecomCredentials(channel)
       const { botId, secret } = wecom
-      await oc('plugins.entries.wecom.enabled', 'true')
+      await oc(WECOM_PLUGIN_ENTRY_ENABLED_PATH, 'true')
       await oc('channels.wecom.enabled', 'true')
       await oc('channels.wecom.botId', JSON.stringify(botId))
       await oc('channels.wecom.secret', JSON.stringify(secret))

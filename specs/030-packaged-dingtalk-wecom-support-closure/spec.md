@@ -3,8 +3,8 @@
 **Feature ID**: `F-030`  
 **Feature Branch**: `030-packaged-dingtalk-wecom-support-closure`  
 **Created**: 2026-04-16  
-**Status**: Draft (Scope Freeze for Review)  
-**Input**: Commander 已明确要求把 DingTalk 与 WeCom 的 packaged 支持收口为一个新的独立 feature；本轮只做 `spec / plan / tasks` 冻结，不做实现、不做 closeout、不更新 longrun、不新开 research。
+**Status**: Verified closeout reference (`2026-04-22` fresh packaged evidence + facts-only writeback)
+**Input**: Commander 已明确要求把 DingTalk 与 WeCom 的 packaged 支持收口为一个新的独立 feature；本 feature 先完成 `spec / plan / tasks` 冻结，再完成 implementation / verification / closeout。当前文档保留冻结规则，同时同步 `2026-04-22` 的最新 packaged verdict。
 
 ## F-030 一句话定义
 
@@ -87,54 +87,68 @@
 
 ### 当前主 candidate
 
-- `dist/handoff/opensparrow-mac-ui-full-arm64-20260416-112006/opensparrow-0.1.0-alpha-mac-ui-arm64`
-- `dist/handoff/opensparrow-mac-ui-full-arm64-20260416-112006.zip`
+- `/tmp/p0-channel-recut-output-20260422-2/gtclaw-mac-release-arm64-20260422-150245/GTClaw-0.1.0-alpha-macOS-arm64`
+- `/Users/eduardogan/Desktop/GHJProject/opensparrow-gptpro-handoff-20260422-1518-dingtalk-wecom-pass.zip`
+- artifact 内已确认存在：
+  - `plugins/openclaw-china-channels-2026.3.29.tgz`
+  - `plugins/wecom-wecom-openclaw-plugin-2026.4.22.tgz`
+  - `vendor/mac-openclaw/RUNTIME_TRUTH.json`
 
 ### 已吸收的 carryover facts
 
-以下 facts 可作为 `F-030` 的背景前提，但**不是** DingTalk / WeCom closure 的充分证据：
+以下 facts 已成为当前 `F-030` latest lineage 的 shared baseline：
 
 1. packaged launcher 能起；
-2. `/api/status` 与 `/dashboard` 可达；
+2. `/api/status`、`/api/install/status`、`/api/diagnostics`、`/api/diagnostics/export` 可达；
 3. packaged lifecycle bug 已修复；
 4. cleanup / reset warning 不再写死 `18889`；
-5. Feishu live smoke 已 PASS。
+5. package-local `install-state.json`、`install.log`、`diagnostic-bundle.json` 可生成；
+6. plugin install 已同步到 `PROFILE_DIR/extensions`，不再只停在 shared extension root；
+7. `RUNTIME_TRUTH.json` 已固定 bundled runtime truth。
 
 ### 已吸收的 packaged wording carryover
 
-当前 `20260416-112006` candidate lineage 继续承接了 `F-027` 的 packaged wording carryover：
+当前 fresh lineage 继续承接了 `F-027` 的 packaged wording carryover，但 channel verdict 已不再停留在 de-scope / 待证阶段：
 
 1. 根目录 `01-开始部署.command` 仍是唯一官方 first-click path；
-2. packaged docs 当前仍把 `Feishu / DingTalk` 写成当下支持面；
-3. packaged docs 当前仍把 WeCom 写成“不属于今晚 packaged support promise”。
+2. packaged channel closure 需要同一条 packaged session 的 install / status / diagnostics / package-local 证据一致；
+3. WeCom packaged 当前 authoritative route 已切到官方插件，而不是旧 `sunnoy-wecom` community archive。
 
-这些 wording carryover 只能作为 `F-030` 的历史背景，不自动构成 DingTalk / WeCom packaged closure 的 passing evidence。
+这些 carryover facts 仍然不能替代 fresh evidence，但当前 feature 已在 `2026-04-22` 补齐 DingTalk / WeCom 的同 session packaged proof。
 
 ### 当前 channel verdict 背景
 
 #### DingTalk
 
-- 当前不得记为 `PASS`。
-- 当前口径：`DECISION REQUIRED`。
-- 已有背景证据：
-  - packaged root launcher / parser / `/api/status` / `/dashboard` 可达检查已做。
-- 仍缺：
-  - 本机已有真实 DingTalk profile / state，或
-  - 用户已提供真实凭据，
-  - 以及基于该真实输入完成的 packaged live install / post-install status / dashboard / lifecycle 全链路 fresh evidence。
+- 当前 packaged verdict：`PASS`。
+- 已有 fresh packaged evidence：
+  - same-session real `/api/install` 返回 `HTTP 200`，`installStatus.status = completed`；
+  - `runtimeMode = daemon`；
+  - `channelProbes.dingtalk.status = ok`、`ready = true`、`daemon = running`；
+  - `/api/install`、`/api/install/status`、`install-state.json`、`diagnostic-bundle.json`、`/api/diagnostics`、`/api/diagnostics/export` 对同一 DingTalk state 给出一致结论；
+  - 旧 `unknown channel id: dingtalk` 与 `daemon unknown / gateway fallback` 假阳性未复现。
+- 当前剩余说明：
+  - install-state 中仍可能保留非阻断性的 DingTalk patch warning，但它不影响 packaged PASS gate。
 
 #### WeCom
 
-- 当前 packaged 不得记为 tonight-ready support。
-- 当前口径：`EVIDENCE GAP`。
-- 已有背景证据：
-  - bounded probe；
-  - existing config 可读；
-  - UI / read-back 的有限 packaged surface 可读性。
-- 仍缺：
-  - packaged bot-first 主链上的 fresh real enablement；
-  - packaged post-install status / dashboard / lifecycle evidence；
-  - 不低于 true `F-014` floor 的 packaged live evidence。
+- 当前 packaged verdict：`PASS`。
+- 已有 fresh packaged evidence：
+  - packaged route 已切到官方插件：`@wecom/wecom-openclaw-plugin`；
+  - same-session real `/api/install` 返回 `HTTP 200`，`installStatus.status = completed`；
+  - `runtimeMode = daemon`；
+  - `channelProbes.wecom.status = ok`、`ready = true`、`daemon = running`；
+  - summary / checks 已覆盖 plugin entry enabled、`plugins.allow` 显式包含 `wecom-openclaw-plugin`、bot-first credentials 已写入、DM 策略与群聊处理已启用；
+  - `/api/install`、`/api/install/status`、`install-state.json`、`diagnostic-bundle.json`、`/api/diagnostics`、`/api/diagnostics/export` 对同一 WeCom state 给出一致结论；
+  - 旧 `@sunnoy/wecom` install-time scanner blocker 与 `unknown channel id: wecom` follow-on error 未复现。
+- 当前剩余说明：
+  - true `F-014` 的 bot-first floor 仍然成立；当前 packaged PASS 不是 callback-first rewrite。
+
+### 当前 feature verdict
+
+- `2026-04-22` latest packaged lineage 已让 DingTalk 与 WeCom 分别通过自己的 packaged passing gate；
+- feature-level `F-030 PASS` threshold 已被 fresh packaged evidence 满足；
+- 当前剩余工作属于 docs / longrun / handoff 同步与 Windows 分线推进，不再属于 DingTalk / WeCom packaged blocker。
 
 ## Scope
 
@@ -165,7 +179,7 @@
 - DingTalk 与 WeCom 必须分别过各自的 packaged passing gate。
 - 一个 channel 的 PASS 不能替代另一个 channel 的 PASS。
 - Feishu PASS 只能作为 shared packaged baseline control，不得作为 DingTalk / WeCom packaged closure 的代理证据。
-- 只要 DingTalk 或 WeCom 仍处于 `BLOCKED / DECISION REQUIRED / EVIDENCE GAP`，`F-030` 就不得做 feature-level PASS closeout。
+- 只有 DingTalk 与 WeCom 都通过各自的 packaged passing gate，`F-030` 才能做 feature-level PASS closeout。
 
 ### Shared packaged baseline prerequisites
 
@@ -199,7 +213,7 @@
    - 在 relaunch / handoff / cleanup-reset 相关 packaged lifecycle 中，DingTalk 状态仍能被 fresh packaged evidence 解释；
    - 不能依赖旧 state、硬编码 `18889`、或 source-side patch 解释成功。
 
-当前在满足以上 gate 之前，DingTalk 只能维持 `DECISION REQUIRED` 或 `EVIDENCE GAP`，不得写成 `PASS`。
+当前 latest packaged evidence 已满足以上 DingTalk gate。
 
 ## WeCom passing gate
 
@@ -226,7 +240,7 @@
 7. **真实 channel-side evidence**
    - 由于 true `F-014` 的 passing floor已经包含 real enablement、successful readiness、以及至少一次真实消息往返，`F-030` 不得在缺少同级 packaged evidence 时宣称 packaged WeCom support ready。
 
-当前在满足以上 gate 之前，WeCom 只能维持 `EVIDENCE GAP`、`DECISION REQUIRED` 或 `BLOCKED`，不得写成 `PASS`。
+当前 latest packaged evidence 已满足以上 WeCom gate。
 
 ## 什么证据算 admissible
 
@@ -311,6 +325,14 @@
 5. **`PKT-030-E = facts-only closeout / longrun writeback`**
    - 只搬运 `D` 已证实的事实；
    - 不能借 closeout 回写 `F-025-B`、`F-026`、`F-027`、true `F-014`、或 officialization。
+
+## `2026-04-22` 完成快照
+
+- `PKT-030-A`：已完成。
+- `PKT-030-B`：已完成；DingTalk packaged install truth、plugin profile sync、runtime-state probe 稳定性已收口。
+- `PKT-030-C`：已完成；WeCom packaged route 已切到官方插件，bot-first packaged install / probe / diagnostics 已收口。
+- `PKT-030-D`：已完成；两条 channel 均已拿到 same-session fresh packaged verdict。
+- `PKT-030-E`：已完成；docs / longrun facts-only writeback 已同步。
 
 ## Requirements
 

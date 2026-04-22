@@ -2,7 +2,15 @@
 
 **Feature ID**: `F-030`  
 **Feature Branch**: `030-packaged-dingtalk-wecom-support-closure`  
-**Plan Status**: Draft for Review  
+**Plan Status**: Completed with fresh packaged evidence (`2026-04-22`)
+
+## `2026-04-22` 执行结论
+
+- `PKT-030-A` 已完成：feature identity、support promise、passing gate、inadmissible evidence、packet attribution 已冻结。
+- `PKT-030-B` 已完成：DingTalk packaged implementation closure 已收口到真实 install / status / diagnostics / package-local 一致。
+- `PKT-030-C` 已完成：WeCom packaged implementation closure 已切到官方插件路线，并完成 bot-first packaged install / diagnostics 收口。
+- `PKT-030-D` 已完成：DingTalk / WeCom 均已拿到 same-session fresh packaged verdict，且 verdict 都是 `PASS`。
+- `PKT-030-E` 本轮同步 docs / longrun facts-only writeback；这不重开 `F-025-B`、`F-026`、`F-027` 或 true `F-014`。
 
 ## 战役摘要
 
@@ -209,10 +217,9 @@
 
 ## Commander next-step framing
 
-推荐的 dispatch 节奏：
+当前 next-step framing：
 
-1. 先让 `SpecReviewer` 过 `SPEC-030-R1`；
-2. 由 Commander 自己或 spec-author 完成 `PKT-030-A` wording freeze；
-3. 默认先开 `PKT-030-B`，再开 `PKT-030-C`；
-4. 只有在 `B/C` 各自把 gap 收敛到真实输入与 live verification 时，才开 `PKT-030-D`；
-5. `PKT-030-E` 继续留到 `D` 之后，不能提前。
+1. 只继续做 facts-only sync、handoff 保留、与 Windows 分线协作；
+2. 不再把 DingTalk / WeCom packaged channel blocker 当成当前主问题重新发散；
+3. 若后续出现新的 packaged regression，必须基于新的 artifact lineage 与 fresh evidence 单独开包；
+4. Windows 线继续保持独立，不得把本轮 mac packaged PASS 倒灌成 Windows PASS。

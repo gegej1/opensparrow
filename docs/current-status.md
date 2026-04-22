@@ -4,13 +4,14 @@
 
 ## 总体状态
 
-项目处于：
+项目当前处于：
 
 - **统一真源仓已建立**
 - **root repo 可运行**
 - **关键 Node / shell 回归链存在**
 - **macOS packaged diagnostics / runtime truth / first-click 已有 fresh evidence**
-- **但 packaged WeCom / DingTalk 仍未通过**
+- **latest packaged mac artifact 已完成 DingTalk / WeCom channel-specific fresh evidence**
+- **Windows-specific evidence 仍是独立后续线，不被当前 mac packaged PASS 自动覆盖**
 
 ## 已确认完成的面
 
@@ -34,8 +35,8 @@
 
 注意：
 
-- 这不等于 F-027 全部完成
-- 也不等于 packaged WeCom / officialization / Windows 全部完成
+- 这不等于 Windows 线已完成
+- 也不等于 officialization 全部完成
 
 ### 3. macOS packaged diagnostics / runtime truth / first-click
 
@@ -47,6 +48,27 @@
 - packaged first-click 已能启动 server
 - `/api/status`、`/api/install/status`、`/api/diagnostics`、`/api/diagnostics/export` 都已在 fresh artifact 中可达
 - package-local `install-state.json`、`install.log`、`diagnostic-bundle.json` 已能真实生成
+- artifact 内已固定 `vendor/mac-openclaw/RUNTIME_TRUTH.json`
+
+### 4. packaged DingTalk / WeCom support closure
+
+当前最新 fresh packaged lineage：
+
+- artifact lineage：`gtclaw-mac-release-arm64-20260422-150245`
+- preserved handoff bundle：`/Users/eduardogan/Desktop/GHJProject/opensparrow-gptpro-handoff-20260422-1518-dingtalk-wecom-pass.zip`
+
+已确认：
+
+- DingTalk real `/api/install` → `completed`
+- WeCom real `/api/install` → `completed`
+- 两条 channel 的 `runtimeMode` 都是 `daemon`
+- `channelProbes.dingtalk.status = ok` 且 `ready = true`
+- `channelProbes.wecom.status = ok` 且 `ready = true`
+- `/api/install`、`/api/install/status`、`install-state.json`、`diagnostic-bundle.json`、`/api/diagnostics`、`/api/diagnostics/export` 已对同一条 packaged session 给出一致结论
+- packaged WeCom 当前已切到官方插件路线：`@wecom/wecom-openclaw-plugin`
+- bundled archive 已切到 `plugins/wecom-wecom-openclaw-plugin-2026.4.22.tgz`
+- 旧 `@sunnoy/wecom` packaged blocker 与 `unknown channel id: wecom` follow-on error 未在最新 fresh evidence 中复现
+- DingTalk 旧 `daemon unknown / gateway fallback` 假阳性 probe warning 未在最新 fresh evidence 中复现
 
 ## 当前实际可运行性
 
@@ -69,48 +91,35 @@
 
 - **可启动**：是
 - **P0 diagnostics / export / evidence**：是
-- **WeCom packaged support**：否，当前仍 blocked
-- **DingTalk packaged support**：否，当前未宣称 PASS
+- **WeCom packaged support**：是（latest fresh artifact）
+- **DingTalk packaged support**：是（latest fresh artifact）
+- **feature-level packaged channel closure**：是（基于同一轮 fresh evidence）
 
-## 当前最大的未解决问题
+## 当前主要剩余事项
 
-### P0：channel-specific evidence 仍待完成
+### 1. Windows-specific evidence 仍需独立推进
 
-已确认事实：
+当前已确认：
 
-- fresh artifact 已补齐 runtime truth manifest：`vendor/mac-openclaw/RUNTIME_TRUTH.json`
-- canonical runtime source 已固定为 `lib`
-- `lib/bin` 当前版本已对齐，不再允许 version drift 后继续出包
-- packaged diagnostics endpoints 已能导出证据
-- channel probe persistence 已进入 `/api/install`、`/api/install/status`、`install-state.json`、`diagnostic-bundle.json`、`/api/diagnostics`、`/api/diagnostics/export`
+- mac packaged channel closure 已完成
+- 这不能反向证明 Windows 已完成
+- `F-025-B` 仍应按 `blocked on Windows-specific evidence` 处理，直到 Windows 线拿到自己的 fresh proof
 
-当前尚未完成的是：
+### 2. GitHub tree 仍不是完整 runtime 复现面
 
-- fresh packaged WeCom channel-specific evidence
-- fresh packaged DingTalk channel-specific evidence
-- channels full closure / PASS 证明
+当前已确认：
 
-### 这意味着什么
+- GitHub 上可审代码、文档、spec、longrun
+- 但 bundled runtime 不在 GitHub tree 中
+- 因此真实 packaged rerun 仍需要本地 artifact / evidence bundle，而不是只靠 GitHub 浏览
 
-当前不是“再补一个 UI 文案”就能结束，而是需要：
+### 3. 当前收尾重点已从“证明 channels”转向“同步 truth / handoff / writeback”
 
-1. 用 fresh packaged artifact 跑 WeCom evidence
-2. 验证 `channelProbes.wecom` 是否进入 install-state / diagnostics export
-3. 在不暴露 secret 的前提下收集 package-local 证据
-4. 再决定是否进入 DingTalk evidence 阶段
+当前不是继续猜 channel blocker，而是：
 
-### P0：packaged mac diagnosis surface
-
-当前已经开始收口到以下 surface：
-
-- `GET /api/install/status`
-- `GET /api/diagnostics`
-- `GET /api/diagnostics/export`
-- package-local `install-state.json`
-- package-local `install.log`
-- package-local `diagnostic-bundle.json`
-
-这层的目标是把“安装卡住 / 服务停掉 / 版本不一致 / probe 异常”变成可读证据，而不是只看前端转圈。
+1. 把 fresh packaged DingTalk / WeCom truth 同步到 active docs / spec / longrun
+2. 保留 handoff bundle 供后续 Windows / GPT Pro 只读参考
+3. 继续把 Windows 线与当前 mac packaged/channel 线拆开处理
 
 ## 对 ChatGPT Pro 最重要的判断
 
@@ -120,10 +129,11 @@
 - F-031 root repo 最小前后端闭环已存在
 - F-035 packaged isolation + install stall hotfix 已有 fresh evidence
 - packaged runtime truth / first-click / diagnostics export 已有 fresh evidence
-- packaged mac 当前优先级仍是 **P0 diagnostics surface + channel-specific evidence**，不是直接宣称 channels full closure
+- latest packaged mac artifact 已完成 DingTalk / WeCom channel-specific closure
+- packaged WeCom 当前 authoritative route 是官方插件，不再是旧 `sunnoy-wecom` packaged blocker 口径
+- Windows 线必须单独拿自己的 truth inventory、test matrix、implementation 与 fresh evidence
 
 ### 未确认
 
-- 当前真实 packaged WeCom 端到端是否能 PASS
-- 当前真实 packaged DingTalk 端到端是否能 PASS
-- 旧 Notion 中是否还有未转写的决策或 release 口径
+- GitHub tree 之外是否还有未整理的旧 release / Notion 口径
+- Windows-specific surfaces 的真实验证闭环何时完成

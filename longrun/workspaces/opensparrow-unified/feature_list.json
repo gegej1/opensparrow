@@ -678,5 +678,34 @@
     "evidence_hint": "Mem0 MCP config + `mem0 status` + project-scoped list/search/get/update + imported memory batch + `codex exec` log showing Mem0 MCP retrieval",
     "risk": "medium",
     "passes": true
+  },
+  {
+    "id": "F-030",
+    "priority": 1,
+    "category": "packaging",
+    "component": "packaged-dingtalk-wecom-support-closure",
+    "description": "Close the packaged DingTalk / WeCom support promise on the latest macOS artifact lineage with same-session real install evidence, authoritative daemon runtime, consistent install/status/diagnostics/package-local facts, DingTalk probe/readiness closure, and a packaged WeCom route migrated to the official plugin without lowering true `F-014`'s bot-first floor.",
+    "depends_on": [
+      "F-014",
+      "F-026",
+      "F-027"
+    ],
+    "acceptance_criteria": [
+      "`specs/030-packaged-dingtalk-wecom-support-closure/{spec,plan,tasks}.md` freeze `F-030` as a standalone packaged support closure feature, keep `F-025-B` blocked on Windows-specific evidence, preserve true `F-014 = bot-first / Bot ID + Secret / callback 非默认 gate`, and require per-channel fresh packaged evidence rather than promise carryover.",
+      "Latest packaged lineage evidence shows DingTalk real `/api/install` completes with `runtimeMode=daemon`, `channelProbes.dingtalk.status=ok`, `ready=true`, and consistent facts across `/api/install`, `/api/install/status`, `/api/diagnostics`, `/api/diagnostics/export`, `install-state.json`, and `diagnostic-bundle.json`.",
+      "Latest packaged lineage evidence shows WeCom real `/api/install` completes with `runtimeMode=daemon`, `channelProbes.wecom.status=ok`, `ready=true`, and consistent facts across `/api/install`, `/api/install/status`, `/api/diagnostics`, `/api/diagnostics/export`, `install-state.json`, and `diagnostic-bundle.json`.",
+      "The packaged WeCom authoritative route is the official plugin `@wecom/wecom-openclaw-plugin` with bundled archive `wecom-wecom-openclaw-plugin-2026.4.22.tgz`, explicit plugin-entry enablement, and no reproduction of the old `@sunnoy/wecom` install-time blocker or `unknown channel id: wecom` follow-on error.",
+      "Facts-only closeout keeps `F-025-B` blocked, keeps `F-026` / `F-027` frozen, and treats the preserved handoff bundle as audit/reference evidence rather than a new authority source."
+    ],
+    "steps": [
+      "Freeze `F-030` as its own packaged DingTalk / WeCom support closure feature with per-channel gates, inadmissible evidence rules, and role separation.",
+      "Close DingTalk packaged implementation gaps by aligning plugin availability, profile-extension discovery, runtime-state stabilization, and diagnostics/package-local truth surfaces.",
+      "Close WeCom packaged implementation gaps by migrating the packaged route to the official plugin, gating channel config on plugin readiness, and preserving the bot-first mainline without promoting callback to a default gate.",
+      "Run same-session fresh packaged verification for DingTalk and WeCom on the latest artifact lineage, capturing `/api/install`, status, diagnostics/export, and package-local evidence under isolated homes.",
+      "Sync the resulting facts to active docs and longrun without reopening Windows, officialization, `F-026`, `F-027`, or true `F-014`."
+    ],
+    "evidence_hint": "Fresh packaged artifact lineage `gtclaw-mac-release-arm64-20260422-150245` + preserved Desktop bundle `opensparrow-gptpro-handoff-20260422-1518-dingtalk-wecom-pass.zip` + same-session DingTalk/WeCom install/status/diagnostics/package-local evidence",
+    "risk": "medium",
+    "passes": true
   }
 ]

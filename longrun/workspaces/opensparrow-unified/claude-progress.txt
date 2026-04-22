@@ -829,3 +829,73 @@
 - Next follow-up:
   - 若后续要处理 Windows、broader packaged docs parity、companion 正式支持、或 WeCom packaged runtime/plugin 线，必须另开 packet，不能 retroactively 扩写本轮 `F-027` closeout 边界。
 - Progress snapshot: `27/27 passing`; `F-025-B` remains blocked outside `F-027`.
+
+## Session 26 (F-030 packaged DingTalk / WeCom verified closeout)
+- Date: 2026-04-22
+- Goal: 基于 latest fresh packaged artifact、same-session DingTalk / WeCom live install evidence、以及 facts-only doc/longrun sync，把 `F-030` 正式写回长期事实层。
+- Selected feature id: `F-030`
+- Scope:
+  - 本轮吸收已完成的 packaged implementation / verification 结果，并同步 `docs/current-status.md`、`specs/030-packaged-dingtalk-wecom-support-closure/*`、`docs/runbooks/F-014-wecom-channel-integration.md`、`feature_list.json`、`claude-progress.txt`。
+  - 本轮不推进 Windows，不改写 `F-025-B = blocked on Windows-specific evidence`，不重开 `F-026` / `F-027`，也不把 true `F-014` 改写成 callback-first。
+- Root cause chain closed in this round:
+  - DingTalk packaged false-negative：plugin 安装虽成功，但旧探测链会在 daemon 刚恢复时读到 `daemon=unknown`，从而把 probe 写成 `gateway fallback runtime（daemon 未运行）` 一类假阳性 warning。
+  - WeCom packaged old blocker：旧 packaged route 围绕 `@sunnoy/wecom` community archive 展开，曾出现 install-time scanner blocker 与 `unknown channel id: wecom` follow-on error；当前 authoritative packaged route 已迁到官方插件。
+- Changes made:
+  - `ui/server.mjs`
+    - 新增 runtime-state stabilization retry，避免 DingTalk/WeCom probe 在 daemon 刚恢复时读到短暂 `unknown` 状态。
+    - packaged WeCom authoritative route 改为官方插件：`@wecom/wecom-openclaw-plugin` / `wecom-openclaw-plugin` entry。
+    - WeCom packaged config 现围绕 `plugins.entries.wecom-openclaw-plugin.enabled` 与 `channels.wecom.*` 的真实顺序收口。
+  - `scripts/build-usb-pack.sh`
+    - bundled WeCom archive 改为 `wecom-wecom-openclaw-plugin-2026.4.22.tgz`。
+  - Tests:
+    - 新增 `ui/tests/packaged-runtime-state-stability.test.mjs`
+    - 新增 `ui/tests/packaged-wecom-official-plugin.test.mjs`
+    - 更新 `ui/tests/install-helpers.test.mjs`
+  - Docs / longrun:
+    - `docs/current-status.md` 已改写为 latest packaged PASS truth，而不是旧 blocker 叙述。
+    - `specs/030-packaged-dingtalk-wecom-support-closure/{spec,plan,tasks}.md` 已同步 `2026-04-22` completion snapshot。
+    - `docs/runbooks/F-014-wecom-channel-integration.md` 已明确 `F-014` longrun 已 close，且当前 packaged authoritative plugin route 是官方插件。
+- Fresh packaged evidence basis:
+  - latest artifact lineage：`/tmp/p0-channel-recut-output-20260422-2/gtclaw-mac-release-arm64-20260422-150245/GTClaw-0.1.0-alpha-macOS-arm64`
+  - preserved handoff bundle：`/Users/eduardogan/Desktop/GHJProject/opensparrow-gptpro-handoff-20260422-1518-dingtalk-wecom-pass.zip`
+  - artifact 内已确认存在：
+    - `plugins/openclaw-china-channels-2026.3.29.tgz`
+    - `plugins/wecom-wecom-openclaw-plugin-2026.4.22.tgz`
+    - `vendor/mac-openclaw/RUNTIME_TRUTH.json`
+- DingTalk fresh verdict:
+  - real `/api/install` → `HTTP 200`
+  - `installStatus.status = completed`
+  - `runtimeMode = daemon`
+  - `channelProbes.dingtalk.status = ok`
+  - `channelProbes.dingtalk.ready = true`
+  - `channelProbes.dingtalk.daemon = running`
+  - `/api/install`、`/api/install/status`、`install-state.json`、`diagnostic-bundle.json`、`/api/diagnostics`、`/api/diagnostics/export` 已对同一 DingTalk session 给出一致结论
+  - 旧 `unknown channel id: dingtalk` 与 `daemon unknown / gateway fallback` 假阳性未复现
+- WeCom fresh verdict:
+  - real `/api/install` → `HTTP 200`
+  - `installStatus.status = completed`
+  - `runtimeMode = daemon`
+  - `channelProbes.wecom.status = ok`
+  - `channelProbes.wecom.ready = true`
+  - `channelProbes.wecom.daemon = running`
+  - checks / summary 已覆盖 plugin entry enabled、`plugins.allow` 显式包含 `wecom-openclaw-plugin`、bot-first credentials 写入、DM policy open、群聊处理与 requireMention 已启用
+  - `/api/install`、`/api/install/status`、`install-state.json`、`diagnostic-bundle.json`、`/api/diagnostics`、`/api/diagnostics/export` 已对同一 WeCom session 给出一致结论
+  - 旧 `@sunnoy/wecom` scanner blocker 与 `unknown channel id: wecom` follow-on error 未复现
+- Closeout recorded:
+  - `F-030` 已以 fresh packaged evidence 满足 feature-level PASS threshold。
+  - DingTalk 与 WeCom 当前都不是 `DECISION REQUIRED / EVIDENCE GAP / BLOCKED`，而是各自基于 same-session packaged evidence 的 `PASS`。
+  - 当前 packaged WeCom authoritative route 是官方插件；旧 `@sunnoy/wecom` packaged blocker 仅作为历史归因保留，不再是现行 truth。
+  - 本轮 closeout 不会把 mac packaged PASS 倒灌到 Windows；`F-025-B` 继续保持 `blocked on Windows-specific evidence`。
+- Validation:
+  - `node --check ui/server.mjs` → PASS
+  - `node --test ui/tests/install-helpers.test.mjs ui/tests/packaged-runtime-state-stability.test.mjs ui/tests/packaged-wecom-official-plugin.test.mjs ui/tests/packaged-plugin-profile-sync.test.mjs ui/tests/packaged-dingtalk-install-gate.test.mjs ui/tests/packaged-wecom-install-gate.test.mjs ui/tests/packaged-channel-probe-diagnostics.test.mjs` → PASS
+  - `bash -n scripts/build-usb-pack.sh` → PASS
+  - same-session saved evidence review confirms DingTalk / WeCom both satisfy `completed + daemon + channelProbes.*.status=ok + ready=true`
+  - `python3 -m json.tool longrun/workspaces/opensparrow-unified/feature_list.json >/dev/null` → PASS
+  - `python3 longrun/scripts/progress_report.py longrun/workspaces/opensparrow-unified/feature_list.json` → PASS
+- Current status:
+  - latest packaged mac artifact 已完成 DingTalk / WeCom support closure。
+  - 当前主要剩余工作是 docs / handoff / Windows 分线，不再是 mac packaged channel blocker。
+- Next follow-up:
+  - 若后续出现新的 packaged regression，必须基于新的 artifact lineage 与 fresh evidence 另开 packet；不要回退到旧 `@sunnoy/wecom` packaged blocker 叙事。
+  - Windows 线继续单独推进，不得借 `F-030` 的 mac packaged PASS 自动 closeout。

@@ -8,7 +8,12 @@
 
 - 哪些链路已经在代码与自动化测试层面落地；
 - 哪些链路已经在离线插件安装层面被验证；
-- 哪些步骤仍然需要真实企业微信凭据做人工补证；其中当前业务主链是企业微信智能机器人 API / 长连接，`Bot ID + Secret` 是最小真实入口，callback 仅在实际业务依赖时另列扩展验证。
+- 哪些步骤在新环境中如需复现时，仍应按真实企业微信凭据重新补证；其中当前业务主链是企业微信智能机器人 API / 长连接，`Bot ID + Secret` 是最小真实入口，callback 仅在实际业务依赖时另列扩展验证。
+
+补充说明：
+
+- `F-014` 已在 longrun 中完成 verified closeout；
+- 本 runbook 当前主要承担 bot-first floor、复现步骤、以及与 packaged `F-030` 的边界说明，不表示 `F-014` 仍未通过。
 
 ## 当前实现面
 
@@ -80,7 +85,7 @@ node --test ui/public/wecom-helpers.test.mjs
 node --check ui/server.mjs
 ```
 
-### 3. 企微插件本地归档可用性
+### 4. 企微插件本地归档可用性
 
 相关已有证据见：
 
@@ -89,26 +94,24 @@ node --check ui/server.mjs
 
 已知记录：
 
-- 本地 `sunnoy-wecom-3.0.0.tgz` 可安装
-- 随后 `config set channels.wecom.enabled true --strict-json` 可执行
+- 当前 packaged authoritative route 已切到官方插件：`@wecom/wecom-openclaw-plugin`
+- current bundled archive 为 `wecom-wecom-openclaw-plugin-2026.4.22.tgz`
+- 历史上的 `sunnoy-wecom-3.0.0.tgz` 安装成功记录只保留为旧链路证据，不再是当前 packaged authority
 
-## 仍需人工补证的内容
+## 已接受的真实渠道补证
 
-### 主链必补证
+当前 `F-014` passing 所依赖的真实渠道层证据已经被 Commander 接受：
 
-以下内容是当前 `F-014` 的真实补证主目标：
+1. 真实 `Bot ID + Secret` 已挂载成功；
+2. fresh probe 显示 `status=ok`、`ready=true`、`daemon=running`；
+3. 至少一次真实消息收发 / 对话成功已完成。
 
-1. UI 安装向导以真实企业微信 `Bot ID + Secret` 完成一次真实安装
-2. 至少一次真实消息收发 / 对话成功（单聊或群聊均可）
+这意味着：
 
-### 扩展链路按业务另行补证
+- `F-014` 本身当前不是未完成项；
+- 后续若在新环境中复现，只需要沿同样的 bot-first floor 重跑，不要把 callback 反写成默认 gate。
 
-以下内容保留为增强链路或特定场景链路，不再作为 `F-014` 默认必经门槛：
-
-1. 自建应用增强出站链路（CorpId / CorpSecret / AgentId）
-2. 回调入站链路（`/wecom/callback`）
-
-## 推荐人工补证步骤
+## 如需在新环境复现，推荐按以下步骤补证
 
 ### A. 安装前检查
 
@@ -166,11 +169,11 @@ http://你的IP地址:18889/wecom/callback
 
 ## 通过判定建议
 
-只有在下面两层都具备证据时，才建议把 `F-014` 写成通过：
+若未来在新环境里需要重新做 `F-014` 级别的复现，只有在下面两层都具备证据时，才建议再次写“通过”：
 
 1. **自动验证层**：helper 测试 + 服务端语法检查 + 插件安装链路稳定
 2. **真实渠道层**：带真实企业微信 `Bot ID + Secret` 的一次真实 UI 安装，并至少完成一次真实消息收发 / 对话成功
 
 若当前业务额外依赖自建应用增强链路或 callback，再把相应补证追加为扩展通过条件；它们不是默认的主链 passing 门槛。
 
-在缺少第 2 层前，不要伪造“企微 E2E 已通过”的长期状态。
+当前长期状态已经是通过；这里保留的是未来复现时的判定标准，而不是表示本 feature 仍未完成。

@@ -390,6 +390,7 @@ bundle_plugin_archives() {
     log_step "Bundling offline channel plugin archives"
 
     local plugins_dst="${STAGING_DIR}/plugins"
+    local wecom_version="2026.4.22"
     local npm_bin
     if ! npm_bin="$(resolve_npm_bin)"; then
         log_error "npm not found; cannot bundle offline channel plugins"
@@ -397,12 +398,12 @@ bundle_plugin_archives() {
     fi
 
     mkdir -p "$plugins_dst"
-    rm -f "$plugins_dst"/openclaw-china-channels-*.tgz "$plugins_dst"/sunnoy-wecom-*.tgz
+    rm -f "$plugins_dst"/openclaw-china-channels-*.tgz "$plugins_dst"/wecom-wecom-openclaw-plugin-*.tgz
 
     (
         cd "$plugins_dst"
         "$npm_bin" pack @openclaw-china/channels >/dev/null
-        "$npm_bin" pack @sunnoy/wecom@3.0.0 >/dev/null
+        "$npm_bin" pack @wecom/wecom-openclaw-plugin@${wecom_version} >/dev/null
     )
 
     log_done "Offline plugin archives bundled"

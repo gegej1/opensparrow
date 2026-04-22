@@ -3,6 +3,16 @@
 **Feature ID**: `F-030`  
 **Dispatch rule**: channel-specific gate、packaged-artifact-first、facts-only closeout。禁止把 officialization、Windows、`F-027` rewrite、true `F-014` rewrite、callback 默认 gate、或 broad cleanup 混入本 feature。
 
+## `2026-04-22` 完成快照
+
+- `T030-SPEC-1`：已完成。
+- `T030-REV-1`：已完成。
+- `T030-A-1 / A-2 / A-3`：已完成。
+- `T030-B-1 / B-2`：已完成；DingTalk packaged route 已补齐真实输入、install truth、runtime-state 稳定 read-back 与 diagnostics/package-local 一致性。
+- `T030-C-1 / C-2`：已完成；WeCom packaged route 已迁到官方插件并完成 bot-first packaged proof。
+- `T030-D-1 / D-2 / D-3`：已完成；DingTalk / WeCom 均已拿到 `PASS` verdict，feature-level gate 已满足。
+- `T030-E-1`：本轮执行 docs / longrun facts-only writeback。
+
 ## 派工前统一约束
 
 - `F-030` 是新 feature，不是 `F-027` 的补丁注释；
@@ -16,6 +26,7 @@
 - `PKT-030-E` 只能做 facts-only closeout / longrun writeback；
 - noisy workspace 下必须做 packet attribution，不能把整仓 dirty state 视为当前 packet 越界；
 - `B/C` 默认 serial；只有 Commander 明确 disjoint write-set 才允许并行。
+- 当前 latest packaged lineage 已让 `T030-D-1` 与 `T030-D-2` 双双得到 `PASS`，但这不自动放开 Windows 线或 officialization 线。
 
 ## Spec Freeze
 

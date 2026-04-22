@@ -27,15 +27,15 @@ test('copyDirectoryEntries copies files and nested directories', () => {
 test('findBundledPluginArchive resolves scoped package tarballs', () => {
   const root = makeTempDir()
   fs.writeFileSync(path.join(root, 'openclaw-china-channels-2026.3.29.tgz'), 'x', 'utf8')
-  fs.writeFileSync(path.join(root, 'sunnoy-wecom-3.0.0.tgz'), 'x', 'utf8')
+  fs.writeFileSync(path.join(root, 'wecom-wecom-openclaw-plugin-2026.4.22.tgz'), 'x', 'utf8')
 
   assert.equal(
     path.basename(findBundledPluginArchive(root, '@openclaw-china/channels')),
     'openclaw-china-channels-2026.3.29.tgz',
   )
   assert.equal(
-    path.basename(findBundledPluginArchive(root, '@sunnoy/wecom@3.0.0')),
-    'sunnoy-wecom-3.0.0.tgz',
+    path.basename(findBundledPluginArchive(root, '@wecom/wecom-openclaw-plugin@2026.4.22')),
+    'wecom-wecom-openclaw-plugin-2026.4.22.tgz',
   )
   assert.equal(findBundledPluginArchive(root, '@missing/plugin'), null)
 })
