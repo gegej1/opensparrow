@@ -55,9 +55,19 @@ resolve_free_port() {
 
 clear_quarantine_if_possible() {
   local target="$1"
-  if command -v xattr >/dev/null 2>&1; then
-    xattr -dr com.apple.quarantine "$target" 2>/dev/null || true
+  if ! command -v xattr >/dev/null 2>&1; then
+    return 0
   fi
+  if is_git_checkout "$target"; then
+    xattr -d com.apple.quarantine "$target" 2>/dev/null || true
+    return 0
+  fi
+  xattr -dr com.apple.quarantine "$target" 2>/dev/null || true
+}
+
+is_git_checkout() {
+  local target="$1"
+  [[ -e "$target/.git" ]]
 }
 
 verify_runtime_cpu_arch() {
