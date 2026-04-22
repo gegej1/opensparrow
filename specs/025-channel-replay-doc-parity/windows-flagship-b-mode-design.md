@@ -86,6 +86,48 @@ GPT Pro 做 Windows 的**主基线**应该看这里：
    - commit：`aa4403ac0fc07bd1563440906a2f1025396b9fed`
    - remote：`origin/feature/p0-packaged-mac-diagnostics`
 
+### 3.1.1 重要说明：如果 GPT Pro 无法访问本地 zip
+
+如果 GPT Pro 所在环境**不能直接访问你的本地路径**，那么上面的 zip 和目录路径只能作为你本机的交接锚点，**不能假设 GPT Pro 能直接读取**。
+
+因此，这份 PRD 里同时内嵌一份最小必要证据摘要，确保即使只看 Git 仓库，GPT Pro 也能拿到当前最关键的 packaged 事实，不会因为本地 zip 不可见而断层。
+
+### 3.1.2 内嵌证据摘要（可替代直接读 zip）
+
+下面这些事实已经在最新成功证据包中成立，可作为 GPT Pro 做 Windows 设计时的只读方法论参考：
+
+1. latest packaged mac artifact 上，DingTalk 和 WeCom 都已经完成 real `/api/install`。
+2. DingTalk latest packaged truth：
+   - `installStatus.status = completed`
+   - `runtimeMode = daemon`
+   - `channelProbes.dingtalk.status = ok`
+   - `channelProbes.dingtalk.ready = true`
+3. WeCom latest packaged truth：
+   - `installStatus.status = completed`
+   - `runtimeMode = daemon`
+   - `channelProbes.wecom.status = ok`
+   - `channelProbes.wecom.ready = true`
+4. 这两条 channel 的事实在以下面之间是一致的：
+   - `/api/install`
+   - `/api/install/status`
+   - `install-state.json`
+   - `diagnostic-bundle.json`
+   - `/api/diagnostics`
+   - `/api/diagnostics/export`
+5. packaged WeCom 当前 authoritative route 已经不是旧 `@sunnoy/wecom` packaged blocker，而是官方插件路线：
+   - plugin package：`@wecom/wecom-openclaw-plugin`
+   - bundled archive：`wecom-wecom-openclaw-plugin-2026.4.22.tgz`
+   - plugin entry id：`wecom-openclaw-plugin`
+6. 这轮成功的关键方法论不是“企微或钉钉本身通过了”，而是：
+   - install truth
+   - diagnostics truth
+   - package-local truth
+   - probe truth
+   - runtime truth
+   都必须描述同一份状态
+
+如果 GPT Pro 不能读本地 zip，就直接以这段摘要 + 对应 Git 分支/提交为准。
+
 ### 3.2 次优先：WeCom 历史堵塞演进包
 
 如果 GPT Pro 需要理解“一个 channel 是怎么从 blocker 变成 pass 的”，可以再看：
