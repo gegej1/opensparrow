@@ -5,6 +5,15 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${script_dir}/lib/export-common.sh"
 
+readonly REQUIRED_PACKAGED_RUNTIME_FILES=(
+  'ui/server.mjs'
+  'ui/install-helpers.mjs'
+  'ui/lib/model-routing-config.mjs'
+  'ui/lib/openai-provider.mjs'
+  'scripts/model-routing/lib/custom-plugin-routing.mjs'
+  'vendor/mac-openclaw/RUNTIME_TRUTH.json'
+)
+
 workspace_dir="$(usb_exec_workspace_dir)"
 project_root="$(usb_project_root "$workspace_dir")"
 version="$(tr -d '[:space:]' < "${project_root}/VERSION")"
@@ -17,13 +26,51 @@ case "$arch" in
 esac
 
 stage_dir="${project_root}/dist/usb-pack/opensparrow-${version}"
-export_root="${project_root}/dist/handoff/opensparrow-mac-ui-full-${artifact_arch}-$(date +%Y%m%d-%H%M%S)"
+output_base="${GTCLAW_RELEASE_OUTPUT_DIR:-${project_root}/dist/handoff}"
+export_root="${output_base}/gtclaw-mac-release-${artifact_arch}-$(date +%Y%m%d-%H%M%S)"
 archive_path="${export_root}.zip"
-artifact_dir="${export_root}/opensparrow-${version}-mac-ui-${artifact_arch}"
+artifact_dir="${export_root}/GTClaw-${version}-macOS-${artifact_arch}"
 node_version="$(usb_vendor_node_version "$project_root")"
 openclaw_version="$(usb_vendor_openclaw_version "$project_root")"
 
-mkdir -p "${project_root}/dist/handoff"
+require_artifact_file() {
+  local relative_path="$1"
+  if [[ ! -f "${artifact_dir}/${relative_path}" ]]; then
+    echo "[ERROR] Required packaged runtime dependency missing from artifact: ${relative_path}" >&2
+    exit 1
+  fi
+}
+
+assert_artifact_runtime_arch_truth() {
+  local node_bin="${artifact_dir}/vendor/mac-openclaw/bin/node"
+  local expected_slice=""
+  local file_output=""
+
+  if [[ ! -x "$node_bin" ]]; then
+    echo "[ERROR] artifact node architecture guard failed: runtime node missing or not executable: ${node_bin}" >&2
+    exit 1
+  fi
+
+  if ! command -v file >/dev/null 2>&1; then
+    echo "[ERROR] artifact node architecture guard failed: 'file' command is unavailable" >&2
+    exit 1
+  fi
+
+  case "$artifact_arch" in
+    arm64) expected_slice='arm64' ;;
+    x64) expected_slice='x86_64' ;;
+    *) echo "[ERROR] artifact node architecture guard failed: unsupported artifact arch ${artifact_arch}" >&2; exit 1 ;;
+  esac
+
+  file_output="$(file "$node_bin")"
+  if [[ "$file_output" != *"$expected_slice"* ]]; then
+    echo "[ERROR] artifact node architecture guard failed: expected runtime slice '${expected_slice}' in ${node_bin}" >&2
+    echo "[ERROR] actual: ${file_output}" >&2
+    exit 1
+  fi
+}
+
+mkdir -p "$output_base"
 
 echo "[INFO] Building fresh Mac UI-first USB pack..."
 bash "${project_root}/scripts/build-usb-pack.sh" --platform mac
@@ -36,16 +83,29 @@ fi
 usb_prepare_export_root "$export_root" "$archive_path"
 mkdir -p "$artifact_dir"
 rsync -a --delete "${stage_dir}/" "$artifact_dir/"
+find "$artifact_dir" -type d \
+  \( -name '.gtclaw-state' \
+  -o -name '.openclaw' \
+  -o -name '.openclaw-*' \) \
+  -print0 | while IFS= read -r -d '' removed_dir; do
+    rm -rf "$removed_dir"
+    echo "[INFO] Removed package-local state dir: ${removed_dir#${artifact_dir}/}"
+  done
+for relative_path in "${REQUIRED_PACKAGED_RUNTIME_FILES[@]}"; do
+  require_artifact_file "$relative_path"
+done
+assert_artifact_runtime_arch_truth
 
 cat > "${export_root}/README-FIRST.txt" <<README
-OpenSparrow Mac UI-first packaged release
-=========================================
+GTClaw macOS release
+====================
 
-本次导出只覆盖今晚的 Mac UI-first 首发 cut：
+本次导出只覆盖当前对外 macOS release cut：
 
 - 唯一官方 first-click path：根目录 01-开始部署.command
-- 今晚正式支持渠道：飞书、钉钉
-- 企业微信不纳入今晚 packaged outward promise
+- 今晚正式支持渠道：飞书、钉钉、企业微信
+- Dashboard 内含 GTClaw API 配置与模型智能路由
+- 企业微信 packaged 路线使用随包官方插件归档
 - mac/run-openclaw-usb.command 与 mac/harden-openclaw-usb.command 仅作为 advanced compatibility / handoff
 - companion 不纳入今晚正式支持面
 
@@ -54,9 +114,11 @@ OpenSparrow Mac UI-first packaged release
 - macOS arch: ${artifact_arch}
 - bundled Node: v${node_version}
 - bundled OpenClaw: ${openclaw_version}
+- default package state dir: .gtclaw-state/
+- default package profile: gtclaw-portable
 
 建议使用方式：
-1. 进入 opensparrow-${version}-mac-ui-${artifact_arch}/
+1. 进入 GTClaw-${version}-macOS-${artifact_arch}/
 2. 双击 01-开始部署.command
 3. 在浏览器安装向导中完成飞书 / 钉钉配置
 
@@ -73,6 +135,6 @@ usb_write_checksums "$export_root"
   fi
 )
 
-echo "[DONE] Mac UI-first candidate created: $export_root"
+echo "[DONE] macOS release folder created: $export_root"
 echo "[DONE] Archive created: $archive_path"
 echo "[INFO] Packaged artifact dir: $artifact_dir"

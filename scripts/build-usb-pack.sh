@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# build-usb-pack.sh — Build the OpenSparrow USB deliverable pack
+# build-usb-pack.sh — Build the GTClaw macOS/USB deliverable pack
 #
 # Usage:
 #   scripts/build-usb-pack.sh [--platform mac|windows|all] [--skip-skills]
@@ -48,6 +48,16 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 PLATFORM="all"
 SKIP_SKILLS=false
 STAGING_DIR=""   # set after version is read
+MAC_RUNTIME_LIB_VERSION=""
+MAC_RUNTIME_BIN_VERSION=""
+MAC_RUNTIME_NODE_ARCHITECTURES=""
+readonly REQUIRED_PACKAGED_RUNTIME_FILES=(
+    'ui/server.mjs'
+    'ui/install-helpers.mjs'
+    'ui/lib/model-routing-config.mjs'
+    'ui/lib/openai-provider.mjs'
+    'scripts/model-routing/lib/custom-plugin-routing.mjs'
+)
 
 # ---------------------------------------------------------------------------
 # Parse arguments
@@ -109,6 +119,174 @@ read_version() {
     log_info "Version: ${_C_BOLD}${VERSION}${_C_RESET}"
 }
 
+read_package_version() {
+    local package_json="$1"
+    if [[ ! -f "$package_json" ]]; then
+        return 1
+    fi
+    sed -nE 's/.*"version": "([^"]+)".*/\1/p' "$package_json" | head -n 1
+}
+
+read_mach_binary_description() {
+    local binary_path="$1"
+    if ! command -v file >/dev/null 2>&1; then
+        log_error "mac runtime architecture guard failed: 'file' command is unavailable"
+        exit 1
+    fi
+    file "$binary_path"
+}
+
+extract_mach_architectures() {
+    local file_output="$1"
+    printf '%s\n' "$file_output" | grep -Eo 'arm64|x86_64' | awk '!seen[$0]++' | paste -sd, -
+}
+
+assert_mac_runtime_version_truth() {
+    if [[ "$PLATFORM" == "windows" ]]; then
+        return 0
+    fi
+
+    local lib_pkg="${PROJECT_ROOT}/vendor/mac-openclaw/lib/node_modules/openclaw/package.json"
+    local bin_pkg="${PROJECT_ROOT}/vendor/mac-openclaw/bin/node_modules/openclaw/package.json"
+    local lib_version=""
+    local bin_version=""
+
+    [[ -f "$lib_pkg" ]] && lib_version="$(read_package_version "$lib_pkg")"
+    [[ -f "$bin_pkg" ]] && bin_version="$(read_package_version "$bin_pkg")"
+
+    if [[ -z "$lib_version" ]]; then
+        log_error "mac runtime truth guard failed: missing canonical lib runtime package at ${lib_pkg}"
+        exit 1
+    fi
+
+    if [[ -z "$bin_version" ]]; then
+        log_error "mac runtime truth guard failed: missing bin runtime package at ${bin_pkg}"
+        exit 1
+    fi
+
+    if [[ "$lib_version" != "$bin_version" ]]; then
+        log_error "mac runtime version drift guard failed: lib=${lib_version}, bin=${bin_version}"
+        log_error "Fix bundled runtime truth before packaging; do not ship split-brain mac artifacts."
+        exit 1
+    fi
+
+    MAC_RUNTIME_LIB_VERSION="$lib_version"
+    MAC_RUNTIME_BIN_VERSION="$bin_version"
+    log_info "mac runtime truth: lib/node_modules/openclaw=${lib_version}"
+    log_info "mac runtime truth: bin/node_modules/openclaw=${bin_version}"
+}
+
+assert_mac_runtime_arch_truth() {
+    if [[ "$PLATFORM" == "windows" ]]; then
+        return 0
+    fi
+
+    local node_bin="${PROJECT_ROOT}/vendor/mac-openclaw/bin/node"
+    local host_arch
+    local expected_slice
+    local file_output
+    local arch_list
+
+    if [[ ! -x "$node_bin" ]]; then
+        log_error "mac runtime architecture guard failed: missing executable runtime node at ${node_bin}"
+        exit 1
+    fi
+
+    host_arch="$(uname -m)"
+    case "$host_arch" in
+        arm64|x86_64)
+            expected_slice="$host_arch"
+            ;;
+        *)
+            log_error "mac runtime architecture guard failed: unsupported host arch '${host_arch}'"
+            exit 1
+            ;;
+    esac
+
+    file_output="$(read_mach_binary_description "$node_bin")"
+    if [[ "$file_output" != *"Mach-O"* ]]; then
+        log_error "mac runtime architecture guard failed: expected a Mach-O runtime binary at ${node_bin}"
+        log_error "actual: ${file_output}"
+        exit 1
+    fi
+
+    if [[ "$file_output" != *"$expected_slice"* ]]; then
+        log_error "mac runtime architecture guard failed: expected runtime slice '${expected_slice}' in ${node_bin}"
+        log_error "actual: ${file_output}"
+        exit 1
+    fi
+
+    arch_list="$(extract_mach_architectures "$file_output")"
+    if [[ -z "$arch_list" ]]; then
+        log_error "mac runtime architecture guard failed: unable to parse runtime node architectures"
+        log_error "actual: ${file_output}"
+        exit 1
+    fi
+
+    MAC_RUNTIME_NODE_ARCHITECTURES="$arch_list"
+    log_info "mac runtime node: ${file_output}"
+}
+
+require_packaged_file() {
+    local relative_path="$1"
+    if [[ ! -f "${PROJECT_ROOT}/${relative_path}" ]]; then
+        log_error "Required packaged runtime dependency missing: ${relative_path}"
+        exit 1
+    fi
+}
+
+require_staged_packaged_file() {
+    local relative_path="$1"
+    if [[ ! -f "${STAGING_DIR}/${relative_path}" ]]; then
+        log_error "Required packaged runtime dependency missing from staged pack: ${relative_path}"
+        exit 1
+    fi
+}
+
+verify_required_packaged_source_files() {
+    local relative_path
+    for relative_path in "${REQUIRED_PACKAGED_RUNTIME_FILES[@]}"; do
+        require_packaged_file "$relative_path"
+    done
+}
+
+verify_required_staged_packaged_source_files() {
+    local relative_path
+    for relative_path in "${REQUIRED_PACKAGED_RUNTIME_FILES[@]}"; do
+        require_staged_packaged_file "$relative_path"
+    done
+}
+
+emit_mac_runtime_truth_manifest() {
+    if [[ "$PLATFORM" == "windows" ]]; then
+        return 0
+    fi
+
+    local manifest_path="${STAGING_DIR}/vendor/mac-openclaw/RUNTIME_TRUTH.json"
+    local arch_json=""
+    local arch_item
+
+    IFS=',' read -r -a _arch_items <<< "$MAC_RUNTIME_NODE_ARCHITECTURES"
+    for arch_item in "${_arch_items[@]}"; do
+        [[ -n "$arch_json" ]] && arch_json+=", "
+        arch_json+="\"${arch_item}\""
+    done
+
+    mkdir -p "$(dirname "$manifest_path")"
+    cat > "$manifest_path" <<EOF
+{
+  "platform": "mac",
+  "canonicalRuntimeSource": "lib",
+  "libOpenclawVersion": "${MAC_RUNTIME_LIB_VERSION}",
+  "binOpenclawVersion": "${MAC_RUNTIME_BIN_VERSION}",
+  "nodeBinaryArchitectures": [${arch_json}],
+  "versionConsistent": true
+}
+EOF
+    require_staged_packaged_file 'vendor/mac-openclaw/RUNTIME_TRUTH.json'
+    log_info "Emitted mac runtime truth manifest: vendor/mac-openclaw/RUNTIME_TRUTH.json"
+}
+
 # ---------------------------------------------------------------------------
 # Step: Prepare staging directory
 # ---------------------------------------------------------------------------
@@ -144,6 +322,7 @@ rsyncp() {
 # ---------------------------------------------------------------------------
 copy_common() {
     log_step "Copying common files"
+    verify_required_packaged_source_files
 
     # a. VERSION and README.md → staging root
     # README.md may be overwritten later with a packaged release-facing version.
@@ -151,32 +330,47 @@ copy_common() {
     cp "${PROJECT_ROOT}/VERSION"    "${STAGING_DIR}/VERSION"
     cp "${PROJECT_ROOT}/README.md"  "${STAGING_DIR}/README.md"
 
-    # b. ui/ → ui/  (exclude node_modules)
+    # b. ui/ → ui/  (exclude dev/test-only files)
     log_info "Copying ui/"
     rsyncp "${PROJECT_ROOT}/ui" "${STAGING_DIR}/ui" \
         --exclude='node_modules' \
+        --exclude='tests' \
+        --exclude='*.test.mjs' \
         --exclude='.DS_Store'
 
-    # c. docs/usb-pack/ → docs/
-    log_info "Copying docs/usb-pack/ → docs/"
-    rsyncp "${PROJECT_ROOT}/docs/usb-pack" "${STAGING_DIR}/docs"
+    # c. release-facing docs only
+    log_info "Copying release-facing docs"
+    mkdir -p "${STAGING_DIR}/docs"
+    for doc_file in INSTALL.md SOP.md; do
+        if [[ -f "${PROJECT_ROOT}/docs/usb-pack/${doc_file}" ]]; then
+            cp "${PROJECT_ROOT}/docs/usb-pack/${doc_file}" "${STAGING_DIR}/docs/${doc_file}"
+        else
+            log_warn "docs/usb-pack/${doc_file} not found — skipping"
+        fi
+    done
 
-    if [[ -f "${PROJECT_ROOT}/docs/release-checklist.md" ]]; then
-        log_info "Copying docs/release-checklist.md → docs/release-checklist.md"
-        cp "${PROJECT_ROOT}/docs/release-checklist.md" "${STAGING_DIR}/docs/release-checklist.md"
-    fi
-
-    # d. docs/runbooks/ → runbooks/
-    log_info "Copying docs/runbooks/ → runbooks/"
-    if [[ -d "${PROJECT_ROOT}/docs/runbooks" ]]; then
-        rsyncp "${PROJECT_ROOT}/docs/runbooks" "${STAGING_DIR}/runbooks"
+    # d. release-facing runbook only
+    log_info "Copying release-facing runbook"
+    mkdir -p "${STAGING_DIR}/runbooks"
+    if [[ -f "${PROJECT_ROOT}/docs/runbooks/F-005-ui-install-reset.md" ]]; then
+        cp "${PROJECT_ROOT}/docs/runbooks/F-005-ui-install-reset.md" "${STAGING_DIR}/runbooks/F-005-ui-install-reset.md"
     else
-        log_warn "docs/runbooks/ not found — skipping"
+        log_warn "docs/runbooks/F-005-ui-install-reset.md not found — skipping"
     fi
 
     # e. scripts/openclaw-usb/ → scripts/openclaw-usb/
     log_info "Copying scripts/openclaw-usb/"
     rsyncp "${PROJECT_ROOT}/scripts/openclaw-usb" "${STAGING_DIR}/scripts/openclaw-usb"
+
+    # e2. scripts/model-routing/ → scripts/model-routing/
+    # F-034 live router runtime imports this tree at package runtime.
+    if [[ -d "${PROJECT_ROOT}/scripts/model-routing" ]]; then
+        log_info "Copying scripts/model-routing/"
+        rsyncp "${PROJECT_ROOT}/scripts/model-routing" "${STAGING_DIR}/scripts/model-routing" \
+            --exclude='.DS_Store'
+    else
+        log_warn "scripts/model-routing/ not found — smart routing runtime may be incomplete"
+    fi
 
     # f. skills/openclaw-local-feishu-usb/ → skills/openclaw-local-feishu-usb/
     log_info "Copying skills/openclaw-local-feishu-usb/"
@@ -197,6 +391,7 @@ copy_common() {
         log_warn "superpowers/ not found — skipping"
     fi
 
+    verify_required_staged_packaged_source_files
     log_done "Common files copied"
 }
 
@@ -222,10 +417,15 @@ copy_skills() {
     log_info "Syncing 424 MB / 60k+ files — this may take a minute…"
     mkdir -p "$skills_dst"
 
+    # In non-interactive runs, keep output quiet so automation/log review stays usable.
+    if [[ ! -t 1 ]]; then
+        rsync -a --delete \
+            --exclude='.DS_Store' \
+            "${skills_src}/" "${skills_dst}/"
     # Use --info=progress2 for a single-line progress indicator; fall back
     # gracefully if this rsync version doesn't support it.
-    if rsync --info=progress2 --version &>/dev/null 2>&1 && \
-       rsync --info=progress2 -a --dry-run "${skills_src}/" "${skills_dst}/" &>/dev/null 2>&1; then
+    elif rsync --info=progress2 --version &>/dev/null 2>&1 && \
+         rsync --info=progress2 -a --dry-run "${skills_src}/" "${skills_dst}/" &>/dev/null 2>&1; then
         rsync -a --delete \
             --info=progress2 \
             --exclude='.DS_Store' \
@@ -266,6 +466,7 @@ bundle_plugin_archives() {
     log_step "Bundling offline channel plugin archives"
 
     local plugins_dst="${STAGING_DIR}/plugins"
+    local wecom_version="2026.4.22"
     local npm_bin
     if ! npm_bin="$(resolve_npm_bin)"; then
         log_error "npm not found; cannot bundle offline channel plugins"
@@ -273,12 +474,12 @@ bundle_plugin_archives() {
     fi
 
     mkdir -p "$plugins_dst"
-    rm -f "$plugins_dst"/openclaw-china-channels-*.tgz "$plugins_dst"/sunnoy-wecom-*.tgz
+    rm -f "$plugins_dst"/openclaw-china-channels-*.tgz "$plugins_dst"/wecom-wecom-openclaw-plugin-*.tgz
 
     (
         cd "$plugins_dst"
         "$npm_bin" pack @openclaw-china/channels >/dev/null
-        "$npm_bin" pack @sunnoy/wecom@3.0.0 >/dev/null
+        "$npm_bin" pack @wecom/wecom-openclaw-plugin@${wecom_version} >/dev/null
     )
 
     log_done "Offline plugin archives bundled"
@@ -295,8 +496,10 @@ copy_mac() {
     if [[ -d "$vendor_src" ]]; then
         log_info "Copying vendor/mac-openclaw/"
         rsyncp "$vendor_src" "${STAGING_DIR}/vendor/mac-openclaw"
+        emit_mac_runtime_truth_manifest
     else
-        log_warn "vendor/mac-openclaw/ not found — skipping"
+        log_error "vendor/mac-openclaw/ not found — cannot build packaged mac artifact"
+        exit 1
     fi
 
     # platforms/mac/wrappers/* → mac/
@@ -379,6 +582,43 @@ fix_permissions() {
 }
 
 # ---------------------------------------------------------------------------
+# Step: Strip runtime state and local machine residue from the pack
+# ---------------------------------------------------------------------------
+strip_runtime_state() {
+    log_step "Stripping runtime state and local residue"
+
+    find "$STAGING_DIR" -type f \
+        \( -name 'auth-profiles.json' \
+        -o -name 'openclaw.json' \
+        -o -name 'ui-meta.json' \
+        -o -name 'openclaw-ui.pid' \
+        -o -name 'openclaw-gateway.pid' \
+        -o -name '.DS_Store' \) \
+        -print -delete | while IFS= read -r removed; do
+            log_info "Removed state file: ${removed#${STAGING_DIR}/}"
+        done
+
+    find "$STAGING_DIR" -type d \
+        \( -name 'test-results' \
+        -o -name '.pytest_cache' \) \
+        -print0 | while IFS= read -r -d '' removed_dir; do
+            rm -rf "$removed_dir"
+            log_info "Removed state dir: ${removed_dir#${STAGING_DIR}/}"
+        done
+
+    find "$STAGING_DIR" -type d \
+        \( -name '.gtclaw-state' \
+        -o -name '.openclaw' \
+        -o -name '.openclaw-*' \) \
+        -print0 | while IFS= read -r -d '' removed_dir; do
+            rm -rf "$removed_dir"
+            log_info "Removed package-local state dir: ${removed_dir#${STAGING_DIR}/}"
+        done
+
+    log_done "Runtime residue stripped"
+}
+
+# ---------------------------------------------------------------------------
 # Step: Generate README.txt quick-start guide at pack root
 # ---------------------------------------------------------------------------
 generate_readme_txt() {
@@ -387,15 +627,16 @@ generate_readme_txt() {
     if [[ "$PLATFORM" == "mac" ]]; then
         cat > "${STAGING_DIR}/README.txt" << 'EOF'
 ========================================================================
-  OpenSparrow — Mac UI-first Deployment Pack
+  GTClaw — macOS Release Pack
   Version: __VERSION__
 ========================================================================
 
 TONIGHT'S OFFICIAL SUPPORT SURFACE
   • Platform: macOS
   • Official first-click path: root "01-开始部署.command"
-  • Supported channels tonight: Feishu / DingTalk
-  • WeCom is NOT part of tonight's packaged support promise
+  • Supported channels tonight: Feishu / DingTalk / WeCom
+  • Dashboard includes GTClaw API configuration + model smart routing
+  • WeCom packaged route uses the bundled official plugin archive
   • Companion is NOT part of tonight's official support surface
 
 QUICK START — macOS
@@ -427,7 +668,7 @@ EOF
     else
         cat > "${STAGING_DIR}/README.txt" << 'EOF'
 ========================================================================
-  OpenSparrow — USB AI Bot Deployment Pack
+  GTClaw — USB AI Bot Deployment Pack
   Version: __VERSION__
 ========================================================================
 
@@ -497,7 +738,7 @@ generate_readme_md() {
     log_step "Generating packaged README.md"
 
     cat > "${STAGING_DIR}/README.md" << 'EOF'
-# OpenSparrow Mac UI-first Deployment Pack
+# GTClaw macOS Release Pack
 
 Version: `__VERSION__`
 
@@ -505,9 +746,10 @@ Version: `__VERSION__`
 
 - Platform: `macOS`
 - Official first-click path: root `01-开始部署.command`
-- Supported channels tonight: `飞书`、`钉钉`
+- Supported channels tonight: `飞书`、`钉钉`、`企业微信`
+- Dashboard includes GTClaw API configuration and model smart routing
 - `mac/run-openclaw-usb.command` and `mac/harden-openclaw-usb.command` are retained only as advanced compatibility / handoff surfaces
-- WeCom is not part of tonight's packaged support promise
+- WeCom packaged route uses the bundled official plugin archive
 - Companion is not part of tonight's official support surface
 
 ## Start here
@@ -521,7 +763,7 @@ Version: `__VERSION__`
 
 - Do not treat Windows paths as part of tonight's package surface.
 - Do not treat the advanced compatibility wrappers as the main install path.
-- Do not treat WeCom as tonight-ready packaged support.
+- Do not bypass the UI-first install flow when configuring WeCom.
 
 ## Included docs
 
@@ -529,8 +771,6 @@ Version: `__VERSION__`
 - `docs/INSTALL.md`
 - `docs/SOP.md`
 - `runbooks/F-005-ui-install-reset.md`
-- `runbooks/release-process.md`
-- `docs/release-checklist.md`
 EOF
 
     if command -v sed &>/dev/null; then
@@ -560,7 +800,7 @@ print_summary() {
 
     echo ""
     echo -e "${_C_BOLD}╔══════════════════════════════════════════╗${_C_RESET}"
-    echo -e "${_C_BOLD}║       OpenSparrow USB Pack — Built       ║${_C_RESET}"
+    echo -e "${_C_BOLD}║          GTClaw Pack — Built            ║${_C_RESET}"
     echo -e "${_C_BOLD}╠══════════════════════════════════════════╣${_C_RESET}"
     printf "${_C_BOLD}║${_C_RESET}  %-10s  %-30s${_C_BOLD}║${_C_RESET}\n" "Platform:"  "$PLATFORM"
     printf "${_C_BOLD}║${_C_RESET}  %-10s  %-30s${_C_BOLD}║${_C_RESET}\n" "Version:"   "$VERSION"
@@ -577,7 +817,7 @@ print_summary() {
 # ---------------------------------------------------------------------------
 main() {
     echo ""
-    echo -e "${_C_BOLD}OpenSparrow USB Pack Builder${_C_RESET}"
+    echo -e "${_C_BOLD}GTClaw Pack Builder${_C_RESET}"
     echo -e "Project root: ${PROJECT_ROOT}"
     echo ""
 
@@ -587,6 +827,8 @@ main() {
     log_info "Skip skills: ${_C_BOLD}${SKIP_SKILLS}${_C_RESET}"
 
     read_version
+    assert_mac_runtime_version_truth
+    assert_mac_runtime_arch_truth
     prepare_staging
     copy_common
     copy_skills
@@ -606,6 +848,7 @@ main() {
     esac
 
     fix_permissions
+    strip_runtime_state
     generate_readme_txt
     generate_readme_md
 

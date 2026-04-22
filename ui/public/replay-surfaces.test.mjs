@@ -122,6 +122,31 @@ test('wizard init keeps API fields blank/default even when authoritative config 
   assert.deepEqual(calls, ['/api/status', '/api/config'])
 })
 
+test('wizard init redirects to dashboard when gateway fallback runtime is already healthy', async () => {
+  const { context, factory } = loadPageFactory('ui/public/index.html', 'wizard')
+  const instance = factory()
+  instance.$nextTick = (fn) => (typeof fn === 'function' ? fn() : undefined)
+
+  const calls = []
+  instance.fetchWithTimeout = async (url) => {
+    calls.push(url)
+    if (url === '/api/status') {
+      return createResponse({
+        installed: true,
+        daemon: 'stopped',
+        runtimeMode: 'gateway-fallback',
+        gatewayHealthy: true,
+      })
+    }
+    throw new Error(`Unexpected request: ${url}`)
+  }
+
+  await instance.init()
+
+  assert.equal(context.window.location.href, '/dashboard')
+  assert.deepEqual(calls, ['/api/status'])
+})
+
 test('dashboard loadConfig keeps API form blank even when authoritative config exists', async () => {
   const { factory } = loadPageFactory('ui/public/dashboard.html', 'dashboard')
   const instance = factory()

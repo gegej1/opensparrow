@@ -55,6 +55,14 @@ function resolvePortFromEnv(name, fallback) {
   return raw
 }
 
+function resolveBooleanEnv(name, fallback = false) {
+  const raw = String(process.env[name] ?? '').trim().toLowerCase()
+  if (!raw) return fallback
+  if (['1', 'true', 'yes', 'on'].includes(raw)) return true
+  if (['0', 'false', 'no', 'off'].includes(raw)) return false
+  return fallback
+}
+
 function resolveDefaultRuntimeRoot() {
   const runtimeRoot = path.join(PACK_ROOT, 'runtime')
   if (fs.existsSync(runtimeRoot) && fs.readdirSync(runtimeRoot).length > 0) {
@@ -90,9 +98,15 @@ function resolveOpenclawHome() {
 
 const OPENCLAW_HOME = resolveOpenclawHome()
 const PROFILE_DIR = path.join(OPENCLAW_HOME, `.openclaw-${PROFILE}`)
+const PROFILE_EXTENSIONS_DIR = path.join(PROFILE_DIR, 'extensions')
+const EXTENSIONS_DIR = path.join(OPENCLAW_HOME, '.openclaw', 'extensions')
 const CONFIG_FILE = path.join(PROFILE_DIR, 'openclaw.json')
 const UI_META_FILE = path.join(PROFILE_DIR, 'ui-meta.json')
 const WORKSPACE_DIR = path.join(PROFILE_DIR, 'workspace')
+const AUTH_PROFILES_FILE = path.join(PROFILE_DIR, 'agents', 'main', 'agent', 'auth-profiles.json')
+const INSTALL_STATE_FILE = path.join(PROFILE_DIR, 'install-state.json')
+const INSTALL_LOG_FILE = path.join(PROFILE_DIR, 'install.log')
+const DIAGNOSTIC_BUNDLE_FILE = path.join(PROFILE_DIR, 'diagnostic-bundle.json')
 const PUBLIC_DIR  = path.join(__dirname, 'public')
 const PUBLIC_DIR_REAL = fs.realpathSync(PUBLIC_DIR)
 
@@ -138,31 +152,50 @@ function getIndustrySkillCategoryMeta(key) {
 const DEFAULT_MODEL = process.env.OPENCLAW_MODEL ?? 'openai/gpt-4o-mini'
 const DINGTALK_PLUGIN_PACKAGE = '@openclaw-china/channels'
 const DINGTALK_PLUGIN_ID = 'channels'
-const WECOM_PLUGIN_PACKAGE = '@sunnoy/wecom'
-const WECOM_PLUGIN_ID = 'wecom'
+const WECOM_PLUGIN_PACKAGE = '@wecom/wecom-openclaw-plugin'
+const WECOM_PLUGIN_ID = 'wecom-openclaw-plugin'
 const WECOM_MIN_OPENCLAW_VERSION = '2026.3.23'
 
 const DEFAULT_PORT = resolvePortFromEnv('OPENSPARROW_UI_PORT', 19000)
+const CUSTOM_ROUTER_PORT = resolvePortFromEnv('OPENSPARROW_ROUTER_PORT', 18412)
 const GATEWAY_PORT = resolvePortFromEnv('OPENCLAW_GATEWAY_PORT', 18889)
+const SERVER_STARTED_AT = new Date().toISOString()
+const ACTIVE_UI_PORT = { value: null }
+const PACKAGED_RUNTIME_MODE = resolveBooleanEnv('OPENSPARROW_PACKAGED_RUNTIME', false)
+const REQUIRE_BUNDLED_PLUGINS = resolveBooleanEnv('OPENSPARROW_REQUIRE_BUNDLED_PLUGINS', false)
 const AUTO_OPEN_BROWSER = !['0', 'false', 'no', 'off'].includes(
   String(process.env.OPENSPARROW_AUTO_OPEN ?? '').trim().toLowerCase()
 )
 
 const OC_TIMEOUT = {
-  DEFAULT: 120000,
+  DEFAULT: 300000,
   STATUS: 10000,
-  CONFIG_SET: 20000,
-  MODEL_SET: 20000,
-  CHANNEL_PROBE: 20000,
+  CONFIG_SET: 30000,
+  MODEL_SET: 30000,
+  CHANNEL_PROBE: 25000,
   DAEMON_STOP: 20000,
-  DAEMON_UNINSTALL: 20000,
-  DAEMON_INSTALL: 45000,
-  DAEMON_RESTART: 80000,
+  DAEMON_UNINSTALL: 30000,
+  DAEMON_INSTALL: 60000,
+  DAEMON_RESTART: 120000,
   PLUGIN_INSTALL: 300000,
   UNINSTALL_FULL: 90000,
 }
 
 const OPENAI_COMPAT_PROBE_TIMEOUT_MS = 5000
+function buildInstanceFingerprint() {
+  return {
+    pid: process.pid,
+    uiPort: ACTIVE_UI_PORT.value,
+    profile: PROFILE,
+    gatewayPort: GATEWAY_PORT,
+    packRoot: toUserPath(PACK_ROOT),
+    runtimeRoot: toUserPath(RUNTIME_ROOT),
+    openclawHome: toUserPath(OPENCLAW_HOME),
+    profileDir: toUserPath(PROFILE_DIR),
+    configPath: toUserPath(CONFIG_FILE),
+    serverStartedAt: SERVER_STARTED_AT,
+  }
+}
 
 function resolveBundledNodeBinary() {
   const candidates = process.platform === 'win32'
@@ -222,6 +255,7 @@ async function runOc(args, options = {}) {
       {
         env: { ...process.env, CI: process.env.CI ?? '1' },
         stdio: ['ignore', 'pipe', 'pipe'],
+        cwd: PACK_ROOT,
       }
     )
 
@@ -870,6 +904,208 @@ async function resolveRuntimeState() {
   }
 }
 
+async function resolveStableRuntimeState({ attempts = 6, delayMs = 500 } = {}) {
+  let runtimeState = await resolveRuntimeState()
+  for (let attempt = 1; attempt < attempts; attempt += 1) {
+    if (runtimeState.daemon !== 'unknown' || !runtimeState.gatewayHealthy) return runtimeState
+    await new Promise((resolve) => setTimeout(resolve, delayMs))
+    runtimeState = await resolveRuntimeState()
+  }
+  return runtimeState
+}
+
+const INSTALL_STEP_DEFS = Object.freeze([
+  { key: 'plugins', label: '安装渠道插件' },
+  { key: 'config', label: '写入基础配置' },
+  { key: 'channels', label: '配置渠道' },
+  { key: 'runtime', label: '启动服务' },
+  { key: 'probe', label: '验证连接' },
+])
+
+function ensureProfileArtifactsDir() {
+  fs.mkdirSync(PROFILE_DIR, { recursive: true })
+}
+
+function readJsonFileSafe(filePath) {
+  try {
+    if (!fs.existsSync(filePath)) return null
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'))
+  } catch {
+    return null
+  }
+}
+
+function writeJsonFile(filePath, payload) {
+  ensureProfileArtifactsDir()
+  fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), 'utf8')
+}
+
+function appendInstallLog(level, message, extra = null) {
+  ensureProfileArtifactsDir()
+  const timestamp = new Date().toISOString()
+  const suffix = extra == null ? '' : ` ${JSON.stringify(extra)}`
+  fs.appendFileSync(INSTALL_LOG_FILE, `[${timestamp}] [${level}] ${message}${suffix}\n`, 'utf8')
+}
+
+function buildEmptyInstallState() {
+  return {
+    status: 'idle',
+    summary: '等待安装开始',
+    startedAt: null,
+    updatedAt: new Date().toISOString(),
+    finishedAt: null,
+    currentStep: null,
+    runtimeMode: null,
+    packagedRuntimeMode: PACKAGED_RUNTIME_MODE,
+    requireBundledPlugins: REQUIRE_BUNDLED_PLUGINS,
+    warnings: [],
+    errors: [],
+    instance: buildInstanceFingerprint(),
+    channelProbes: {
+      dingtalk: null,
+      wecom: null,
+    },
+    steps: INSTALL_STEP_DEFS.map((step) => ({
+      key: step.key,
+      label: step.label,
+      status: 'pending',
+      detail: '',
+    })),
+    artifacts: {
+      installStatePath: toUserPath(INSTALL_STATE_FILE),
+      installLogPath: toUserPath(INSTALL_LOG_FILE),
+      diagnosticBundlePath: toUserPath(DIAGNOSTIC_BUNDLE_FILE),
+    },
+  }
+}
+
+function readInstallState() {
+  const base = buildEmptyInstallState()
+  const stored = readJsonFileSafe(INSTALL_STATE_FILE)
+  if (!stored || typeof stored !== 'object') return base
+  return {
+    ...base,
+    ...stored,
+    steps: Array.isArray(stored.steps) ? stored.steps : base.steps,
+    warnings: Array.isArray(stored.warnings) ? stored.warnings : base.warnings,
+    errors: Array.isArray(stored.errors) ? stored.errors : base.errors,
+    channelProbes: redactSecretLikeObject(
+      normalizeChannelProbes(stored.channelProbes),
+    ),
+    artifacts: base.artifacts,
+  }
+}
+
+function writeInstallState(nextState) {
+  const payload = {
+    ...buildEmptyInstallState(),
+    ...nextState,
+    updatedAt: new Date().toISOString(),
+    artifacts: {
+      installStatePath: toUserPath(INSTALL_STATE_FILE),
+      installLogPath: toUserPath(INSTALL_LOG_FILE),
+      diagnosticBundlePath: toUserPath(DIAGNOSTIC_BUNDLE_FILE),
+    },
+  }
+  writeJsonFile(INSTALL_STATE_FILE, payload)
+  return payload
+}
+
+function createInstallTracker() {
+  let state = buildEmptyInstallState()
+
+  function persist() {
+    state = writeInstallState(state)
+    return state
+  }
+
+  function updateStep(key, patch) {
+    state.steps = state.steps.map((step) => (
+      step.key === key ? { ...step, ...patch } : step
+    ))
+  }
+
+  return {
+    reset(summary = '等待安装开始') {
+      state = buildEmptyInstallState()
+      state.summary = summary
+      ensureProfileArtifactsDir()
+      fs.writeFileSync(INSTALL_LOG_FILE, '', 'utf8')
+      appendInstallLog('info', summary)
+      return persist()
+    },
+    start(summary = '正在准备安装') {
+      state.status = 'running'
+      state.summary = summary
+      state.startedAt = new Date().toISOString()
+      state.finishedAt = null
+      state.errors = []
+      state.warnings = []
+      state.channelProbes = normalizeChannelProbes()
+      appendInstallLog('info', summary)
+      return persist()
+    },
+    startStep(key, summary) {
+      state.currentStep = key
+      state.summary = summary
+      updateStep(key, { status: 'running', detail: summary })
+      appendInstallLog('info', summary, { step: key })
+      return persist()
+    },
+    finishStep(key, summary, { warning = null, error = null } = {}) {
+      updateStep(key, {
+        status: error ? 'error' : 'done',
+        detail: summary,
+      })
+      if (warning) state.warnings = [...state.warnings, warning]
+      if (error) state.errors = [...state.errors, error]
+      state.summary = summary
+      appendInstallLog(error ? 'error' : warning ? 'warn' : 'info', summary, { step: key })
+      return persist()
+    },
+    setChannelProbes(channelProbes) {
+      state.channelProbes = redactSecretLikeObject(normalizeChannelProbes(channelProbes))
+      return persist()
+    },
+    markError(summary, errors = []) {
+      if (state.currentStep) {
+        updateStep(state.currentStep, { status: 'error', detail: summary })
+      }
+      state.status = 'error'
+      state.summary = summary
+      state.errors = Array.isArray(errors) ? errors.slice() : [String(errors)]
+      state.finishedAt = new Date().toISOString()
+      appendInstallLog('error', summary, { errors: state.errors })
+      return persist()
+    },
+    complete(summary, runtimeMode = null, warnings = []) {
+      state.status = 'completed'
+      state.summary = summary
+      state.currentStep = null
+      state.runtimeMode = runtimeMode
+      state.finishedAt = new Date().toISOString()
+      state.warnings = Array.isArray(warnings) ? warnings.slice() : []
+      appendInstallLog('info', summary, { runtimeMode, warnings: state.warnings })
+      return persist()
+    },
+    note(message, level = 'info', extra = null) {
+      appendInstallLog(level, message, extra)
+    },
+    snapshot() {
+      return state
+    },
+  }
+}
+
+function readInstallLogTail(limit = 200) {
+  try {
+    if (!fs.existsSync(INSTALL_LOG_FILE)) return []
+    const lines = fs.readFileSync(INSTALL_LOG_FILE, 'utf8').split(/\r?\n/).filter(Boolean)
+    return lines.slice(-limit)
+  } catch {
+    return []
+  }
+}
 /**
  * Read config JSON safely.
  * @returns {any | null}
@@ -988,9 +1224,19 @@ async function installPluginPackage(spec, pluginId, options = {}) {
   }
 
   const bundledArchive = findBundledPluginArchive(BUNDLED_PLUGINS_DIR, packageSpec)
-  const installTarget = bundledArchive ?? packageSpec
-  const args = ['plugins', 'install', installTarget]
-  if (options?.pin && !bundledArchive) args.push('--pin')
+  if (REQUIRE_BUNDLED_PLUGINS && !bundledArchive) {
+    return {
+      ok: false,
+      errors: [
+        `打包安装要求使用 bundled plugin archive，但未在 plugins/ 中找到 ${packageSpec}。请重新构建交付包，避免在新 Mac 上走在线安装。`,
+      ],
+    }
+  }
+
+  const installSpec = bundledArchive ?? packageSpec
+  const args = ['plugins', 'install', installSpec]
+  if (options?.pin) args.push('--pin')
+  args.push('--force')
 
   const result = await runOc(args, {
     timeoutMs: OC_TIMEOUT.PLUGIN_INSTALL,
@@ -1063,7 +1309,7 @@ async function buildDingtalkProbeReport() {
     checks.push('钉钉 CorpId 已填写')
   }
 
-  const { daemon, runtimeMode, gatewayHealthy, gatewayPortBusy } = await resolveRuntimeState()
+  const { daemon, runtimeMode, gatewayHealthy, gatewayPortBusy } = await resolveStableRuntimeState()
 
   if (daemon === 'running') {
     checks.push('daemon 服务运行中')
@@ -1166,7 +1412,7 @@ async function buildWecomProbeReport() {
   const pluginsAllow = Array.isArray(config?.plugins?.allow)
     ? config.plugins.allow.map(v => String(v ?? '').trim())
     : []
-  const pluginEntryValue = config?.plugins?.entries?.wecom?.enabled
+  const pluginEntryValue = config?.plugins?.entries?.[WECOM_PLUGIN_ID]?.enabled
   const groupChat = wecom?.groupChat && typeof wecom.groupChat === 'object' ? wecom.groupChat : {}
   const groupChatEnabled = groupChat.enabled !== false
   const requireMention = groupChat.requireMention !== false
@@ -1184,19 +1430,19 @@ async function buildWecomProbeReport() {
   }
 
   if (pluginEntryValue === false) {
-    errors.push('plugins.entries.wecom.enabled=false，请重新保存企业微信配置或重新安装企微插件')
+    errors.push(`plugins.entries.${WECOM_PLUGIN_ID}.enabled=false，请重新保存企业微信配置或重新安装企微插件`)
   } else if (pluginEntryValue === true) {
     checks.push('企业微信插件入口已启用')
   } else if (config) {
-    warnings.push('plugins.entries.wecom.enabled 未显式写入：建议重新保存企业微信配置以固定插件入口')
+    warnings.push(`plugins.entries.${WECOM_PLUGIN_ID}.enabled 未显式写入：建议重新保存企业微信配置以固定插件入口`)
   }
 
   if (pluginsAllow.length === 0) {
-    warnings.push('plugins.allow 为空：当前依赖 OpenClaw auto-load 发现企微插件，建议显式包含 wecom')
+    warnings.push(`plugins.allow 为空：当前依赖 OpenClaw auto-load 发现企微插件，建议显式包含 ${WECOM_PLUGIN_ID}`)
   } else if (pluginsAllow.includes(WECOM_PLUGIN_ID)) {
-    checks.push('plugins.allow 已显式包含 wecom')
+    checks.push(`plugins.allow 已显式包含 ${WECOM_PLUGIN_ID}`)
   } else {
-    warnings.push('plugins.allow 未显式包含 wecom，可能在更严格的 profile 中导致插件不加载')
+    warnings.push(`plugins.allow 未显式包含 ${WECOM_PLUGIN_ID}，可能在更严格的 profile 中导致插件不加载`)
   }
 
   if (!botId || !secret) {
@@ -1233,7 +1479,7 @@ async function buildWecomProbeReport() {
     }
   }
 
-  const { daemon, runtimeMode, gatewayHealthy, gatewayPortBusy } = await resolveRuntimeState()
+  const { daemon, runtimeMode, gatewayHealthy, gatewayPortBusy } = await resolveStableRuntimeState()
 
   if (daemon === 'running') {
     checks.push('daemon 服务运行中')
@@ -1408,8 +1654,11 @@ async function waitForPortState(port, targetBusy, timeoutMs = 15000) {
  * @returns {Promise<{alreadyRunning: boolean, pid: number | null}>}
  */
 async function startGatewayFallbackRuntime() {
-  if (await isPortBusy(GATEWAY_PORT)) {
+  if (await isGatewayHealthy()) {
     return { alreadyRunning: true, pid: null }
+  }
+  if (await isPortBusy(GATEWAY_PORT)) {
+    throw new Error(`gateway port ${GATEWAY_PORT} is occupied by a non-OpenClaw listener`)
   }
 
   const child = spawn(
@@ -1560,11 +1809,11 @@ async function restartGatewayRuntimeWithFallback() {
   // Slow machines may hit restart timeout while gateway is already back online.
   if (isRestartTimeoutLikeIssue(detail)) {
     try {
-      if (await isPortBusy(GATEWAY_PORT)) {
+      if (await isGatewayHealthy()) {
         return {
           ok: true,
           mode: 'daemon',
-          warning: `daemon restart timeout-like result ignored because gateway is reachable: ${detail}`,
+          warning: `daemon restart timeout-like result ignored because gateway is healthy: ${detail}`,
         }
       }
     } catch {
@@ -1711,22 +1960,94 @@ async function handleStatus(res) {
   const configExists = fs.existsSync(CONFIG_FILE)
   const profileDirExists = fs.existsSync(PROFILE_DIR)
   const { daemon, runtimeMode, gatewayHealthy, gatewayPortBusy } = await resolveRuntimeState()
-  const installed = configExists && daemon === 'running'
+  const installed = configExists && (
+    daemon === 'running' ||
+    runtimeMode === 'gateway-fallback' ||
+    gatewayHealthy === true
+  )
 
   sendJson(res, 200, {
     installed,
     daemon,
     runtimeMode,
-    gatewayPort: GATEWAY_PORT,
+    packagedRuntimeMode: PACKAGED_RUNTIME_MODE,
+    requireBundledPlugins: REQUIRE_BUNDLED_PLUGINS,
+    instance: buildInstanceFingerprint(),
     configExists,
     profileDirExists,
     gatewayHealthy,
     gatewayPortBusy,
     profile: PROFILE,
-    configPath: `~/.openclaw-${PROFILE}/openclaw.json`,
+    configPath: toUserPath(CONFIG_FILE),
+    gatewayPort: GATEWAY_PORT,
   })
 }
 
+/** GET /api/install/status */
+function handleInstallStatus(res) {
+  sendJson(res, 200, readInstallState())
+}
+
+async function buildDiagnosticsBundle() {
+  const runtime = await resolveRuntimeState()
+  const install = readInstallState()
+  const channelProbes = redactSecretLikeObject(normalizeChannelProbes(install.channelProbes))
+
+  return {
+    generatedAt: new Date().toISOString(),
+    instance: buildInstanceFingerprint(),
+    profile: PROFILE,
+    packagedRuntimeMode: PACKAGED_RUNTIME_MODE,
+    requireBundledPlugins: REQUIRE_BUNDLED_PLUGINS,
+    openclawHome: toUserPath(OPENCLAW_HOME),
+    profileDir: toUserPath(PROFILE_DIR),
+    runtimeRoot: toUserPath(RUNTIME_ROOT),
+    ocEntry: toUserPath(OC_ENTRY),
+    bundledOpenClawVersion: getBundledOpenClawVersion(),
+    configPath: toUserPath(CONFIG_FILE),
+    gatewayPort: GATEWAY_PORT,
+    routerPort: CUSTOM_ROUTER_PORT,
+    runtime,
+    install,
+    installLogTail: readInstallLogTail(),
+    channelProbes,
+    artifacts: {
+      installStatePath: toUserPath(INSTALL_STATE_FILE),
+      installStateExists: fs.existsSync(INSTALL_STATE_FILE),
+      installLogPath: toUserPath(INSTALL_LOG_FILE),
+      installLogExists: fs.existsSync(INSTALL_LOG_FILE),
+      diagnosticBundlePath: toUserPath(DIAGNOSTIC_BUNDLE_FILE),
+      diagnosticBundleExists: fs.existsSync(DIAGNOSTIC_BUNDLE_FILE),
+    },
+    channels: channelProbes,
+  }
+}
+
+function persistDiagnosticBundle(bundle) {
+  writeJsonFile(DIAGNOSTIC_BUNDLE_FILE, bundle)
+  return bundle
+}
+
+/** GET /api/diagnostics */
+async function handleDiagnostics(res) {
+  const bundle = persistDiagnosticBundle(await buildDiagnosticsBundle())
+  sendJson(res, 200, bundle)
+}
+
+/** GET /api/diagnostics/export */
+async function handleDiagnosticsExport(res) {
+  const bundle = persistDiagnosticBundle(await buildDiagnosticsBundle())
+  const body = JSON.stringify(bundle, null, 2)
+  res.writeHead(200, {
+    'Content-Type': 'application/json',
+    'Content-Length': Buffer.byteLength(body),
+    'Content-Disposition': 'attachment; filename=\"diagnostic-bundle.json\"',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+  })
+  res.end(body)
+}
 /**
  * Recursively copy a directory tree from src to dest.
  * Requires Node 16.7+ (fs.cpSync with recursive option).
@@ -3121,6 +3442,21 @@ async function requestHandler(req, res) {
       return
     }
 
+    if (method === 'GET' && pathname === '/api/install/status') {
+      handleInstallStatus(res)
+      return
+    }
+
+    if (method === 'GET' && pathname === '/api/diagnostics') {
+      await handleDiagnostics(res)
+      return
+    }
+
+    if (method === 'GET' && pathname === '/api/diagnostics/export') {
+      await handleDiagnosticsExport(res)
+      return
+    }
+
     if (method === 'POST' && pathname === '/api/install') {
       const body = await readBody(req)
       await handleInstall(res, body)
@@ -3274,6 +3610,7 @@ async function startServer() {
   }
 
   const port = await findPort(DEFAULT_PORT)
+  ACTIVE_UI_PORT.value = port
 
   const server = http.createServer(requestHandler)
 
