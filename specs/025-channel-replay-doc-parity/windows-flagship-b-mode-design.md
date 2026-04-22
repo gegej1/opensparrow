@@ -33,7 +33,7 @@ GPT Pro 做 Windows 的**主基线**应该看这里：
 
 - 仓库路径：`/Users/eduardogan/Desktop/GHJProject/opensparrow`
 - 当前 branch：`017-codespec-framework-adaptation`
-- 当前 HEAD：`a29011ec85a732239c8ac878a390a9af4ed854c2`
+- 当前 HEAD：`0c28abb1167d4f57b30e3e06280f36e02ff6a7c9`
 - upstream：`origin/017-codespec-framework-adaptation`
 
 这条是当前最适合 GPT Pro 读取、设计、修改、提交的 GitHub 视角基线。
@@ -158,7 +158,7 @@ GPT Pro 做 Windows 的**主基线**应该看这里：
 对 GPT Pro 来说，这份文档已经明确了下面这些关键事实：
 
 1. **主开发基线**
-   - 使用：`017-codespec-framework-adaptation @ a29011ec85a732239c8ac878a390a9af4ed854c2`
+   - 使用：`017-codespec-framework-adaptation @ 0c28abb1167d4f57b30e3e06280f36e02ff6a7c9`
 2. **只读参考基线**
    - 参考：`feature/p0-packaged-mac-diagnostics @ aa4403ac0fc07bd1563440906a2f1025396b9fed`
 3. **最新 packaged 成功事实**
@@ -183,7 +183,7 @@ GPT Pro 做 Windows 的**主基线**应该看这里：
 
 如果你是 GPT Pro，并且你正在直接阅读这份 PRD，那么你应当按下面这条命令式理解执行：
 
-1. 从 `017-codespec-framework-adaptation @ a29011ec85a732239c8ac878a390a9af4ed854c2` 开始；
+1. 从 `017-codespec-framework-adaptation @ 0c28abb1167d4f57b30e3e06280f36e02ff6a7c9` 开始；
 2. 把 `feature/p0-packaged-mac-diagnostics @ aa4403ac0fc07bd1563440906a2f1025396b9fed` 当成只读参考；
 3. 用本 PRD 作为 Windows 设计 + 第一阶段实现的主要 authority；
 4. 允许修改 Windows 相关 surfaces；
@@ -502,4 +502,4 @@ GPT Pro 最后不要给一堆零散信息，而是按下面结构交付：
 
 你可以把这次 Windows 任务理解成：
 
-> 基于根仓 `017-codespec-framework-adaptation @ 45868270605da48139d83defe9d7c3fffc518ade`，参考最新成功的 mac packaged 证据包 `opensparrow-gptpro-handoff-20260422-1518-dingtalk-wecom-pass.zip`，以及 packaged-mac 只读参考提交 `feature/p0-packaged-mac-diagnostics @ aa4403ac0fc07bd1563440906a2f1025396b9fed`，完成一份面向产品和开发都能消费的 Windows 旗舰版设计，并直接推进第一阶段实现；除当前本地正在收口的 Mac packaged / Mac channel 文档与代码外，其余 Windows 相关范围都可以调整，但必须用 fresh verification 证明改动有效，且不能把 Windows 写成已通过验证。
+> 基于根仓 `017-codespec-framework-adaptation @ 0c28abb1167d4f57b30e3e06280f36e02ff6a7c9`，参考最新成功的 mac packaged 证据包 `opensparrow-gptpro-handoff-20260422-1518-dingtalk-wecom-pass.zip`，以及 packaged-mac 只读参考提交 `feature/p0-packaged-mac-diagnostics @ aa4403ac0fc07bd1563440906a2f1025396b9fed`，完成一份面向产品和开发都能消费的 Windows 旗舰版设计，并直接推进第一阶段实现；除当前本地正在收口的 Mac packaged / Mac channel 文档与代码外，其余 Windows 相关范围都可以调整，但必须用 fresh verification 证明改动有效，且不能把 Windows 写成已通过验证。
