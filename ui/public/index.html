@@ -791,7 +791,7 @@
           dingtalk: null,
         },
         installStatusPoller: null,
-        installLoadingMessage: '部署过程通常需要 1-2 分钟，请勿关闭页面。',
+        installLoadingMessage: '部署过程通常需要 3-5 分钟，请勿关闭页面。',
 
         installTasks: [
           { key: 'plugins',  label: '安装渠道插件', status: 'pending' },
@@ -803,9 +803,9 @@
 
         requestTimeout: {
           status: 10000,
-          install: 120000,
-          installTerminal: 180000,
-          installedWait: 180000,
+          install: 300000,
+          installTerminal: 600000,
+          installedWait: 600000,
         },
 
         async fetchWithTimeout(url, options = {}, timeoutMs = 30000) {
@@ -825,7 +825,15 @@
             const res = await this.fetchWithTimeout('/api/status', {}, this.requestTimeout.status);
             if (res.ok) {
               const data = await res.json();
-              if (data.installed === true && data.daemon === 'running' && !forceSetup) {
+              if (
+                data.installed === true
+                && !forceSetup
+                && (
+                  data.daemon === 'running'
+                  || data.runtimeMode === 'gateway-fallback'
+                  || data.gatewayHealthy === true
+                )
+              ) {
                 window.location.href = '/dashboard';
                 return;
               }
@@ -993,7 +1001,7 @@
 
             const elapsedSec = Math.floor((Date.now() - startedAt) / 1000);
             this.installLoadingMessage = elapsedSec < 120
-              ? '正在部署中，通常需要 1-2 分钟，请勿关闭页面。'
+              ? '正在部署中，通常需要 3-5 分钟，请勿关闭页面。'
               : `仍在部署中（已等待 ${elapsedSec} 秒），正在自动检测服务状态…`;
 
             await new Promise(r => setTimeout(r, 2000));
@@ -1068,7 +1076,7 @@
           this.installDone = false;
           this.installWarnings = [];
           this.installReports = { dingtalk: null };
-          this.installLoadingMessage = '正在部署中，通常需要 1-2 分钟，请勿关闭页面。';
+          this.installLoadingMessage = '正在部署中，通常需要 3-5 分钟，请勿关闭页面。';
           this.stopInstallStatusPolling();
 
           // Reset task statuses

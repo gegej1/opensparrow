@@ -20,3 +20,10 @@ test('runtime probe uses a stability helper before classifying daemon fallback',
 test('dingtalk and wecom probes read stable runtime state', () => {
   assert.match(serverSource, /const \{ daemon, runtimeMode, gatewayHealthy, gatewayPortBusy \} = await resolveStableRuntimeState\(\)/)
 })
+
+test('gateway fallback runtime refuses foreign listeners on the target port', () => {
+  assert.match(
+    serverSource,
+    /async function startGatewayFallbackRuntime\(\) \{[\s\S]*if \(await isGatewayHealthy\(\)\) \{[\s\S]*alreadyRunning: true[\s\S]*if \(await isPortBusy\(GATEWAY_PORT\)\) \{[\s\S]*non-OpenClaw listener/,
+  )
+})

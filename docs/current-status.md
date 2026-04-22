@@ -197,6 +197,59 @@
 - 之后不应把这个“已经跑过”的展开目录继续作为干净 release 目录发给别人
 - 对外交付应优先使用未运行过的 zip，或重新从 zip 解压得到的干净目录
 
+### 2026-04-23 交付介质与错实例诊断新增事实
+
+围绕 `opensparrow-mac-delivery-20260422-221144` 的继续排查，现已额外确认：
+
+- `opensparrow-mac-delivery-20260422-221144.zip` 仍然是 clean shipping artifact：zip 内没有 release 运行后生成的 package-local `.gtclaw-state`
+- 但桌面上的同名展开目录在本机完成 real install / follow-up smoke 后，已经重新生成 package-local `.gtclaw-state`
+- 当前桌面还残留一个额外展开目录：`opensparrow-mac-delivery-20260422-213211`；它也已经不是干净 release 目录
+
+因此，后续如果另一台机器出现“本机成功、远端异常”的行为分叉，必须先判断它拿到的是：
+
+1. clean zip；
+2. 从 clean zip 新解压出来的目录；
+3. 还是已经在本机运行过、带 package-local 状态的旧展开目录。
+
+同一轮诊断还补了一个新的 wrong-instance 证据面：
+
+- `GET /api/status`
+- `GET /api/install/status`
+- `GET /api/diagnostics`
+- `GET /api/diagnostics/export`
+- package-local `install-state.json`
+- package-local `diagnostic-bundle.json`
+
+现在都会返回同一份 non-secret instance fingerprint，至少包含：
+
+- `uiPort`
+- `packRoot`
+- `openclawHome`
+- `profileDir`
+- `pid`
+- `serverStartedAt`
+
+这使得“浏览器实际连到旧 UI 服务 / 错 release 目录 / 错 package-local profile”可以直接通过状态面定位，不再只靠猜。
+
+### 2026-04-23 入口预检与 foreign-listener 进一步加固
+
+继续围绕“本机成功、远端新 Mac 超时”的分叉排查，现已再补一层 packaged-mac hardening：
+
+- `platforms/mac/wrappers/01-开始部署.command`
+  - 启动前自动清理 `com.apple.quarantine`
+  - 启动前校验 bundled Node 是否包含当前 Mac 的 CPU slice
+  - 启动前校验 `npm` / `npx` / `corepack` 仍是 symlink，防止外层 zip flatten 后才在安装中途失败
+  - gateway / router 端口改为优先选择空闲端口，减少旧 listener 干扰当前实例
+- `ui/server.mjs`
+  - `openclaw` 子进程统一以 `PACK_ROOT` 为 `cwd`
+  - packaged hardening 模式下可要求渠道插件必须来自包内 bundled tarball；缺失时直接 fail-fast
+  - gateway fallback 启动前必须先做 health check：只有当前端口 listener 确认是本 profile OpenClaw gateway，才会认 already running
+  - 若端口忙但 health check 不通过，则直接按 foreign listener 处理，不再把“端口有人占用”误判成成功
+- `ui/public/index.html`
+  - 安装向导初始加载 `init()` 现在也接受 `runtimeMode = gateway-fallback` 或 `gatewayHealthy = true` 的已安装状态，不再只认 `daemon = running`
+
+这轮加固的意图很明确：把“错实例 / 旧 listener / 被压扁的 runtime symlink / 架构不匹配 / 在线插件回退”这些典型新机分叉点尽量前移成 fail-fast，而不是等到 UI 长时间旋转后才暴露。
+
 ## 当前主要剩余事项
 
 ### 1. Windows-specific evidence 仍需独立推进

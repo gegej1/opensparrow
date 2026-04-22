@@ -32,6 +32,76 @@ resolve_node_bin() {
   return 1
 }
 
+port_is_free() {
+  local port="$1"
+  if command -v lsof >/dev/null 2>&1; then
+    ! lsof -nP -iTCP:"$port" -sTCP:LISTEN -t >/dev/null 2>&1
+    return $?
+  fi
+  return 0
+}
+
+resolve_free_port() {
+  local start_port="$1"
+  local port
+  for ((port=start_port; port<start_port+100; port++)); do
+    if port_is_free "$port"; then
+      printf '%s\n' "$port"
+      return 0
+    fi
+  done
+  printf '%s\n' "$start_port"
+}
+
+clear_quarantine_if_possible() {
+  local target="$1"
+  if command -v xattr >/dev/null 2>&1; then
+    xattr -dr com.apple.quarantine "$target" 2>/dev/null || true
+  fi
+}
+
+verify_runtime_cpu_arch() {
+  local node_bin="$1"
+  local host_arch
+  local node_desc
+
+  host_arch="$(uname -m 2>/dev/null || true)"
+  if [[ "$host_arch" != "arm64" && "$host_arch" != "x86_64" ]]; then
+    return 0
+  fi
+  if ! command -v file >/dev/null 2>&1; then
+    return 0
+  fi
+
+  node_desc="$(file "$node_bin" 2>/dev/null || true)"
+  if [[ -z "$node_desc" ]]; then
+    return 0
+  fi
+  if [[ "$node_desc" != *"$host_arch"* ]]; then
+    echo "错误：bundled Node 架构与本机不匹配。" >&2
+    echo "本机架构：$host_arch" >&2
+    echo "Node 检测：$node_desc" >&2
+    echo "请重新获取包含 $host_arch slice 的 GTClaw macOS 交付包。" >&2
+    read -r -p "按 Enter 关闭..." _
+    exit 1
+  fi
+}
+
+verify_node_tool_symlinks() {
+  local runtime_root="$1"
+  local tool
+  for tool in npm npx corepack; do
+    local candidate="$runtime_root/bin/$tool"
+    if [[ -e "$candidate" && ! -L "$candidate" ]]; then
+      echo "错误：$candidate 不是 symlink。" >&2
+      echo "这通常表示外层 zip 打包时压扁了 Node 工具链 symlink，会导致 npm install 失败。" >&2
+      echo "请使用保留 symlink 的交付包重新解压。" >&2
+      read -r -p "按 Enter 关闭..." _
+      exit 1
+    fi
+  done
+}
+
 if ! pack_root="$(resolve_pack_root)"; then
   echo "错误：找不到 UI 服务目录（ui/server.mjs）。" >&2
   read -r -p "按 Enter 关闭..." _
@@ -57,13 +127,19 @@ if [[ -z "$node_bin" || ! -x "$node_bin" ]]; then
   exit 1
 fi
 
+clear_quarantine_if_possible "$pack_root"
+verify_runtime_cpu_arch "$node_bin"
+verify_node_tool_symlinks "$runtime_root"
+
 export OPENCLAW_HOME="${OPENCLAW_HOME:-$pack_root/.gtclaw-state}"
 mkdir -p "$OPENCLAW_HOME"
 export OPENCLAW_PROFILE="${OPENCLAW_PROFILE:-gtclaw-portable}"
-export OPENCLAW_GATEWAY_PORT="${OPENCLAW_GATEWAY_PORT:-18929}"
-export OPENSPARROW_ROUTER_PORT="${OPENSPARROW_ROUTER_PORT:-18412}"
+export OPENCLAW_GATEWAY_PORT="${OPENCLAW_GATEWAY_PORT:-$(resolve_free_port 18929)}"
+export OPENSPARROW_ROUTER_PORT="${OPENSPARROW_ROUTER_PORT:-$(resolve_free_port 18412)}"
 export USB_RUNTIME_ROOT="${USB_RUNTIME_ROOT:-$runtime_root}"
 export OPENSPARROW_AUTO_OPEN="${OPENSPARROW_AUTO_OPEN:-1}"
+export OPENSPARROW_PACKAGED_RUNTIME="${OPENSPARROW_PACKAGED_RUNTIME:-1}"
+export OPENSPARROW_REQUIRE_BUNDLED_PLUGINS="${OPENSPARROW_REQUIRE_BUNDLED_PLUGINS:-1}"
 
 printf '正在启动 GTClaw 管理界面...\n'
 printf 'Home: %s\n' "$OPENCLAW_HOME"
@@ -71,5 +147,6 @@ printf 'Profile: %s\n' "$OPENCLAW_PROFILE"
 printf 'Gateway: %s\n' "$OPENCLAW_GATEWAY_PORT"
 printf 'Router: %s\n' "$OPENSPARROW_ROUTER_PORT"
 printf 'Runtime: %s\n' "$USB_RUNTIME_ROOT"
+printf 'Mode: packaged runtime hardening\n'
 
 exec "$node_bin" "$server_file"

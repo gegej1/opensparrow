@@ -55,6 +55,14 @@ function resolvePortFromEnv(name, fallback) {
   return raw
 }
 
+function resolveBooleanEnv(name, fallback = false) {
+  const raw = String(process.env[name] ?? '').trim().toLowerCase()
+  if (!raw) return fallback
+  if (['1', 'true', 'yes', 'on'].includes(raw)) return true
+  if (['0', 'false', 'no', 'off'].includes(raw)) return false
+  return fallback
+}
+
 function resolveDefaultRuntimeRoot() {
   const runtimeRoot = path.join(PACK_ROOT, 'runtime')
   if (fs.existsSync(runtimeRoot) && fs.readdirSync(runtimeRoot).length > 0) {
@@ -138,22 +146,41 @@ const WECOM_MIN_OPENCLAW_VERSION = '2026.3.23'
 const DEFAULT_PORT = resolvePortFromEnv('OPENSPARROW_UI_PORT', 19000)
 const CUSTOM_ROUTER_PORT = resolvePortFromEnv('OPENSPARROW_ROUTER_PORT', DEFAULT_CUSTOM_ROUTER_PORT)
 const GATEWAY_PORT = resolvePortFromEnv('OPENCLAW_GATEWAY_PORT', 18889)
+const SERVER_STARTED_AT = new Date().toISOString()
+const ACTIVE_UI_PORT = { value: null }
+const PACKAGED_RUNTIME_MODE = resolveBooleanEnv('OPENSPARROW_PACKAGED_RUNTIME', false)
+const REQUIRE_BUNDLED_PLUGINS = resolveBooleanEnv('OPENSPARROW_REQUIRE_BUNDLED_PLUGINS', false)
 const AUTO_OPEN_BROWSER = !['0', 'false', 'no', 'off'].includes(
   String(process.env.OPENSPARROW_AUTO_OPEN ?? '').trim().toLowerCase()
 )
 
 const OC_TIMEOUT = {
-  DEFAULT: 120000,
+  DEFAULT: 300000,
   STATUS: 10000,
-  CONFIG_SET: 20000,
-  MODEL_SET: 20000,
-  CHANNEL_PROBE: 20000,
+  CONFIG_SET: 30000,
+  MODEL_SET: 30000,
+  CHANNEL_PROBE: 25000,
   DAEMON_STOP: 20000,
-  DAEMON_UNINSTALL: 20000,
-  DAEMON_INSTALL: 45000,
-  DAEMON_RESTART: 80000,
-  PLUGIN_INSTALL: 180000,
+  DAEMON_UNINSTALL: 30000,
+  DAEMON_INSTALL: 60000,
+  DAEMON_RESTART: 120000,
+  PLUGIN_INSTALL: 300000,
   UNINSTALL_FULL: 90000,
+}
+
+function buildInstanceFingerprint() {
+  return {
+    pid: process.pid,
+    uiPort: ACTIVE_UI_PORT.value,
+    profile: PROFILE,
+    gatewayPort: GATEWAY_PORT,
+    packRoot: toUserPath(PACK_ROOT),
+    runtimeRoot: toUserPath(RUNTIME_ROOT),
+    openclawHome: toUserPath(OPENCLAW_HOME),
+    profileDir: toUserPath(PROFILE_DIR),
+    configPath: toUserPath(CONFIG_FILE),
+    serverStartedAt: SERVER_STARTED_AT,
+  }
 }
 
 function resolveBundledNodeBinary() {
@@ -214,6 +241,7 @@ async function runOc(args, options = {}) {
       {
         env: { ...process.env, CI: process.env.CI ?? '1' },
         stdio: ['ignore', 'pipe', 'pipe'],
+        cwd: PACK_ROOT,
       }
     )
 
@@ -1053,8 +1081,11 @@ function buildEmptyInstallState() {
     finishedAt: null,
     currentStep: null,
     runtimeMode: null,
+    packagedRuntimeMode: PACKAGED_RUNTIME_MODE,
+    requireBundledPlugins: REQUIRE_BUNDLED_PLUGINS,
     warnings: [],
     errors: [],
+    instance: buildInstanceFingerprint(),
     channelProbes: {
       dingtalk: null,
       wecom: null,
@@ -1753,7 +1784,17 @@ async function installPluginPackage(spec, pluginId, options = {}) {
     return { ok: false, errors: ['plugin package spec / id 无效'] }
   }
 
-  const installSpec = findBundledPluginArchive(BUNDLED_PLUGINS_DIR, packageSpec) ?? packageSpec
+  const bundledArchive = findBundledPluginArchive(BUNDLED_PLUGINS_DIR, packageSpec)
+  if (REQUIRE_BUNDLED_PLUGINS && !bundledArchive) {
+    return {
+      ok: false,
+      errors: [
+        `打包安装要求使用 bundled plugin archive，但未在 plugins/ 中找到 ${packageSpec}。请重新构建交付包，避免在新 Mac 上走在线安装。`,
+      ],
+    }
+  }
+
+  const installSpec = bundledArchive ?? packageSpec
   const args = ['plugins', 'install', installSpec]
   if (options?.pin) args.push('--pin')
   args.push('--force')
@@ -2173,8 +2214,11 @@ async function waitForPortState(port, targetBusy, timeoutMs = 15000) {
  * @returns {Promise<{alreadyRunning: boolean, pid: number | null}>}
  */
 async function startGatewayFallbackRuntime() {
-  if (await isPortBusy(GATEWAY_PORT)) {
+  if (await isGatewayHealthy()) {
     return { alreadyRunning: true, pid: null }
+  }
+  if (await isPortBusy(GATEWAY_PORT)) {
+    throw new Error(`gateway port ${GATEWAY_PORT} is occupied by a non-OpenClaw listener`)
   }
 
   const child = spawn(
@@ -2245,11 +2289,11 @@ async function restartGatewayRuntimeWithFallback() {
   // Slow machines may hit restart timeout while gateway is already back online.
   if (isRestartTimeoutLikeIssue(detail)) {
     try {
-      if (await isPortBusy(GATEWAY_PORT)) {
+      if (await isGatewayHealthy()) {
         return {
           ok: true,
           mode: 'daemon',
-          warning: `daemon restart timeout-like result ignored because gateway is reachable: ${detail}`,
+          warning: `daemon restart timeout-like result ignored because gateway is healthy: ${detail}`,
         }
       }
     } catch {
@@ -2373,6 +2417,9 @@ async function handleStatus(res) {
     installed,
     daemon,
     runtimeMode,
+    packagedRuntimeMode: PACKAGED_RUNTIME_MODE,
+    requireBundledPlugins: REQUIRE_BUNDLED_PLUGINS,
+    instance: buildInstanceFingerprint(),
     configExists,
     profileDirExists,
     gatewayHealthy,
@@ -2395,7 +2442,10 @@ async function buildDiagnosticsBundle() {
 
   return {
     generatedAt: new Date().toISOString(),
+    instance: buildInstanceFingerprint(),
     profile: PROFILE,
+    packagedRuntimeMode: PACKAGED_RUNTIME_MODE,
+    requireBundledPlugins: REQUIRE_BUNDLED_PLUGINS,
     openclawHome: toUserPath(OPENCLAW_HOME),
     profileDir: toUserPath(PROFILE_DIR),
     runtimeRoot: toUserPath(RUNTIME_ROOT),
@@ -4252,6 +4302,7 @@ async function startServer() {
   }
 
   const port = await findPort(DEFAULT_PORT)
+  ACTIVE_UI_PORT.value = port
 
   const server = http.createServer(requestHandler)
   if (routerBootstrap.ok && routerBootstrap.server) {

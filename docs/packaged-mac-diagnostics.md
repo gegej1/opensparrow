@@ -25,6 +25,14 @@ P0 目标不是直接宣布 packaged WeCom / DingTalk 已闭环，而是先把 m
 4. 启动服务
 5. 验证连接
 
+当前 timeout budget 也已按 slower clean-machine path 放宽：
+
+- `POST /api/install`：前端等待 `300000ms`
+- timeout 后的 terminal-state wait：`600000ms`
+- install-complete wait：`600000ms`
+
+这不是为了让页面无限转圈，而是为了避免“后端仍在合法慢路径内、前端却先到总预算上限”的 machine-specific 误报。
+
 ### 诊断信息
 
 - `GET /api/diagnostics`
@@ -34,6 +42,7 @@ P0 目标不是直接宣布 packaged WeCom / DingTalk 已闭环，而是先把 m
 诊断 bundle 当前包含：
 
 - profile / config / runtime path
+- packaged instance fingerprint（`uiPort` / `packRoot` / `openclawHome` / `profileDir` / `pid` / `serverStartedAt`）
 - resolved OpenClaw entry
 - bundled OpenClaw version
 - daemon / runtime / gateway health
@@ -64,6 +73,67 @@ P0 目标不是直接宣布 packaged WeCom / DingTalk 已闭环，而是先把 m
 ```
 
 如果某个 probe 返回 warning / error，结果不会被吞掉，而是继续进入 `channelProbes`，供 packaged WeCom / DingTalk fresh evidence 使用。probe snapshot 会做 secret redaction，不导出 token / secret / apiKey / authorization / password 明文。
+
+### Instance Fingerprint
+
+以下 surface 现在都会带同一份 non-secret instance fingerprint，便于判断浏览器是否连到了错实例 / 旧实例：
+
+- `GET /api/status`
+- `GET /api/install/status`
+- `GET /api/diagnostics`
+- `GET /api/diagnostics/export`
+- package-local `install-state.json`
+- package-local `diagnostic-bundle.json`
+
+建议优先核对：
+
+1. `uiPort` 是否等于当前浏览器地址栏端口
+2. `packRoot` 是否等于当前正在使用的 release 目录
+3. `openclawHome` / `profileDir` 是否落在预期 package-local `.gtclaw-state`
+4. `serverStartedAt` / `pid` 是否对应当前这次启动，而不是旧进程
+
+### Delivery Media Truth
+
+对外交付时要区分：
+
+- **clean zip**：可以作为 authoritative shipping artifact
+- **expanded directory**：一旦本机跑过 `01-开始部署.command`，就会生成 package-local `.gtclaw-state`，不再等同于干净 release 目录
+
+因此，若需要把 `221144` 再交给另一台机器：
+
+- 优先交付未运行过的 zip；
+- 或者重新从 clean zip 解压得到新目录；
+- 不要直接复用已经在本机验证过的展开目录。
+
+### Wrapper Preflight Hardening
+
+mac `01-开始部署.command` 现在在真正拉起 UI 之前，先做四类 machine-specific 预检：
+
+1. 清理 release 目录上的 `com.apple.quarantine`
+2. 校验 bundled Node 是否包含当前 Mac 的 CPU slice
+3. 校验 `npm` / `npx` / `corepack` 仍然是 symlink，避免外层 zip 被压扁
+4. 为 gateway / router 选择空闲端口，降低旧 listener 干扰当前实例的概率
+
+这些预检的目标不是“替代安装流程”，而是把 fake arm64、flattened symlink、端口冲突这类会把 packaged 行为变成 machine-specific 的问题，尽量提前在 wrapper 阶段 fail-fast。
+
+### Gateway Port Truth
+
+gateway fallback 启动路径现在不再把“端口已占用”直接视为成功：
+
+- 先看当前端口上的 listener 是否真的是当前 profile 的 OpenClaw gateway；
+- 只有 health check 通过，才会认定为 already running；
+- 如果端口忙但健康检查不通过，会直接按 foreign listener 处理，而不是让 UI 假设服务已就绪。
+
+这样可以直接收敛“浏览器连到了旧实例 / 别的进程占了目标端口，前端却误判安装完成”的问题。
+
+### Bundled Plugin Truth
+
+当 wrapper 以 packaged runtime hardening 模式启动时，server 现在会要求渠道插件必须来自包内 `plugins/`：
+
+- `@openclaw-china/channels`
+- `@wecom/wecom-openclaw-plugin`
+
+如果缺少对应 bundled tarball，会直接 fail-fast，而不是悄悄退回在线安装。这样可以避免“本机缓存或联网条件掩盖问题，但新 Mac / 离线环境失败”的行为分叉。
 
 ## runtime truth
 

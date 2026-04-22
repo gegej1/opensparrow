@@ -34,6 +34,13 @@ test('install page polls authoritative install-status terminal state after insta
   )
 })
 
+test('install page timeout budgets leave room for slower packaged-mac installs on clean machines', () => {
+  assert.match(
+    uiSource,
+    /requestTimeout:\s*\{[\s\S]*install:\s*300000,[\s\S]*installTerminal:\s*600000,[\s\S]*installedWait:\s*600000,[\s\S]*\}/,
+  )
+})
+
 test('build pack strips package-local gtclaw/openclaw state directories before shipping', () => {
   assert.match(
     buildScript,
@@ -45,5 +52,20 @@ test('mac handoff export strips package-local gtclaw/openclaw state directories 
   assert.match(
     handoffScript,
     /find "\$artifact_dir" -type d[\s\S]*-name '\.gtclaw-state'[\s\S]*-o -name '\.openclaw'[\s\S]*-o -name '\.openclaw-\*'/,
+  )
+})
+
+test('packaged plugin install can require bundled tarballs and keeps openclaw cwd anchored at pack root', () => {
+  assert.match(
+    serverSource,
+    /const bundledArchive = findBundledPluginArchive\(BUNDLED_PLUGINS_DIR, packageSpec\)/,
+  )
+  assert.match(
+    serverSource,
+    /if \(REQUIRE_BUNDLED_PLUGINS && !bundledArchive\) \{[\s\S]*bundled plugin archive[\s\S]*避免在新 Mac 上走在线安装/,
+  )
+  assert.match(
+    serverSource,
+    /const proc = spawn\([\s\S]*env: \{ \.\.\.process\.env, CI: process\.env\.CI \?\? '1' \},[\s\S]*stdio: \['ignore', 'pipe', 'pipe'\],[\s\S]*cwd: PACK_ROOT,/,
   )
 })
