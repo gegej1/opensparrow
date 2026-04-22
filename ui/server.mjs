@@ -1003,6 +1003,10 @@ function buildEmptyInstallState() {
     runtimeMode: null,
     warnings: [],
     errors: [],
+    channelProbes: {
+      dingtalk: null,
+      wecom: null,
+    },
     steps: INSTALL_STEP_DEFS.map((step) => ({
       key: step.key,
       label: step.label,
@@ -1027,6 +1031,9 @@ function readInstallState() {
     steps: Array.isArray(stored.steps) ? stored.steps : base.steps,
     warnings: Array.isArray(stored.warnings) ? stored.warnings : base.warnings,
     errors: Array.isArray(stored.errors) ? stored.errors : base.errors,
+    channelProbes: redactSecretLikeObject(
+      normalizeChannelProbes(stored.channelProbes),
+    ),
     artifacts: base.artifacts,
   }
 }
@@ -1076,6 +1083,7 @@ function createInstallTracker() {
       state.finishedAt = null
       state.errors = []
       state.warnings = []
+      state.channelProbes = normalizeChannelProbes()
       appendInstallLog('info', summary)
       return persist()
     },
@@ -1095,6 +1103,10 @@ function createInstallTracker() {
       if (error) state.errors = [...state.errors, error]
       state.summary = summary
       appendInstallLog(error ? 'error' : warning ? 'warn' : 'info', summary, { step: key })
+      return persist()
+    },
+    setChannelProbes(channelProbes) {
+      state.channelProbes = redactSecretLikeObject(normalizeChannelProbes(channelProbes))
       return persist()
     },
     markError(summary, errors = []) {
@@ -1533,6 +1545,90 @@ function compactProbeOutput(text, secrets = [], maxLines = 16) {
     .filter(Boolean)
   if (lines.length <= maxLines) return lines.join('\n')
   return [...lines.slice(0, maxLines), `...(${lines.length - maxLines} more lines)`].join('\n')
+}
+
+const SECRET_LIKE_KEY_RE = /(secret|token|api[_-]?key|authorization|password|appsecret|clientsecret|corpsecret|encodingaeskey|botid)/i
+
+function redactSecretLikeString(text, secrets = []) {
+  let output = redactSecrets(text, secrets)
+  output = output.replace(/(authorization\s*[:=]\s*bearer\s+)([^\s,]+)/ig, '$1<redacted>')
+  return output
+}
+
+function redactSecretLikeObject(value, secrets = []) {
+  if (Array.isArray(value)) {
+    return value.map((item) => redactSecretLikeObject(item, secrets))
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entryValue]) => {
+        if (SECRET_LIKE_KEY_RE.test(key)) return [key, '<redacted>']
+        return [key, redactSecretLikeObject(entryValue, secrets)]
+      })
+    )
+  }
+  if (typeof value === 'string') {
+    return redactSecretLikeString(value, secrets)
+  }
+  return value
+}
+
+function sanitizeChannelProbe(probe, secrets = []) {
+  if (!probe || typeof probe !== 'object') return null
+  return redactSecretLikeObject(probe, secrets)
+}
+
+function normalizeChannelProbes(value = {}) {
+  return {
+    dingtalk: value?.dingtalk ?? null,
+    wecom: value?.wecom ?? null,
+  }
+}
+
+function collectSecretLikeValues(value, bucket = []) {
+  if (Array.isArray(value)) {
+    for (const item of value) collectSecretLikeValues(item, bucket)
+    return bucket
+  }
+  if (value && typeof value === 'object') {
+    for (const [key, entryValue] of Object.entries(value)) {
+      if (SECRET_LIKE_KEY_RE.test(key)) {
+        if (typeof entryValue === 'string') bucket.push(entryValue)
+        if (Array.isArray(entryValue)) {
+          for (const item of entryValue) {
+            if (typeof item === 'string') bucket.push(item)
+          }
+        }
+      }
+      collectSecretLikeValues(entryValue, bucket)
+    }
+    return bucket
+  }
+  return bucket
+}
+
+function buildChannelProbes(probes = {}, secrets = []) {
+  return redactSecretLikeObject(
+    normalizeChannelProbes({
+      dingtalk: sanitizeChannelProbe(probes.dingtalk, secrets),
+      wecom: sanitizeChannelProbe(probes.wecom, secrets),
+    }),
+    secrets,
+  )
+}
+
+function buildProbeExecutionFailure(message, secrets = []) {
+  return sanitizeChannelProbe({
+    status: 'error',
+    ready: false,
+    checks: [],
+    warnings: [],
+    errors: [message],
+    probe: {
+      code: null,
+      summary: message,
+    },
+  }, secrets)
 }
 
 async function ensurePluginsAllowIncludes(ids) {
@@ -2233,32 +2329,8 @@ function handleInstallStatus(res) {
 
 async function buildDiagnosticsBundle() {
   const runtime = await resolveRuntimeState()
-  const config = readConfigSafe()
-  const channels = {}
-
-  if (config?.channels?.dingtalk) {
-    try {
-      channels.dingtalk = await buildDingtalkProbeReport()
-    } catch (error) {
-      channels.dingtalk = {
-        status: 'error',
-        ready: false,
-        errors: [`diagnostics failed: ${error?.message ?? String(error)}`],
-      }
-    }
-  }
-
-  if (config?.channels?.wecom) {
-    try {
-      channels.wecom = await buildWecomProbeReport()
-    } catch (error) {
-      channels.wecom = {
-        status: 'error',
-        ready: false,
-        errors: [`diagnostics failed: ${error?.message ?? String(error)}`],
-      }
-    }
-  }
+  const install = readInstallState()
+  const channelProbes = redactSecretLikeObject(normalizeChannelProbes(install.channelProbes))
 
   return {
     generatedAt: new Date().toISOString(),
@@ -2272,8 +2344,9 @@ async function buildDiagnosticsBundle() {
     gatewayPort: GATEWAY_PORT,
     routerPort: CUSTOM_ROUTER_PORT,
     runtime,
-    install: readInstallState(),
+    install,
     installLogTail: readInstallLogTail(),
+    channelProbes,
     artifacts: {
       installStatePath: toUserPath(INSTALL_STATE_FILE),
       installStateExists: fs.existsSync(INSTALL_STATE_FILE),
@@ -2282,7 +2355,7 @@ async function buildDiagnosticsBundle() {
       diagnosticBundlePath: toUserPath(DIAGNOSTIC_BUNDLE_FILE),
       diagnosticBundleExists: fs.existsSync(DIAGNOSTIC_BUNDLE_FILE),
     },
-    channels,
+    channels: channelProbes,
   }
 }
 
@@ -2537,6 +2610,7 @@ async function handleInstall(res, body) {
   const baseUrl = normalizeOpenAIBaseUrl(baseUrlRaw)
   const apiKey = typeof api.apiKey === 'string' ? api.apiKey.trim() : ''
   const model = typeof api.model === 'string' && api.model.trim() ? api.model.trim() : DEFAULT_MODEL
+  const probeSecrets = collectSecretLikeValues({ api, channels })
   // NOTE: selectedSkillCategories removed — industry skills are no longer bulk-installed.
   // Use Skill Store APIs (/api/skills/install, /api/skills/uninstall) instead.
 
@@ -2786,7 +2860,9 @@ async function handleInstall(res, body) {
         warnings.push(...dingtalkProbe.errors.map(msg => `钉钉检测错误：${msg}`))
       }
     } catch (e) {
-      warnings.push(`钉钉检测执行失败：${e?.message ?? String(e)}`)
+      const message = `钉钉检测执行失败：${e?.message ?? String(e)}`
+      warnings.push(message)
+      dingtalkProbe = buildProbeExecutionFailure(message, probeSecrets)
     }
   }
   if (hasWecom) {
@@ -2798,21 +2874,45 @@ async function handleInstall(res, body) {
         warnings.push(...wecomProbe.errors.map(msg => `企微检测错误：${msg}`))
       }
     } catch (e) {
-      warnings.push(`企微检测执行失败：${e?.message ?? String(e)}`)
+      const message = `企微检测执行失败：${e?.message ?? String(e)}`
+      warnings.push(message)
+      wecomProbe = buildProbeExecutionFailure(message, probeSecrets)
     }
   }
+  const channelProbes = buildChannelProbes({
+    dingtalk: dingtalkProbe,
+    wecom: wecomProbe,
+  }, probeSecrets)
+  installTracker.setChannelProbes(channelProbes)
 
   let finalPayload
   if (errors.length > 0) {
     installTracker.finishStep('probe', '连接验证失败', { error: errors[0] })
     installTracker.markError('安装失败，请查看诊断信息', errors)
-    finalPayload = { ok: false, errors, warnings, runtimeMode, dingtalkProbe, wecomProbe, installStatus: readInstallState() }
+    finalPayload = redactSecretLikeObject({
+      ok: false,
+      errors,
+      warnings,
+      runtimeMode,
+      dingtalkProbe: channelProbes.dingtalk,
+      wecomProbe: channelProbes.wecom,
+      channelProbes,
+      installStatus: readInstallState(),
+    }, probeSecrets)
     persistDiagnosticBundle(await buildDiagnosticsBundle())
     sendJson(res, 500, finalPayload)
   } else {
     installTracker.finishStep('probe', '连接验证完成')
     installTracker.complete('安装完成，可导出诊断信息', runtimeMode, warnings)
-    finalPayload = { ok: true, warnings, runtimeMode, dingtalkProbe, wecomProbe, installStatus: readInstallState() }
+    finalPayload = redactSecretLikeObject({
+      ok: true,
+      warnings,
+      runtimeMode,
+      dingtalkProbe: channelProbes.dingtalk,
+      wecomProbe: channelProbes.wecom,
+      channelProbes,
+      installStatus: readInstallState(),
+    }, probeSecrets)
     persistDiagnosticBundle(await buildDiagnosticsBundle())
     sendJson(res, 200, finalPayload)
   }
