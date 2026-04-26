@@ -24,6 +24,24 @@ test('plugin install syncs discovered extensions into profile extension root', (
   )
 })
 
+test('plugin install authority can close from a profile-ready footprint and backfill shared parity', () => {
+  assert.match(
+    serverSource,
+    /function syncInstalledPluginIntoShared\(pluginId\) \{[\s\S]*path\.join\(PROFILE_EXTENSIONS_DIR, id\)[\s\S]*path\.join\(EXTENSIONS_DIR, id\)[\s\S]*fs\.cpSync\(profileExtDir, sharedExtDir, \{ recursive: true, force: true \}\)/,
+  )
+  assert.match(
+    serverSource,
+    /function closeInstalledPluginAuthority\(pluginId, packageSpec\) \{[\s\S]*authority\.profile\.structurallyReady[\s\S]*syncInstalledPluginIntoShared\(id\)[\s\S]*authority\.shared\.structurallyReady[\s\S]*syncInstalledPluginIntoProfile\(id\)/,
+  )
+})
+
+test('plugins.allow bootstrap accepts plugins discovered in either shared or profile extension roots', () => {
+  assert.match(
+    serverSource,
+    /fs\.existsSync\(path\.join\(EXTENSIONS_DIR, id\)\)\s*\|\|\s*fs\.existsSync\(path\.join\(PROFILE_EXTENSIONS_DIR, id\)\)/,
+  )
+})
+
 test('dingtalk plugin patching prefers profiled extension root before shared extension root', () => {
   assert.match(
     serverSource,

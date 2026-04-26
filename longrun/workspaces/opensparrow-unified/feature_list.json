@@ -707,5 +707,108 @@
     "evidence_hint": "Fresh packaged artifact lineage `gtclaw-mac-release-arm64-20260422-150245` + preserved Desktop bundle `opensparrow-gptpro-handoff-20260422-1518-dingtalk-wecom-pass.zip` + same-session DingTalk/WeCom install/status/diagnostics/package-local evidence",
     "risk": "medium",
     "passes": true
+  },
+  {
+    "id": "F-031",
+    "priority": 1,
+    "category": "dashboard",
+    "component": "dashboard-model-routing-ui",
+    "description": "Close the packaged Mac dashboard model-routing follow-up by exposing a dedicated authoritative model-routing UI surface distinct from the API compatibility lane, preserving `opensparrow-router` / `opensparrow-router/auto`, and proving packaged read/write parity on the 2026-04-23 fresh combined artifact.",
+    "depends_on": [
+      "F-027",
+      "F-030"
+    ],
+    "acceptance_criteria": [
+      "`specs/031-dashboard-model-routing-ui/{spec,plan,tasks}.md` freeze the Packet B follow-up without rewriting true `F-027` identity or native routing authority.",
+      "Dashboard has a dedicated model-routing surface distinct from the legacy `API 配置` form, and the packaged artifact still shows GTClaw branding.",
+      "`GET /api/config/model-routing` and `POST /api/config/model-routing` are the dashboard's authoritative load/save surface, while `POST /api/config/api` remains the upstream connection / compatibility lane only.",
+      "Fresh combined packaged verification confirms follow-up `GET` / reopen reads back persisted model-routing truth and preserves internal ids `opensparrow-router` and `opensparrow-router/auto`."
+    ],
+    "steps": [
+      "Freeze `F-031` as the Packet B dashboard model-routing UI follow-up in `spec / plan / tasks` without reopening Packet A, true `F-027`, or native routing authority.",
+      "Land the dedicated dashboard model-routing surface and source-level verification while preserving the compatibility-lane boundary and router invariants.",
+      "Close the feature only after fresh combined packaged verification confirms branding parity, authoritative model-routing load/save, persisted read-back, and unchanged internal ids."
+    ],
+    "evidence_hint": "`Packet B / F-031 source truth PASS` + fresh combined packaged artifact `gtclaw-mac-release-arm64-20260423-141103` showing GTClaw branding, dedicated model-routing UI, compatibility-lane-only API config, authoritative `/api/config/model-routing` load/save, persisted read-back, and unchanged internal ids",
+    "risk": "medium",
+    "passes": true
+  },
+  {
+    "id": "F-032",
+    "priority": 1,
+    "category": "runtime",
+    "component": "packaged-runtime-authority-and-restart-truth",
+    "description": "Close the packaged runtime authority follow-up by making `/api/status` authoritative, returning truthful degraded save contracts for `/api/config/api` and `/api/config/model-routing`, and proving the combined packaged artifact keeps persisted truth without changing router identities.",
+    "depends_on": [
+      "F-030",
+      "F-031"
+    ],
+    "acceptance_criteria": [
+      "`specs/032-packaged-runtime-authority-and-restart-truth/{spec,plan,tasks}.md` freeze the backend/runtime follow-up without reopening Packet A shell work, Packet B UI shape, Windows, or true `F-027` / `F-031` identity.",
+      "Fresh packaged verification confirms `/api/status` no longer reports false-positive running truth and now serves as the authoritative packaged runtime status surface.",
+      "Truthful save contract now allows `saved`, `saved_degraded`, and `rejected`, and both `POST /api/config/api` plus `POST /api/config/model-routing` can return caller-consumable `2xx` degraded truth when persistence succeeds but restart remains degraded.",
+      "Fresh combined packaged verification observed `HTTP 200`, `ok:true`, `persisted:true`, `saveState:\"saved_degraded\"` on both save endpoints, with follow-up `GET` / reopen reading back persisted truth while preserving `opensparrow-router` and `opensparrow-router/auto`."
+    ],
+    "steps": [
+      "Freeze `F-032` as the packaged runtime authority and truthful save-contract follow-up in `spec / plan / tasks`, limited to backend/runtime truth.",
+      "Land source-level `/api/status` authority truth and save-contract behavior without reopening UI shape or changing router identities.",
+      "Close the feature only after fresh combined packaged verification confirms authoritative status truth, truthful degraded save responses, persisted read-back, and no regression to Packet A / Packet B packaged surfaces."
+    ],
+    "evidence_hint": "`F-032 source truth PASS` + fresh combined packaged artifact `gtclaw-mac-release-arm64-20260423-141103` with `/api/status` authority PASS and both save endpoints returning `HTTP 200`, `ok:true`, `persisted:true`, `saveState:\"saved_degraded\"`, followed by persisted read-back and unchanged internal ids",
+    "risk": "medium",
+    "passes": true
+  },
+  {
+    "id": "F-034",
+    "priority": 1,
+    "category": "packaging",
+    "component": "packaged-single-channel-plugin-timeout-parity",
+    "description": "Close the packaged single-channel plugin timeout parity packet from fresh packaged replay evidence by proving DingTalk-only and WeCom-only now complete truthfully on the same artifact, while the combined DingTalk+WeCom lane preserves the exact frozen F-033 probe failure contract without regressing to indefinite running, fake success, or router-id drift.",
+    "depends_on": [
+      "F-030",
+      "F-032"
+    ],
+    "acceptance_criteria": [
+      "`specs/034-packaged-single-channel-plugin-timeout-parity/{spec,plan,tasks}.md` freeze F-034 as its own packet and close it only from the 2026-04-24 fresh packaged replay, not from stale historical PASS.",
+      "Fresh packaged replay on artifact `gtclaw-mac-release-arm64-20260424-003358` shows `dingtalk-only` with `/api/install = HTTP 200`, final `status=completed`, final `installState=completed`, `blockingStep=null`, `blockingPlugin=null`, `bypass={verdict:none, used:false}`, `requestedChannelReadiness={dingtalk:true,wecom:true}`, `channelProbes.dingtalk={status:ok, ready:true}`, and `six-surface consistency=true`.",
+      "Fresh packaged replay on the same artifact shows `wecom-only` with `/api/install = HTTP 200`, final `status=completed`, final `installState=completed`, `blockingStep=null`, `blockingPlugin=null`, `bypass={verdict:none, used:false}`, `requestedChannelReadiness={dingtalk:true,wecom:true}`, `channelProbes.wecom={status:ok, ready:true}`, and `six-surface consistency=true`.",
+      "Fresh packaged replay on the same artifact preserves the exact frozen F-033 combined contract: `dingtalk+wecom` returns `/api/install = HTTP 500`, final `status=error`, final `installState=failed`, `blockingStep=probe`, `blockingPlugin=wecom-openclaw-plugin`, `bypass={verdict:failed, used:false, plugin:wecom-openclaw-plugin}`, `requestedChannelReadiness={dingtalk:false,wecom:false}`, `channelProbes.dingtalk={status:warning, ready:false}`, `channelProbes.wecom={status:error, ready:false}`, and `six-surface consistency=true`.",
+      "Router invariants remain `providerId=opensparrow-router` and `modelTarget=opensparrow-router/auto`, `step=plugins` does not regress to indefinite running or fake success, and the passing DingTalk-only replay shows the staged-shell -> critical-dist -> final-authority lag signature without actually crossing the 120000ms timeout or exercising timeout safe_bypass."
+    ],
+    "steps": [
+      "Freeze F-034 as the packaged single-channel plugin timeout parity packet, keeping its identity separate from F-033 and requiring closeout to come only from fresh packaged replay.",
+      "Verify the fresh packaged single-channel matrix on one artifact: DingTalk-only PASS, WeCom-only PASS, and combined DingTalk+WeCom preserving the exact frozen F-033 probe truth across six surfaces.",
+      "Close the packet only after syncing the verified matrix, router invariants, non-regression truth, and residual facts-only risks into docs, spec status, and longrun tracking."
+    ],
+    "evidence_hint": "`F-034 source PASS` + fresh packaged verifier `PASS / Ready for Closeout` on artifact dir `/private/tmp/f034-packaged-rebuild-lT3AVc/gtclaw-mac-release-arm64-20260424-003358/GTClaw-0.1.0-alpha-macOS-arm64`, zip `/private/tmp/f034-packaged-rebuild-lT3AVc/gtclaw-mac-release-arm64-20260424-003358.zip`, replay root `/private/tmp/f034-packaged-round5-replays-MOZFDx`, and capture root `/private/tmp/f034-packaged-round5-captures-rhqPgf`",
+    "risk": "medium",
+    "passes": true
+  },
+  {
+    "id": "packaged-channels-late-stage-authority-closure",
+    "priority": 1,
+    "category": "packaging",
+    "component": "packaged-install-authority",
+    "description": "Close the packaged channels late-stage authority packet by adding bounded post-timeout staged-shell authority closure for channels installs, proving DingTalk late dependency catch-up reaches final shared/profile authority, preserving WeCom-only success and exact F-033 combined failure truth, and keeping F-034 / F-033 identities intact.",
+    "depends_on": [
+      "F-034"
+    ],
+    "acceptance_criteria": [
+      "`specs/packaged-channels-late-stage-authority-closure/{spec,plan,tasks}.md` freezes this as a new packaged install authority packet, not an F-034 reopen or dashboard/UI patch.",
+      "Source PASS confirms `OPENSPARROW_PLUGIN_LATE_STAGE_AUTHORITY_GRACE_MS`, packaged default late-stage grace `600000ms`, staged shell matching before late-stage wait, structural readiness checks for `openclaw.plugin.json`, `package.json`, `dist/index.js`, package/id match, and channels `node_modules/@openclaw-china/dingtalk/dist/index.js`.",
+      "Source tests pass: `node --check ui/server.mjs`, `node --test ui/tests/packaged-single-channel-plugin-timeout-parity.test.mjs` (`3/3`), `node --test ui/tests/packaged-plugin-install-hang-bypass.test.mjs` (`10/10`), `node --test ui/tests/packaged-plugin-profile-sync.test.mjs` (`5/5`), and `git diff --check` on the packet write-set.",
+      "Fresh packaged verifier PASS on artifact `gtclaw-mac-release-arm64-20260424-235728` proves the DingTalk late-stage lane crosses timeout, receives the late dependency, closes final shared/profile `extensions/channels`, returns `HTTP 200`, `status=completed`, `installState=completed`, `blockingStep=null`, `blockingPlugin=null`, `requestedChannelReadiness.dingtalk=true`, and `channelProbes.dingtalk={status:ok,ready:true}`.",
+      "Fresh packaged verifier preserves WeCom-only success, exact F-033 combined DingTalk+WeCom probe failure truth, six-surface consistency across install/status/state/diagnostics/export/bundle, and router invariants `providerId=opensparrow-router` plus `modelTarget=opensparrow-router/auto`."
+    ],
+    "steps": [
+      "Freeze this packet as backend/runtime packaged install authority closure with no vendor, Windows, wrapper, packaging-strategy, dashboard/UI, or secret scope.",
+      "Implement bounded late-stage staged-shell authority closure that promotes only structurally ready footprints and keeps no-authority failures precise.",
+      "Run source syntax/tests and packet write-set diff checks.",
+      "Run fresh packaged replay on a new artifact using controlled timing to exercise the timeout plus late dependency path rather than a fast install replay.",
+      "Close out the verified facts into spec, longrun, feature tracking, and packaged-mac status docs without rewriting F-034 or F-033 history."
+    ],
+    "evidence_hint": "Source PASS + fresh packaged verifier PASS on build root `/private/tmp/packaged-channels-late-stage-rebuild-77vgKb`, artifact dir `/private/tmp/packaged-channels-late-stage-rebuild-77vgKb/gtclaw-mac-release-arm64-20260424-235728/GTClaw-0.1.0-alpha-macOS-arm64`, zip `/private/tmp/packaged-channels-late-stage-rebuild-77vgKb/gtclaw-mac-release-arm64-20260424-235728.zip`, SHA256 `d30c2b29023ac118c688eed3e7e109227fef84c229e6e2c6561fce11086a10d9`, replay root `/private/tmp/packaged-channels-late-stage-replay-UrwTeG`, and DingTalk late-stage evidence from `2026-04-25T08:09:19.545Z` through `2026-04-25T08:09:20.373Z`",
+    "risk": "medium",
+    "passes": true
   }
 ]

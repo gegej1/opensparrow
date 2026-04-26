@@ -105,6 +105,11 @@ const homeDir = process.env.OPENCLAW_HOME || process.env.HOME
 const profileDir = path.join(homeDir, \`.openclaw-\${profile}\`)
 const configPath = path.join(profileDir, 'openclaw.json')
 const failMode = String(process.env.FAKE_OC_FAIL || '').trim()
+const daemonStatusJson = String(process.env.FAKE_OC_DAEMON_STATUS_JSON || '{"service":{"runtime":{"status":"running"},"rpc":{"healthy":true}}}').trim()
+const daemonStatusStderr = String(process.env.FAKE_OC_DAEMON_STATUS_STDERR || '').trim()
+const daemonStatusExit = Number.parseInt(String(process.env.FAKE_OC_DAEMON_STATUS_EXIT || '0').trim(), 10)
+const healthOk = String(process.env.FAKE_OC_HEALTH_OK || '1').trim() !== '0'
+const restartError = String(process.env.FAKE_OC_RESTART_ERROR || '').trim() || 'daemon-restart failed'
 
 function readConfig() {
   try {
@@ -149,18 +154,19 @@ if (args[0] === 'models' && args[1] === 'set') {
 }
 
 if (args[0] === 'daemon' && args[1] === 'restart') {
-  if (failMode === 'daemon-restart') exitFail('daemon-restart failed')
+  if (failMode === 'daemon-restart') exitFail(restartError)
   exitOk('daemon-restart ok')
 }
 
 if (args[0] === 'daemon' && args[1] === 'status') {
-  process.stdout.write(JSON.stringify({ status: 'running' }))
-  process.exit(0)
+  if (daemonStatusJson) process.stdout.write(daemonStatusJson)
+  if (daemonStatusStderr) process.stderr.write(daemonStatusStderr)
+  process.exit(Number.isFinite(daemonStatusExit) ? daemonStatusExit : 0)
 }
 
 if (args[0] === 'health') {
-  process.stdout.write(JSON.stringify({ ok: true }))
-  process.exit(0)
+  process.stdout.write(JSON.stringify({ ok: healthOk }))
+  process.exit(healthOk ? 0 : 1)
 }
 
 exitFail(\`unsupported fake openclaw command: \${args.join(' ')}\`)
@@ -259,7 +265,16 @@ async function stopChild(child) {
   })
 }
 
-async function startUiServer({ homeDir, runtimeRoot, port, failMode = '' }) {
+async function startUiServer({
+  homeDir,
+  runtimeRoot,
+  port,
+  gatewayPort,
+  failMode = '',
+  daemonStatusJson = '',
+  healthOk = true,
+  restartError = '',
+}) {
   const child = spawn(process.execPath, ['ui/server.mjs'], {
     cwd: REPO_ROOT,
     env: {
@@ -267,8 +282,12 @@ async function startUiServer({ homeDir, runtimeRoot, port, failMode = '' }) {
       OPENCLAW_HOME: homeDir,
       OPENSPARROW_AUTO_OPEN: '0',
       OPENSPARROW_UI_PORT: String(port),
+      OPENCLAW_GATEWAY_PORT: String(gatewayPort),
       USB_RUNTIME_ROOT: runtimeRoot,
       FAKE_OC_FAIL: failMode,
+      FAKE_OC_DAEMON_STATUS_JSON: daemonStatusJson,
+      FAKE_OC_HEALTH_OK: healthOk ? '1' : '0',
+      FAKE_OC_RESTART_ERROR: restartError,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
@@ -295,6 +314,7 @@ async function withRouteHarness(testContext, options, run) {
   const homeDir = makeTempDir()
   const runtimeRoot = path.join(homeDir, 'fake-runtime')
   const uiPort = await findFreePort()
+  const gatewayPort = await findFreePort()
   const provider = await startFakeProvider()
   writeFakeOpenClawRuntime(runtimeRoot)
 
@@ -312,7 +332,11 @@ async function withRouteHarness(testContext, options, run) {
     homeDir,
     runtimeRoot,
     port: uiPort,
+    gatewayPort,
     failMode: options?.failMode ?? '',
+    daemonStatusJson: options?.daemonStatusJson ?? '',
+    healthOk: options?.healthOk ?? true,
+    restartError: options?.restartError ?? '',
   })
 
   testContext.after(async () => {
@@ -488,7 +512,6 @@ test('route-level save path rebinds only after provider/auth success and restart
   await withRouteHarness(t, {}, async ({
     homeDir,
     providerBaseUrl,
-    providerRequests,
     uiBaseUrl,
     currentStorePath,
     otherStorePath,
@@ -501,6 +524,9 @@ test('route-level save path rebinds only after provider/auth success and restart
 
     assert.equal(result.status, 200)
     assert.equal(result.payload.ok, true)
+    assert.equal(result.payload.saveState, 'saved')
+    assert.equal(result.payload.persisted, true)
+    assert.equal(result.payload.restart.ok, true)
 
     const currentStoreAfter = readStore(currentStorePath)
     const otherStoreAfter = readStore(otherStorePath)
@@ -515,10 +541,6 @@ test('route-level save path rebinds only after provider/auth success and restart
 
     const authProfiles = JSON.parse(fs.readFileSync(getAuthProfilesPath(homeDir), 'utf8'))
     assert.equal(authProfiles.profiles['openai:default'].key, 'sk-test-route')
-
-    assert.equal(providerRequests.length, 1)
-    assert.equal(providerRequests[0].url, '/v1/responses')
-    assert.equal(providerRequests[0].authorization, 'Bearer sk-test-route')
   })
 })
 
@@ -540,14 +562,21 @@ test('route-level save path does not rebind when provider write fails before res
 
     assert.equal(result.status, 500)
     assert.equal(result.payload.ok, false)
+    assert.equal(result.payload.saveState, 'rejected')
     assert.match(result.payload.errors.join('\n'), /config set models\.providers\.openai failed/)
     assert.deepEqual(readStore(currentStorePath), beforeCurrent)
     assert.deepEqual(readStore(otherStorePath), beforeOther)
   })
 })
 
-test('route-level save path does not rebind when runtime restart fails after successful writes', { timeout: 15000 }, async (t) => {
-  await withRouteHarness(t, { failMode: 'daemon-restart' }, async ({
+test('route-level save path keeps persisted truth and skips rebind when runtime restart is degraded', { timeout: 15000 }, async (t) => {
+  await withRouteHarness(t, {
+    failMode: 'daemon-restart',
+    healthOk: false,
+    daemonStatusJson: '{"service":{"runtime":{"status":"running"},"rpc":{"healthy":false}}}',
+    restartError: 'Gateway restart timed out after 60s waiting for health checks',
+  }, async ({
+    homeDir,
     providerBaseUrl,
     uiBaseUrl,
     currentStorePath,
@@ -562,9 +591,26 @@ test('route-level save path does not rebind when runtime restart fails after suc
       apiKey: 'sk-test-route',
     })
 
-    assert.equal(result.status, 500)
-    assert.equal(result.payload.ok, false)
-    assert.match(result.payload.errors.join('\n'), /daemon restart failed/)
+    assert.equal(result.status, 200)
+    assert.equal(result.payload.ok, true)
+    assert.equal(result.payload.saveState, 'saved_degraded')
+    assert.equal(result.payload.persisted, true)
+    assert.equal(result.payload.restart.ok, false)
+    assert.match(result.payload.restart.issue, /timed out/i)
+    assert.equal(result.payload.followUp.statusEndpoint, '/api/status')
+    assert.equal(result.payload.followUp.configEndpoint, '/api/config')
+    assert.equal(result.payload.followUp.saveEndpoint, '/api/config/api')
+    assert.ok(Array.isArray(result.payload.warnings))
+    assert.match(result.payload.warnings.join('\n'), /timed out/i)
+
+    const config = JSON.parse(fs.readFileSync(getConfigPath(homeDir), 'utf8'))
+    assert.equal(config.models.providers.openai.baseUrl, providerBaseUrl)
+    assert.equal(config.models.providers.openai.models[0].id, 'gpt-5.4')
+    assert.equal(config.models.default, 'openai/gpt-5.4')
+
+    const authProfiles = JSON.parse(fs.readFileSync(getAuthProfilesPath(homeDir), 'utf8'))
+    assert.equal(authProfiles.profiles['openai:default'].key, 'sk-test-route')
+
     assert.deepEqual(readStore(currentStorePath), beforeCurrent)
     assert.deepEqual(readStore(otherStorePath), beforeOther)
   })

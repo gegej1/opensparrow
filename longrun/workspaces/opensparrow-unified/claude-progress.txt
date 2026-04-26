@@ -1056,3 +1056,321 @@
 - Current status:
   - packaged-mac 这条线现在不仅能在 UI timeout 后靠 instance fingerprint 追错实例，也能在 wrapper 启动时更早识别“架构不对 / symlink 被压扁 / 端口被别的 listener 占住 / 插件 tarball 缺失”。
   - 下一步若新机仍复现 timeout，就应该优先回看 `/api/status` 与 package-local diagnostics 里的 instance / gateway truth，而不是先假设安装流程本身一定坏了。
+
+## Session 31 (F-031/F-032 facts-only writeback after fresh combined packaged PASS)
+- Date: 2026-04-23
+- Goal: 仅基于 Commander 已确认的 fresh verifier truth，把 `F-031`、`F-032` 与 packaged-mac 当前 truth 同步回 docs / longrun / feature tracking；不改 runtime code，不重开实现，不扩 scope。
+- Selected feature id:
+  - `F-031`
+  - `F-032`
+- Scope:
+  - 允许写面：
+    - `longrun/workspaces/opensparrow-unified/feature_list.json`
+    - `longrun/workspaces/opensparrow-unified/claude-progress.txt`
+    - `docs/current-status.md`
+    - `docs/packaged-mac-diagnostics.md`
+    - `docs/runtime-flow.md`
+    - `specs/031-dashboard-model-routing-ui/spec.md`
+    - `specs/032-packaged-runtime-authority-and-restart-truth/spec.md`
+  - 禁止写面：
+    - `ui/**`
+    - `platforms/**`
+    - `vendor/**`
+    - 任意 Windows 文件
+    - internal ids
+- Fresh verifier truth used for writeback:
+  - `Packet A source truth PASS`
+  - `Packet B / F-031 source truth PASS`
+  - `F-032 source truth PASS`
+  - `combined packaged PASS`
+  - fresh rebuild artifact：
+    - `/tmp/f032-packaged-rebuild-botvDw/gtclaw-mac-release-arm64-20260423-141103/GTClaw-0.1.0-alpha-macOS-arm64`
+    - `/tmp/f032-packaged-rebuild-botvDw/gtclaw-mac-release-arm64-20260423-141103.zip`
+  - fresh packaged verification 已证明：
+    - GTClaw branding PASS
+    - authoritative status truth PASS
+    - static fake version removed PASS
+    - model-routing UI surface exists PASS
+    - API config limited to compatibility lane PASS
+    - authoritative model-routing load/save PASS
+    - truthful save contract PASS
+    - internal ids unchanged PASS
+    - new files included in fresh artifact PASS
+  - truthful save contract 现允许：
+    - `saved`
+    - `saved_degraded`
+    - `rejected`
+  - verifier 实际拿到：
+    - `POST /api/config/api` → `HTTP 200`, `ok:true`, `persisted:true`, `saveState:"saved_degraded"`
+    - `POST /api/config/model-routing` → `HTTP 200`, `ok:true`, `persisted:true`, `saveState:"saved_degraded"`
+    - follow-up `GET` / reopen 都能读回 persisted truth
+    - internal ids 仍是 `opensparrow-router` / `opensparrow-router/auto`
+- Writeback completed:
+  - `feature_list.json`
+    - 新增 `F-031` 与 `F-032` completed feature entries。
+    - evidence hint 统一锚到 `gtclaw-mac-release-arm64-20260423-141103` 这次 fresh combined packaged artifact。
+  - `claude-progress.txt`
+    - 记录本轮 facts-only writeback scope、evidence source、禁止写面与保留 debt。
+  - `docs/current-status.md`
+    - 把 latest packaged-mac truth 从 `2026-04-22` 状态推进到 `2026-04-23` combined packaged PASS。
+    - 明确写回 F-031/F-032 已 source PASS + combined packaged PASS。
+    - 明确写回 `saved | saved_degraded | rejected` 与两条 save endpoint 的 fresh packaged response truth。
+  - `docs/packaged-mac-diagnostics.md`
+    - 增补 `2026-04-23` fresh combined packaged truth section，记录 artifact、authoritative status、model-routing surface、truthful save contract 与 persisted read-back。
+  - `docs/runtime-flow.md`
+    - 更新 packaged runtime / dashboard / model-routing 的当前 frozen truth，不再把旧 `20260420-132429` blocker 叙述当 current state。
+  - `specs/031-dashboard-model-routing-ui/spec.md`
+    - 状态补写为 completed，并记录 F-031 source PASS + combined packaged PASS evidence。
+  - `specs/032-packaged-runtime-authority-and-restart-truth/spec.md`
+    - 状态补写为 completed，并记录 authoritative status truth + truthful save contract 的 packaged evidence。
+- Refused writeback:
+  - 未把 Windows 线写成 PASS。
+  - 未改写 true `F-027` identity。
+  - 未把 `opensparrow-router` / `opensparrow-router/auto` 改写成 native routing。
+  - 未把 stale spec 当 authority 去修正当前 runtime truth。
+  - 未把 fresh single-machine evidence 写成“跨机器正式发放已无风险”。
+- Stale-doc debt retained:
+  - `specs/031-dashboard-model-routing-ui/plan.md` 与 `tasks.md` 仍保留 implementation-time wording（例如“不得自行宣布最终 close”）；本轮未重写其历史执行语气。
+  - `specs/032-packaged-runtime-authority-and-restart-truth/plan.md` 与 `tasks.md` 同样保留 implementation-time wording；本轮只补 status/evidence，不改 scope。
+  - 更早的 historical closeout 文档（如 `F-027` / `F-030` 相关历史包线文档）继续作为 historical context 保留，不在本轮升格为当前 authority。
+- Validation:
+  - `python3 -m json.tool longrun/workspaces/opensparrow-unified/feature_list.json >/dev/null` → PASS
+  - `python3 longrun/scripts/progress_report.py longrun/workspaces/opensparrow-unified/feature_list.json` → PASS（`30/30 passing`、`Remaining: 0`、`Blocked by dependencies: 0`）
+  - `git diff -- docs/current-status.md docs/packaged-mac-diagnostics.md docs/runtime-flow.md specs/031-dashboard-model-routing-ui/spec.md specs/032-packaged-runtime-authority-and-restart-truth/spec.md longrun/workspaces/opensparrow-unified/feature_list.json longrun/workspaces/opensparrow-unified/claude-progress.txt` → PASS（仅命中允许 write-set）
+- Current status:
+  - `F-031` 已完成 facts-only closeout writeback。
+  - `F-032` 已完成 facts-only closeout writeback。
+  - packaged-mac 当前 fresh artifact 已可作为下一台 Mac 的候选包，但仍建议先补独立新机 smoke，再决定是否对外正式发放。
+
+## Session 32 (F-034 facts-only closeout writeback)
+- Date: 2026-04-24
+- Goal: 只把 `F-034` fresh verifier 已确认的 closeout truth 写回 docs / spec / longrun；不做实现，不改 code/tests，不扩 scope，不重判 authority。
+- Selected feature id: `F-034`
+- Scope:
+  - 允许写面：
+    - `docs/current-status.md`
+    - `docs/packaged-mac-diagnostics.md`
+    - `specs/034-packaged-single-channel-plugin-timeout-parity/spec.md`
+    - `longrun/workspaces/opensparrow-unified/feature_list.json`
+    - `longrun/workspaces/opensparrow-unified/claude-progress.txt`
+  - 默认不改：
+    - `ui/**`
+    - `specs/034-packaged-single-channel-plugin-timeout-parity/plan.md`
+    - `specs/034-packaged-single-channel-plugin-timeout-parity/tasks.md`
+    - `docs/runtime-flow.md`
+- Fresh authority used for closeout:
+  - branch/worktree：`/Users/eduardogan/.config/superpowers/worktrees/opensparrow/feature-p0-packaged-mac-diagnostics`
+  - fresh packaged verifier verdict：`PASS / Ready for Closeout`
+  - fresh artifact dir：
+    - `/private/tmp/f034-packaged-rebuild-lT3AVc/gtclaw-mac-release-arm64-20260424-003358/GTClaw-0.1.0-alpha-macOS-arm64`
+  - fresh artifact zip：
+    - `/private/tmp/f034-packaged-rebuild-lT3AVc/gtclaw-mac-release-arm64-20260424-003358.zip`
+  - fresh replay root：
+    - `/private/tmp/f034-packaged-round5-replays-MOZFDx`
+  - fresh capture root：
+    - `/private/tmp/f034-packaged-round5-captures-rhqPgf`
+- Frozen truth written back:
+  - `F-034` 已 source PASS + fresh packaged PASS。
+  - `dingtalk-only`：
+    - `/api/install = HTTP 200`
+    - final `status=completed`
+    - final `installState=completed`
+    - `blockingStep=null`
+    - `blockingPlugin=null`
+    - `bypass={verdict:none, used:false}`
+    - `requestedChannelReadiness={dingtalk:true,wecom:true}`
+    - `channelProbes.dingtalk={status:ok, ready:true}`
+    - `six-surface consistency=true`
+  - `wecom-only`：
+    - `/api/install = HTTP 200`
+    - final `status=completed`
+    - final `installState=completed`
+    - `blockingStep=null`
+    - `blockingPlugin=null`
+    - `bypass={verdict:none, used:false}`
+    - `requestedChannelReadiness={dingtalk:true,wecom:true}`
+    - `channelProbes.wecom={status:ok, ready:true}`
+    - `six-surface consistency=true`
+  - `dingtalk+wecom`：
+    - `/api/install = HTTP 500`
+    - final `status=error`
+    - final `installState=failed`
+    - `blockingStep=probe`
+    - `blockingPlugin=wecom-openclaw-plugin`
+    - `bypass={verdict:failed, used:false, plugin:wecom-openclaw-plugin}`
+    - `requestedChannelReadiness={dingtalk:false,wecom:false}`
+    - `channelProbes.dingtalk={status:warning, ready:false}`
+    - `channelProbes.wecom={status:error, ready:false}`
+    - `six-surface consistency=true`
+    - 这是 exact frozen `F-033` probe truth，已保持
+  - router invariants：
+    - `providerId=opensparrow-router`
+    - `modelTarget=opensparrow-router/auto`
+  - `step=plugins` 没有 regression 回到 indefinite running / fake success。
+  - `dingtalk-only` passing replay 观察到 `staged-shell -> critical-dist -> final-authority lag` signature，但这次没有真的跨过 `120000ms` timeout，因此 fresh packaged PASS 不是靠 timeout safe_bypass 触发的。
+  - residual risks 只作 facts-only 记录：
+    - `dingtalk-only` 这次 passing replay 没直接 exercise packaged timeout+grace-wait path
+    - `wecom-only` 是 config-only probe summary，但在当前 acceptance 下仍是 packaged PASS
+    - 不把这些 residual risks 升格成 blocker
+- Writeback completed:
+  - `docs/current-status.md`
+    - 更新到 `2026-04-24`，补写 `F-034` source PASS + fresh packaged PASS、artifact/replay roots、three-lane frozen truth、router invariants、non-regression truth、residual risks。
+    - 把 `2026-04-23` 的 f032 artifact wording降成历史上下文，避免和当前 closeout 冲突。
+  - `docs/packaged-mac-diagnostics.md`
+    - 新增 `2026-04-24 F-034 fresh packaged replay closeout`，完整记录 DingTalk-only / WeCom-only / combined lane matrix 和 `safe_bypass` 未触发事实。
+  - `specs/034-packaged-single-channel-plugin-timeout-parity/spec.md`
+    - 状态补写为 completed，并新增 closeout evidence section。
+    - 旧 `Current Frozen Truth` 改名为 `Initial Frozen Truth`，保留为 historical context，不再冒充 current packaged state。
+  - `feature_list.json`
+    - 新增 `F-034` completed feature entry。
+    - evidence hint 直接锚到 `2026-04-24` artifact/replay/capture roots。
+  - `claude-progress.txt`
+    - 记录本轮 facts-only closeout writeback、authority roots、frozen truth 与最小验证结果。
+- Refused writeback:
+  - 没有把这次 fresh packaged `dingtalk-only` 写成 safe_bypass exercised；保持 `bypass={verdict:none, used:false}`。
+  - 没有把 combined lane 写成 completed 或 partial success。
+  - 没有把 Round 5 之前的 `REQUEST_CHANGES` 当 current state。
+  - 没有把 noisy workspace 整仓脏状态写成 `F-034` truth。
+  - 没有重写 `F-033` / `F-034` identity。
+  - 没有写 Windows。
+  - 没有把 source harness 预期升格成 packaged authority。
+- Validation:
+  - `python3 -m json.tool longrun/workspaces/opensparrow-unified/feature_list.json >/dev/null` → PASS
+  - `python3 longrun/scripts/progress_report.py longrun/workspaces/opensparrow-unified/feature_list.json` → PASS
+  - `git diff -- docs/current-status.md docs/packaged-mac-diagnostics.md specs/034-packaged-single-channel-plugin-timeout-parity/spec.md longrun/workspaces/opensparrow-unified/feature_list.json longrun/workspaces/opensparrow-unified/claude-progress.txt` → PASS（仅命中允许 write-set）
+- Current status:
+  - `F-034` 已完成 facts-only closeout writeback。
+
+## Session 33 (dashboard-dingtalk-diagnostics-timeout-readback facts-only closeout)
+- Date: 2026-04-24
+- Goal: 只把 `dashboard-dingtalk-diagnostics-timeout-readback` 已验证事实写回 longrun；不改实现代码，不碰 vendor / Windows / wrappers / packaging strategy，不回显 secret，不重写 `F-034` / `F-033` / `dashboard-status-recovery` / `logo-consistency` 的历史身份。
+- Packet identity:
+  - packet 名：`dashboard-dingtalk-diagnostics-timeout-readback`
+  - 类型：小 UI/dashboard diagnostics readback patch
+  - 不是 `F-034` reopen。
+  - 不是 dashboard status-recovery packet reopen。
+- Writeback scope:
+  - 已写：`longrun/workspaces/opensparrow-unified/claude-progress.txt`
+  - 未写：`longrun/workspaces/opensparrow-unified/feature_list.json`
+  - 原因：本轮是小 UI/dashboard diagnostics readback packet closeout，未创建新的编号 feature identity；为避免 identity drift，不把 noisy workspace 或其他历史 packet 写成当前 packet。
+- Source PASS:
+  - `requestTimeout.diagnostics = 30000`
+  - `/api/dingtalk/probe` 使用 `this.requestTimeout.diagnostics`，不再使用 10s status timeout。
+  - `AbortError` branch 映射到 warning timeout 文案：`钉钉诊断请求超时，请稍后重试；这不代表消息发送失败。`
+  - 不再把 raw `signal is aborted` 暴露给用户。
+  - replay/source tests PASS:
+    - `node --test ui/public/replay-surfaces.test.mjs`：`19/19`
+    - `node --test ui/tests/dashboard-status-shell.test.mjs`：`9/9`
+- Fresh packaged smoke PASS:
+  - build root：`/private/tmp/dashboard-dingtalk-diagnostics-rebuild-oPvzTr`
+  - artifact dir：`/private/tmp/dashboard-dingtalk-diagnostics-rebuild-oPvzTr/gtclaw-mac-release-arm64-20260424-213049/GTClaw-0.1.0-alpha-macOS-arm64`
+  - artifact zip：`/private/tmp/dashboard-dingtalk-diagnostics-rebuild-oPvzTr/gtclaw-mac-release-arm64-20260424-213049.zip`
+  - build exit code：`0`
+  - fresh server port：`64627`
+  - `OPENCLAW_HOME`：`/private/tmp/dashboard-dingtalk-diagnostics-smoke-home-ED6hzE/openclaw`
+  - `/api/status.instance.packRoot` 指向 fresh artifact dir。
+  - `GET /dashboard`：`HTTP 200`
+  - `POST /api/dingtalk/probe`：`HTTP 200`，truthful no-config response `status=error`, `ready=false`, `daemon=stopped`
+  - packaged UI source inspection PASS：diagnostics `30000`、`AbortError` branch、timeout copy、无 user-facing `signal is aborted`
+- Browser automation evidence:
+  - Playwright package unavailable。
+  - 使用 headless Google Chrome + Chrome DevTools Protocol。
+  - 打开 fresh server `/dashboard`。
+  - intercept `/api/dingtalk/probe`，手动“刷新读回”延迟 `12001ms`。
+  - `11s` 时 UI 仍 loading，无 raw `signal is aborted`，无 timeout copy。
+  - final `ok/ready`，summary = `mock dingtalk ready #3`
+  - screenshot：`/private/tmp/dashboard-dingtalk-diagnostics-browser-1777039138779.png`
+- Risks:
+  - CDP automation 代替 Playwright。
+  - live backend smoke 是 no-config truthful error path，不是真实钉钉凭据 probe。
+- Conclusion:
+  - Source PASS + Fresh Packaged Smoke PASS
+  - Closeout complete
+
+## Session 34 (packaged-channels-late-stage-authority-closure facts-only closeout)
+- Date: 2026-04-25
+- Goal: 只把 `packaged-channels-late-stage-authority-closure` 已验证事实写回 spec / longrun / packaged-mac docs；不改实现代码，不碰 vendor / Windows / wrappers / packaging strategy / secrets，不重写 `F-034` / `F-033` 历史身份。
+- Packet identity:
+  - Packet：`packaged-channels-late-stage-authority-closure`
+  - 状态：`completed`
+  - 定位：新的 packaged install authority packet
+  - 不是 `F-034` reopen。
+  - 不是 dashboard/UI patch。
+- Writeback scope:
+  - 已写：
+    - `longrun/workspaces/opensparrow-unified/claude-progress.txt`
+    - `longrun/workspaces/opensparrow-unified/feature_list.json`
+    - `specs/packaged-channels-late-stage-authority-closure/spec.md`
+    - `docs/current-status.md`
+    - `docs/packaged-mac-diagnostics.md`
+  - noisy workspace 只做 packet attribution；不把整仓 dirty state 写成本 packet。
+- Source PASS:
+  - `node --check ui/server.mjs` PASS
+  - `node --test ui/tests/packaged-single-channel-plugin-timeout-parity.test.mjs` PASS, `3/3`
+  - `node --test ui/tests/packaged-plugin-install-hang-bypass.test.mjs` PASS, `10/10`
+  - `node --test ui/tests/packaged-plugin-profile-sync.test.mjs` PASS, `5/5`
+  - `git diff --check` packet write-set PASS
+- Source implementation truth:
+  - Added bounded late-stage authority grace via `OPENSPARROW_PLUGIN_LATE_STAGE_AUTHORITY_GRACE_MS`.
+  - Packaged default late-stage grace = `600000ms`.
+  - Staged shell matching required before late-stage wait activates.
+  - Structural readiness requires `openclaw.plugin.json`, `package.json`, `dist/index.js`, package/id match, and for channels `node_modules/@openclaw-china/dingtalk/dist/index.js`.
+  - Promotion closes final shared/profile authority only after structural readiness.
+  - Negative no-authority lane remains precise failed, not fake success.
+- Fresh packaged PASS:
+  - build exit code：`0`
+  - build root：`/private/tmp/packaged-channels-late-stage-rebuild-77vgKb`
+  - artifact dir：`/private/tmp/packaged-channels-late-stage-rebuild-77vgKb/gtclaw-mac-release-arm64-20260424-235728/GTClaw-0.1.0-alpha-macOS-arm64`
+  - artifact zip：`/private/tmp/packaged-channels-late-stage-rebuild-77vgKb/gtclaw-mac-release-arm64-20260424-235728.zip`
+  - zip SHA256：`d30c2b29023ac118c688eed3e7e109227fef84c229e6e2c6561fce11086a10d9`
+  - artifact `ui/server.mjs` `node --check` PASS
+  - artifact inspection PASS
+- Replay method:
+  - replay root：`/private/tmp/packaged-channels-late-stage-replay-UrwTeG`
+  - fresh artifact started with bundled node
+  - each lane used isolated `HOME`, `OPENCLAW_HOME`, profile, UI/gateway/router ports
+  - controlled runtime fixture used only to force deterministic plugin timing
+  - dingtalk late-stage lane used plugin timeout `250ms`, normal authority grace `300ms`, late-stage grace `1500ms`, DingTalk dependency delay `800ms`
+  - explicitly not fast install replay
+- Lane results:
+  - dingtalk-only late-stage path：
+    - `HTTP 200`
+    - `status=completed`
+    - `installState=completed`
+    - `blockingStep=null`
+    - `blockingPlugin=null`
+    - `requestedChannelReadiness.dingtalk=true`
+    - `channelProbes.dingtalk={status:ok,ready:true}`
+  - wecom-only preservation：
+    - `HTTP 200`
+    - `status=completed`
+    - `installState=completed`
+    - no plugin indefinite running
+    - six surfaces consistent
+  - dingtalk+wecom combined `F-033` preservation：
+    - `HTTP 500`
+    - `status=error`
+    - `installState=failed`
+    - `blockingStep=probe`
+    - `blockingPlugin=wecom-openclaw-plugin`
+    - `requestedChannelReadiness={dingtalk:false,wecom:false}`
+    - `channelProbes.dingtalk={status:warning,ready:false}`
+    - `channelProbes.wecom={status:error,ready:false}`
+- Late-stage authority evidence:
+  - DingTalk install start：`2026-04-25T08:09:19.545Z`
+  - staged shell created：`2026-04-25T08:09:19.546Z`
+  - timeout boundary：`2026-04-25T08:09:19.795Z`
+  - late DingTalk dependency created：`2026-04-25T08:09:20.373Z`
+  - final shared/profile `extensions/channels` both exist with all required files
+  - `install.log` includes safe bypass reason: timed out after `250ms`, footprint structurally ready, plus late-stage catch-up closed after timeout wait
+- Six-surface consistency:
+  - All three lanes consistent across `/api/install`, `/api/install/status`, `install-state.json`, `/api/diagnostics`, `/api/diagnostics/export`, `diagnostic-bundle.json`.
+- Router invariants:
+  - all lanes `providerId=opensparrow-router`
+  - all lanes `modelTarget=opensparrow-router/auto`
+- Risks:
+  - Packaged replay used controlled runtime fixture to force timeout and late dependency timing; intentional for this packet.
+  - `init.sh` still stops on missing legacy frozen dir `opensparrow_win` in isolated worktree; non-blocking.
+- Conclusion:
+  - Source PASS + Fresh Packaged PASS
+  - Closeout complete

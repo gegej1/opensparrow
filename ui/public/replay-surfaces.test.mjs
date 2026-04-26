@@ -53,7 +53,12 @@ function loadPageFactory(relativePath, factoryName) {
   context.globalThis = context.window
   vm.createContext(context)
 
-  for (const helperPath of ['ui/public/wecom-helpers.js', 'ui/public/channel-helpers.js']) {
+  for (const helperPath of [
+    'ui/public/wecom-helpers.js',
+    'ui/public/channel-helpers.js',
+    'ui/public/dashboard-model-routing-state.mjs',
+  ]) {
+    if (!fs.existsSync(path.resolve(helperPath))) continue
     const source = fs.readFileSync(path.resolve(helperPath), 'utf8')
     vm.runInContext(source, context)
   }
@@ -66,6 +71,14 @@ function loadPageFactory(relativePath, factoryName) {
 
   return { context, factory }
 }
+
+test('wizard header uses a stable visible GTClaw brand mark without depending on logo.png', () => {
+  const html = fs.readFileSync(path.resolve('ui/public/index.html'), 'utf8')
+
+  assert.match(html, /\.brand-mark\s*\{[\s\S]*background:\s*linear-gradient\(135deg,\s*#1677FF,\s*#0958D9\)/)
+  assert.match(html, /<span class="brand-mark" aria-hidden="true">GT<\/span>[\s\S]*<h1[^>]*>GTClaw<\/h1>/)
+  assert.doesNotMatch(html, /<img\s+[^>]*src="logo\.png"/)
+})
 
 test('wizard init keeps API fields blank/default even when authoritative config exists', async () => {
   const { context, factory } = loadPageFactory('ui/public/index.html', 'wizard')
@@ -184,6 +197,242 @@ test('dashboard loadConfig keeps API form blank even when authoritative config e
   assert.equal(feishu.enabled, true)
   assert.equal(feishu.fields.appId, 'server-app-id')
   assert.equal(feishu.fields.appSecret, 'server-app-secret')
+})
+
+test('dashboard loadStatus reflects authoritative running truth without inventing a fake version', async () => {
+  const { factory } = loadPageFactory('ui/public/dashboard.html', 'dashboard')
+  const instance = factory()
+
+  instance.fetchWithTimeout = async (url) => {
+    if (url === '/api/status') {
+      return createResponse({
+        installed: true,
+        daemon: 'running',
+        gatewayHealthy: true,
+        profile: 'gtclaw-portable',
+        configPath: '~/.openclaw-gtclaw-portable/openclaw.json',
+        gatewayPort: 18929,
+      })
+    }
+    throw new Error(`Unexpected request: ${url}`)
+  }
+
+  const keepOnDashboard = await instance.loadStatus()
+
+  assert.equal(keepOnDashboard, true)
+  assert.equal(instance.serviceStatus, 'running')
+  assert.equal(instance.serviceInfo.profile, 'gtclaw-portable')
+  assert.equal(instance.serviceInfo.configPath, '~/.openclaw-gtclaw-portable/openclaw.json')
+  assert.equal(instance.serviceInfo.port, '18929')
+  assert.equal(instance.version, '—')
+})
+
+test('dashboard loadStatus marks status as unavailable instead of showing a stopped default when status fetch fails', async () => {
+  const { factory } = loadPageFactory('ui/public/dashboard.html', 'dashboard')
+  const instance = factory()
+
+  instance.fetchWithTimeout = async () => {
+    throw new Error('status unavailable')
+  }
+
+  const keepOnDashboard = await instance.loadStatus()
+
+  assert.equal(keepOnDashboard, true)
+  assert.equal(instance.serviceStatus, 'unknown')
+  assert.equal(instance.version, '—')
+  instance.clearStatusRecoveryTimer()
+})
+
+test('dashboard loadStatus auto-recovers from transient unavailable status to later backend truth', async () => {
+  const { context, factory } = loadPageFactory('ui/public/dashboard.html', 'dashboard')
+  const instance = factory()
+
+  const originalSetTimeout = context.setTimeout
+  const originalClearTimeout = context.clearTimeout
+  const originalWindowSetTimeout = context.window.setTimeout
+  const originalWindowClearTimeout = context.window.clearTimeout
+  const scheduled = []
+  let nextTimerId = 1
+
+  context.setTimeout = (fn, delay) => {
+    const id = nextTimerId
+    nextTimerId += 1
+    scheduled.push({ id, fn, delay })
+    return id
+  }
+  context.clearTimeout = (id) => {
+    const index = scheduled.findIndex((entry) => entry.id === id)
+    if (index >= 0) scheduled.splice(index, 1)
+  }
+  context.window.setTimeout = context.setTimeout
+  context.window.clearTimeout = context.clearTimeout
+
+  let statusRequests = 0
+  let activeRequests = 0
+  let maxActiveRequests = 0
+  instance.fetchWithTimeout = async (url) => {
+    assert.equal(url, '/api/status')
+    statusRequests += 1
+    activeRequests += 1
+    maxActiveRequests = Math.max(maxActiveRequests, activeRequests)
+    try {
+      if (statusRequests === 1) {
+        throw new Error('transient status drop')
+      }
+      return createResponse({
+        installed: true,
+        daemon: 'running',
+        runtimeMode: 'daemon',
+        gatewayHealthy: true,
+        version: '2026.3.23',
+        profile: 'gtclaw-portable',
+        configPath: '~/.openclaw-gtclaw-portable/openclaw.json',
+        gatewayPort: 18929,
+      })
+    } finally {
+      activeRequests -= 1
+    }
+  }
+
+  try {
+    const keepOnDashboard = await instance.loadStatus()
+
+    assert.equal(keepOnDashboard, true)
+    assert.equal(instance.statusLoadState, 'error')
+    assert.equal(instance.serviceStatus, 'unknown')
+    assert.equal(instance.serviceInfo.profile, '')
+    assert.equal(instance.serviceInfo.configPath, '')
+    assert.equal(instance.serviceInfo.port, '')
+    assert.equal(scheduled.length, 1)
+    assert.equal(maxActiveRequests, 1)
+
+    await scheduled.shift().fn()
+
+    assert.equal(statusRequests, 2)
+    assert.equal(maxActiveRequests, 1)
+    assert.equal(instance.statusLoadState, 'ready')
+    assert.equal(instance.serviceStatus, 'running')
+    assert.equal(instance.version, '2026.3.23')
+    assert.equal(instance.serviceInfo.profile, 'gtclaw-portable')
+    assert.equal(instance.serviceInfo.configPath, '~/.openclaw-gtclaw-portable/openclaw.json')
+    assert.equal(instance.serviceInfo.port, '18929')
+    assert.equal(instance.statusRecoveryTimer, null)
+    assert.equal(instance.statusRecoveryInFlight, false)
+    assert.equal(scheduled.length, 0)
+  } finally {
+    context.setTimeout = originalSetTimeout
+    context.clearTimeout = originalClearTimeout
+    context.window.setTimeout = originalWindowSetTimeout
+    context.window.clearTimeout = originalWindowClearTimeout
+  }
+})
+
+test('dashboard loadModelRoutingConfig uses the authoritative model-routing endpoint and preserves router invariants', async () => {
+  const { factory } = loadPageFactory('ui/public/dashboard.html', 'dashboard')
+  const instance = factory()
+
+  const requests = []
+  instance.fetchWithTimeout = async (url) => {
+    requests.push(url)
+    if (url === '/api/config/model-routing') {
+      return createResponse({
+        ok: true,
+        mode: 'smart',
+        connection: {
+          baseUrl: 'https://router.example/v1',
+          baseUrlConfigured: true,
+          apiKeyConfigured: true,
+          source: 'last-saved-api-config',
+        },
+        singleModeDefaultModel: 'gpt-4o-mini',
+        tierModelMap: {
+          SIMPLE: 'gpt-4o-mini',
+          MEDIUM: 'gpt-4.1-mini',
+          COMPLEX: 'gpt-4.1',
+          REASONING: 'o4-mini',
+        },
+        routing: { default: 'SIMPLE' },
+        effectivePrimaryModel: 'opensparrow-router/auto',
+        router: {
+          providerId: 'opensparrow-router',
+          modelTarget: 'opensparrow-router/auto',
+          configPresent: true,
+        },
+      })
+    }
+    throw new Error(`Unexpected request: ${url}`)
+  }
+
+  const loaded = await instance.loadModelRoutingConfig()
+
+  assert.equal(loaded, true)
+  assert.deepEqual(requests, ['/api/config/model-routing'])
+  assert.equal(instance.modelRouting.mode, 'smart')
+  assert.equal(instance.modelRouting.router.providerId, 'opensparrow-router')
+  assert.equal(instance.modelRouting.router.modelTarget, 'opensparrow-router/auto')
+  assert.equal(instance.modelRouting.effectivePrimaryModel, 'opensparrow-router/auto')
+})
+
+test('dashboard saveModelRoutingConfig re-reads authoritative model-routing state instead of replaying the local draft', async () => {
+  const { factory } = loadPageFactory('ui/public/dashboard.html', 'dashboard')
+  const instance = factory()
+  instance.showToast = () => {}
+
+  instance.modelRouting.mode = 'single'
+  instance.modelRouting.singleModeDefaultModel = 'draft-model'
+  instance.modelRouting.connection.baseUrlConfigured = true
+  instance.modelRouting.connection.apiKeyConfigured = true
+
+  const requests = []
+  instance.fetchWithTimeout = async (url, options = {}) => {
+    requests.push({ url, method: options.method ?? 'GET' })
+    if (url === '/api/config/model-routing' && options.method === 'POST') {
+      return createResponse({
+        ok: true,
+        mode: 'single',
+        effectivePrimaryModel: 'openai/draft-model',
+        message: 'saved',
+      })
+    }
+    if (url === '/api/config/model-routing') {
+      return createResponse({
+        ok: true,
+        mode: 'single',
+        connection: {
+          baseUrl: 'https://authoritative.example/v1',
+          baseUrlConfigured: true,
+          apiKeyConfigured: true,
+          source: 'last-saved-api-config',
+        },
+        singleModeDefaultModel: 'server-model',
+        tierModelMap: {
+          SIMPLE: 'gpt-4o-mini',
+          MEDIUM: 'gpt-4.1-mini',
+          COMPLEX: 'gpt-4.1',
+          REASONING: 'o4-mini',
+        },
+        routing: {},
+        effectivePrimaryModel: 'openai/server-model',
+        router: {
+          providerId: 'opensparrow-router',
+          modelTarget: 'opensparrow-router/auto',
+          configPresent: false,
+        },
+      })
+    }
+    throw new Error(`Unexpected request: ${url}`)
+  }
+
+  const saved = await instance.saveModelRoutingConfig()
+
+  assert.equal(saved, true)
+  assert.deepEqual(requests, [
+    { url: '/api/config/model-routing', method: 'POST' },
+    { url: '/api/config/model-routing', method: 'GET' },
+  ])
+  assert.equal(instance.modelRouting.singleModeDefaultModel, 'server-model')
+  assert.equal(instance.modelRouting.connection.baseUrl, 'https://authoritative.example/v1')
+  assert.equal(instance.modelRouting.effectivePrimaryModel, 'openai/server-model')
 })
 
 test('dashboard saveChannelConfig refreshes card fields from authoritative read-back instead of local payload replay', async () => {
@@ -588,6 +837,78 @@ test('dashboard daemon lifecycle refresh keeps DingTalk diagnostics aligned with
     { url: '/api/status', method: 'GET' },
     { url: '/api/dingtalk/probe', method: 'POST' },
   ])
+})
+
+test('dashboard DingTalk diagnostics uses probe timeout, keeps daemon, and recovers after timeout', async () => {
+  const { factory } = loadPageFactory('ui/public/dashboard.html', 'dashboard')
+  const instance = factory()
+  instance.$nextTick = (fn) => (typeof fn === 'function' ? fn() : undefined)
+  instance.statusSnapshot.daemon = 'running'
+  assert.equal(instance.requestTimeout.status, 10000)
+  assert.equal(instance.requestTimeout.diagnostics, 30000)
+
+  const card = instance.channelCards.find((entry) => entry.key === 'dingtalk')
+  card.enabled = true
+  card.fields = {
+    corpId: 'ding-corp',
+    clientId: 'ding-client',
+    robotCode: 'ding-robot',
+    clientSecret: 'ding-secret',
+  }
+
+  const requests = []
+  let probeCount = 0
+  instance.fetchWithTimeout = async (url, options = {}, timeoutMs) => {
+    requests.push({ url, method: options.method ?? 'GET', timeoutMs })
+    if (url === '/api/dingtalk/probe' && options.method === 'POST') {
+      probeCount += 1
+      if (probeCount === 1) {
+        const abortError = new Error('signal is aborted without reason')
+        abortError.name = 'AbortError'
+        throw abortError
+      }
+      return createResponse({
+        ok: true,
+        status: 'ok',
+        ready: true,
+        daemon: 'running',
+        checks: ['channels status 已识别钉钉为 configured'],
+        warnings: [],
+        errors: [],
+        probe: {
+          code: 0,
+          summary: 'channels.dingtalk enabled, configured',
+        },
+      })
+    }
+    throw new Error(`Unexpected request: ${url}`)
+  }
+
+  const firstOk = await instance.refreshDingtalkDiagnostics()
+
+  assert.equal(firstOk, false)
+  assert.equal(requests[0].timeoutMs, instance.requestTimeout.diagnostics)
+  assert.notEqual(requests[0].timeoutMs, instance.requestTimeout.status)
+  assert.equal(card.diagnostics.status, 'warning')
+  assert.equal(card.diagnostics.ready, false)
+  assert.equal(card.diagnostics.daemon, 'running')
+  assert.equal(card.diagnostics.timedOut, true)
+  assert.deepEqual(toPlain(card.diagnostics.warnings), ['钉钉诊断请求超时，请稍后重试；这不代表消息发送失败。'])
+  assert.deepEqual(toPlain(card.diagnostics.errors), [])
+  assert.doesNotMatch(card.diagnostics.warnings.join('\n'), /signal is aborted/)
+  assert.doesNotMatch(card.diagnostics.probe.summary, /signal is aborted/)
+  assert.equal(instance.diagnosticsStatusLabel(card.diagnostics), '诊断超时')
+
+  const secondOk = await instance.refreshDingtalkDiagnostics()
+
+  assert.equal(secondOk, true)
+  assert.equal(requests[1].timeoutMs, instance.requestTimeout.diagnostics)
+  assert.equal(card.diagnostics.status, 'ok')
+  assert.equal(card.diagnostics.ready, true)
+  assert.equal(card.diagnostics.daemon, 'running')
+  assert.deepEqual(toPlain(card.diagnostics.errors), [])
+  assert.equal(card.diagnostics.probe.summary, 'channels.dingtalk enabled, configured')
+  assert.equal(instance.diagnosticsStatusLabel(card.diagnostics), '已读回')
 })
 
 test('install and dashboard wording uses canonical DingTalk client labels while preserving alias hints', () => {

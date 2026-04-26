@@ -42,10 +42,10 @@ ui/server.mjs
 3. 找 bundled Node binary
 4. 找 OpenClaw entry
 
-已知当前风险：
+历史说明：
 
-- mac runtime 存在 `bin/node_modules/openclaw` 与 `lib/node_modules/openclaw` 双版本分叉
-- 这会影响 packaged WeCom preflight
+- mac runtime 曾出现 `bin/node_modules/openclaw` 与 `lib/node_modules/openclaw` 双版本分叉风险
+- `2026-04-23` fresh combined packaged verification 已不再把这条风险记录为当前 blocker
 
 ## 3. 安装向导链路
 
@@ -99,6 +99,16 @@ Dashboard 用 `/api/status` 回读：
 - gatewayPort
 - daemon/runtime state
 
+当前冻结 truth：
+
+- `/api/status` 是 packaged runtime 的 authoritative status surface
+- `2026-04-23` fresh packaged verifier 已确认 authoritative status truth PASS
+- `POST /api/config/api` 继续存在，但只保留为 upstream connection / compatibility lane
+- `POST /api/config/api` 当前 truthful save contract 允许：
+  - `saved`
+  - `saved_degraded`
+  - `rejected`
+
 ## 5. Model Routing 链路
 
 ### 保存面
@@ -113,6 +123,19 @@ Dashboard 用 `/api/status` 回读：
 - `plugins.entries.opensparrow-router.config`
 - `models.providers.opensparrow-router`
 - `agents.defaults.model.primary = opensparrow-router/auto`
+
+当前冻结 truth：
+
+- dashboard 已存在 dedicated model-routing UI surface
+- routing UI load/save 只走 `GET /api/config/model-routing` / `POST /api/config/model-routing`
+- save 后必须再读 authoritative read-back；follow-up `GET` / reopen 继续以 persisted truth 为准
+- `POST /api/config/model-routing` 当前 truthful save contract 允许：
+  - `saved`
+  - `saved_degraded`
+  - `rejected`
+- internal ids 仍固定为：
+  - `opensparrow-router`
+  - `opensparrow-router/auto`
 
 ### 运行面
 
@@ -153,13 +176,26 @@ sidecar 再根据 tier connection map 访问真实 upstream。
 3. strip 本机状态、测试文件、残留 runtime state
 4. 生成 Desktop folder + zip
 
-当前最新对外候选：
+当前 fresh combined verifier artifact：
 
-- `/Users/eduardogan/Desktop/gtclaw-mac-release-arm64-20260420-132429.zip`
+- `/tmp/f032-packaged-rebuild-botvDw/gtclaw-mac-release-arm64-20260423-141103/GTClaw-0.1.0-alpha-macOS-arm64`
+- `/tmp/f032-packaged-rebuild-botvDw/gtclaw-mac-release-arm64-20260423-141103.zip`
 
-但当前仍有一个明确 blocker：
+`2026-04-23` 已确认的 combined packaged truth：
 
-- packaged WeCom 安装会命中 mac bundled runtime split-brain
+- GTClaw branding PASS
+- authoritative status truth PASS
+- dedicated model-routing UI surface exists PASS
+- API config limited to compatibility lane PASS
+- authoritative model-routing load/save PASS
+- truthful save contract PASS
+- internal ids unchanged PASS
+- new files included in fresh artifact PASS
+
+当前结论：
+
+- packaged-mac 这条线已拿到 fresh combined packaged PASS
+- 对外再次分发前仍建议补一轮独立新机 smoke，而不是把单机 fresh evidence写成跨机器 guarantee
 
 ### P0 diagnostics additions
 

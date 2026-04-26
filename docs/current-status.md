@@ -1,6 +1,6 @@
 # OpenSparrow Current Status
 
-更新时间：`2026-04-22`
+更新时间：`2026-04-24`
 
 ## 严重事故记录
 
@@ -72,7 +72,7 @@
 - **root repo 可运行**
 - **关键 Node / shell 回归链存在**
 - **macOS packaged diagnostics / runtime truth / first-click 已有 fresh evidence**
-- **latest packaged mac artifact 已完成 clean-state + same-package retry hardening fresh evidence**
+- **latest packaged mac artifact 已完成 combined packaged verification fresh evidence**
 - **latest mac release candidate 已恢复到可重新 cut RC 的状态，但对外发放前仍建议做独立新机复核**
 - **Windows-specific evidence 仍是独立后续线，不被当前 mac packaged PASS 自动覆盖**
 
@@ -93,8 +93,12 @@
 已完成并有 fresh evidence 的范围：
 
 - Dashboard / install shell 已切换 GTClaw branding
-- `ui/server.mjs` / `ui/lib/model-routing-config.mjs` / `ui/public/dashboard-model-routing-state.mjs` 已接入 model routing
-- root repo live router 已打通
+- dashboard 已存在独立的 model-routing UI surface，而不是只剩旧 `API 配置` 表单
+- `GET /api/config/model-routing` / `POST /api/config/model-routing` 已成为 dashboard 的 authoritative load/save surface
+- `POST /api/config/api` 已被限制为 upstream connection / compatibility lane，不再冒充 routing truth
+- source truth 与 fresh packaged verification 都保持 internal ids 不变：
+  - `opensparrow-router`
+  - `opensparrow-router/auto`
 
 注意：
 
@@ -111,8 +115,15 @@
 - packaged first-click 已能启动 server
 - packaged build/export 已新增 runtime CPU 架构 fail-fast，不再允许把 x86_64 `node` 误打成 `arm64` 包
 - latest mac packaged runtime `vendor/mac-openclaw/bin/node` 现为 universal binary，包含 `arm64` slice
-- latest valid artifact lineage 已切到：`gtclaw-mac-release-arm64-20260422-193047`
+- `2026-04-23` fresh combined verifier artifact：
+  - `/tmp/f032-packaged-rebuild-botvDw/gtclaw-mac-release-arm64-20260423-141103/GTClaw-0.1.0-alpha-macOS-arm64`
+  - `/tmp/f032-packaged-rebuild-botvDw/gtclaw-mac-release-arm64-20260423-141103.zip`
 - `/api/status`、`/api/install/status`、`/api/diagnostics`、`/api/diagnostics/export` 都已在 fresh artifact 中可达
+- `/api/status` authoritative status truth 已在 fresh packaged verification 中通过
+- truthful save contract 已在 fresh packaged verification 中通过，允许：
+  - `saved`
+  - `saved_degraded`
+  - `rejected`
 - package-local `install-state.json`、`install.log`、`diagnostic-bundle.json` 已能真实生成
 - artifact 内已固定 `vendor/mac-openclaw/RUNTIME_TRUTH.json`
 - clean-state 下，bundled `channels` 与官方 `wecom-openclaw-plugin` 插件都能在 fresh 临时 profile 中成功安装
@@ -121,6 +132,20 @@
 - 安装页超时后会继续轮询 `/api/install/status` 的 terminal state，而不是无限等待 `installed=true`
 - 在同一 fresh artifact `gtclaw-mac-release-arm64-20260422-193047` 上，same-package 第 1 次与第 2 次 real `/api/install` 都得到 `completed`
 - 上述第 2 次 same-package `/api/install` 未再复现 `plugin already exists` 或 `unknown channel id`
+- fresh packaged verifier 实际拿到：
+  - `POST /api/config/api` → `HTTP 200`, `ok:true`, `persisted:true`, `saveState:"saved_degraded"`
+  - `POST /api/config/model-routing` → `HTTP 200`, `ok:true`, `persisted:true`, `saveState:"saved_degraded"`
+- follow-up `GET` / reopen 已能读回 persisted truth
+- combined packaged verification 已确认：
+  - GTClaw branding PASS
+  - authoritative status truth PASS
+  - static fake version removed PASS
+  - model-routing UI surface exists PASS
+  - API config limited to compatibility lane PASS
+  - authoritative model-routing load/save PASS
+  - truthful save contract PASS
+  - internal ids unchanged PASS
+  - new files included in fresh artifact PASS
 
 ### 4. packaged DingTalk / WeCom support closure
 
@@ -148,6 +173,161 @@
 - 同日后续暴露的 packaged install retry / timeout / package-local Sparrow state hygiene regression 也已经在 fresh artifact `193047` 上完成 re-verify
 - 现阶段可以重新 cut mac RC，但在新的外部机器再次分发前，仍建议补一轮独立新机 smoke
 
+### 5. F-034 packaged single-channel plugin timeout parity closeout
+
+本轮 closeout 只基于 `2026-04-24` fresh packaged replay，不基于 stale historical PASS。
+
+fresh closeout evidence roots：
+
+- artifact dir：`/private/tmp/f034-packaged-rebuild-lT3AVc/gtclaw-mac-release-arm64-20260424-003358/GTClaw-0.1.0-alpha-macOS-arm64`
+- artifact zip：`/private/tmp/f034-packaged-rebuild-lT3AVc/gtclaw-mac-release-arm64-20260424-003358.zip`
+- replay root：`/private/tmp/f034-packaged-round5-replays-MOZFDx`
+- capture root：`/private/tmp/f034-packaged-round5-captures-rhqPgf`
+
+已确认：
+
+- `F-034` 已 source PASS + fresh packaged PASS
+- `step=plugins` 没有 regression 回到 indefinite running / fake success
+- router invariants 维持：
+  - `providerId=opensparrow-router`
+  - `modelTarget=opensparrow-router/auto`
+
+`dingtalk-only`：
+
+- `/api/install = HTTP 200`
+- final `status=completed`
+- final `installState=completed`
+- `blockingStep=null`
+- `blockingPlugin=null`
+- `bypass={verdict:none, used:false}`
+- `requestedChannelReadiness={dingtalk:true,wecom:true}`
+- `channelProbes.dingtalk={status:ok, ready:true}`
+- `six-surface consistency=true`
+- passing replay 观察到 `staged-shell -> critical-dist -> final-authority lag` signature，但这次没有真的跨过 `120000ms` timeout，因此 fresh PASS 不是靠 timeout safe_bypass 触发的
+
+`wecom-only`：
+
+- `/api/install = HTTP 200`
+- final `status=completed`
+- final `installState=completed`
+- `blockingStep=null`
+- `blockingPlugin=null`
+- `bypass={verdict:none, used:false}`
+- `requestedChannelReadiness={dingtalk:true,wecom:true}`
+- `channelProbes.wecom={status:ok, ready:true}`
+- `six-surface consistency=true`
+
+`dingtalk+wecom`：
+
+- `/api/install = HTTP 500`
+- final `status=error`
+- final `installState=failed`
+- `blockingStep=probe`
+- `blockingPlugin=wecom-openclaw-plugin`
+- `bypass={verdict:failed, used:false, plugin:wecom-openclaw-plugin}`
+- `requestedChannelReadiness={dingtalk:false,wecom:false}`
+- `channelProbes.dingtalk={status:warning, ready:false}`
+- `channelProbes.wecom={status:error, ready:false}`
+- `six-surface consistency=true`
+- 这是 exact frozen `F-033` probe truth，已保持
+
+residual risks 只作 facts-only 记录：
+
+- `dingtalk-only` 这次 passing replay 没直接 exercise packaged timeout+grace-wait path
+- `wecom-only` 是 config-only probe summary，但在当前 acceptance 下仍是 packaged PASS
+- 上述 residual risks 不升格为 current blocker
+
+### 6. packaged channels late-stage authority closure
+
+本轮 closeout 只基于 `packaged-channels-late-stage-authority-closure` 的 source PASS 与 fresh packaged verifier PASS。它是新的 packaged install authority packet，不是 `F-034` reopen，也不是 dashboard/UI patch；`F-033` / `F-034` 历史身份保持不变。
+
+Source PASS：
+
+- `node --check ui/server.mjs` PASS
+- `node --test ui/tests/packaged-single-channel-plugin-timeout-parity.test.mjs` PASS, `3/3`
+- `node --test ui/tests/packaged-plugin-install-hang-bypass.test.mjs` PASS, `10/10`
+- `node --test ui/tests/packaged-plugin-profile-sync.test.mjs` PASS, `5/5`
+- `git diff --check` packet write-set PASS
+
+Source implementation truth：
+
+- 新增 bounded late-stage authority grace：`OPENSPARROW_PLUGIN_LATE_STAGE_AUTHORITY_GRACE_MS`
+- packaged default late-stage grace = `600000ms`
+- late-stage wait 只有在 staged shell matching 后才会激活
+- structural readiness 需要 `openclaw.plugin.json`、`package.json`、`dist/index.js`、package/id match；channels 还需要 `node_modules/@openclaw-china/dingtalk/dist/index.js`
+- promotion 只在 structural readiness 后关闭 final shared/profile authority
+- no-authority negative lane 保持 precise failed，不 fake success
+
+Fresh packaged PASS：
+
+- build exit code：`0`
+- build root：`/private/tmp/packaged-channels-late-stage-rebuild-77vgKb`
+- artifact dir：`/private/tmp/packaged-channels-late-stage-rebuild-77vgKb/gtclaw-mac-release-arm64-20260424-235728/GTClaw-0.1.0-alpha-macOS-arm64`
+- artifact zip：`/private/tmp/packaged-channels-late-stage-rebuild-77vgKb/gtclaw-mac-release-arm64-20260424-235728.zip`
+- zip SHA256：`d30c2b29023ac118c688eed3e7e109227fef84c229e6e2c6561fce11086a10d9`
+- artifact `ui/server.mjs` `node --check` PASS
+- artifact inspection PASS
+
+Replay method：
+
+- replay root：`/private/tmp/packaged-channels-late-stage-replay-UrwTeG`
+- fresh artifact 使用 bundled node 启动
+- 每条 lane 都使用 isolated `HOME`、`OPENCLAW_HOME`、profile、UI/gateway/router ports
+- controlled runtime fixture 只用于强制 deterministic plugin timing
+- dingtalk late-stage lane 使用 plugin timeout `250ms`、normal authority grace `300ms`、late-stage grace `1500ms`、DingTalk dependency delay `800ms`
+- 这不是 fast install replay
+
+Lane results：
+
+`dingtalk-only` late-stage path：
+
+- `HTTP 200`
+- `status=completed`
+- `installState=completed`
+- `blockingStep=null`
+- `blockingPlugin=null`
+- `requestedChannelReadiness.dingtalk=true`
+- `channelProbes.dingtalk={status:ok,ready:true}`
+
+`wecom-only` preservation：
+
+- `HTTP 200`
+- `status=completed`
+- `installState=completed`
+- no plugin indefinite running
+- six surfaces consistent
+
+`dingtalk+wecom` combined `F-033` preservation：
+
+- `HTTP 500`
+- `status=error`
+- `installState=failed`
+- `blockingStep=probe`
+- `blockingPlugin=wecom-openclaw-plugin`
+- `requestedChannelReadiness={dingtalk:false,wecom:false}`
+- `channelProbes.dingtalk={status:warning,ready:false}`
+- `channelProbes.wecom={status:error,ready:false}`
+
+Late-stage authority evidence：
+
+- DingTalk install start：`2026-04-25T08:09:19.545Z`
+- staged shell created：`2026-04-25T08:09:19.546Z`
+- timeout boundary：`2026-04-25T08:09:19.795Z`
+- late DingTalk dependency created：`2026-04-25T08:09:20.373Z`
+- final shared/profile `extensions/channels` both exist with all required files
+- `install.log` includes safe bypass reason: timed out after `250ms`, footprint structurally ready, plus late-stage catch-up closed after timeout wait
+
+Cross-surface and router truth：
+
+- all three lanes consistent across `/api/install`, `/api/install/status`, `install-state.json`, `/api/diagnostics`, `/api/diagnostics/export`, `diagnostic-bundle.json`
+- all lanes preserve `providerId=opensparrow-router`
+- all lanes preserve `modelTarget=opensparrow-router/auto`
+
+Risks：
+
+- packaged replay used controlled runtime fixture to force timeout and late dependency timing; intentional for this packet
+- `init.sh` still stops on missing legacy frozen dir `opensparrow_win` in isolated worktree; non-blocking for this packet
+
 ## 当前实际可运行性
 
 ### Root repo
@@ -172,6 +352,9 @@
 - **clean-state plugin install smoke**：是（DingTalk / WeCom bundled plugin 可装）
 - **same-package retry / reinstall**：是（fresh artifact `193047` 上第 1 次与第 2 次 real `/api/install` 都为 `completed`）
 - **install timeout authority**：是（前端超时后会继续轮询 `/api/install/status` 的 terminal state）
+- **combined packaged truth**：是（branding / status authority / model-routing surface / truthful save contract 均已 fresh PASS）
+- **F-034 single-channel parity replay**：是（`dingtalk-only` / `wecom-only` fresh packaged PASS，combined lane 精确保持 `F-033` probe truth）
+- **packaged channels late-stage authority closure**：是（`dingtalk-only` timeout + late dependency path 已 fresh packaged PASS，WeCom-only 与 combined `F-033` truth 已保持）
 - **RC 级恢复**：是
 - **对外正式发放**：建议先补独立新机 smoke
 
@@ -281,10 +464,13 @@
 ### 已确认
 
 - 当前 repo 的 authority order 已冻结
-- F-031 root repo 最小前后端闭环已存在
+- `F-031` 已完成 source truth PASS + combined packaged PASS
+- `F-032` 已完成 source truth PASS + combined packaged PASS
+- `F-034` 已完成 source truth PASS + fresh packaged replay PASS，且 closeout 只锚到 `2026-04-24` artifact/replay
+- `packaged-channels-late-stage-authority-closure` 已完成 source truth PASS + fresh packaged replay PASS，且 closeout 只锚到 `2026-04-25` late-stage authority evidence
 - F-035 packaged isolation + install stall hotfix 已有 fresh evidence
 - packaged runtime truth / first-click / diagnostics export 已有 fresh evidence
-- latest packaged mac artifact 已完成 DingTalk / WeCom channel-specific closure
+- latest packaged mac artifact 已完成 DingTalk / WeCom channel-specific closure，且同日后续 combined packaged verification 已 fresh PASS
 - packaged WeCom 当前 authoritative route 是官方插件，不再是旧 `sunnoy-wecom` packaged blocker 口径
 - Windows 线必须单独拿自己的 truth inventory、test matrix、implementation 与 fresh evidence
 

@@ -3,13 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Open Sparrow 管理面板</title>
+  <title>GTClaw 管理面板</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/animate.css@4.1.1/animate.min.css" />
   <script src="https://cdn.jsdelivr.net/npm/animejs@3.2.2/lib/anime.min.js"></script>
   <script src="/wecom-helpers.js"></script>
   <script src="/channel-helpers.js"></script>
+  <script src="/dashboard-model-routing-state.mjs"></script>
   <style>
     [x-cloak] { display: none !important; }
 
@@ -56,6 +57,35 @@
       -webkit-text-fill-color: transparent;
       background-clip: text;
       font-weight: 700;
+    }
+    .brand-mark {
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+      flex-shrink: 0;
+      background: linear-gradient(135deg, #1677FF, #0958D9);
+      color: white;
+      font-size: 18px;
+      font-weight: 800;
+      line-height: 1;
+      box-shadow: 0 6px 18px rgba(22, 119, 255, 0.22);
+    }
+    .brand-mark::after {
+      content: '';
+      position: absolute;
+      top: 9px;
+      right: -1px;
+      width: 18px;
+      height: 3px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.84);
+      transform: rotate(-35deg);
+      box-shadow: 0 7px 0 rgba(255, 255, 255, 0.38);
     }
 
     /* ===== Primary button ===== */
@@ -542,8 +572,8 @@
       <div class="flex items-center justify-between py-3 gap-4 flex-wrap">
         <!-- Logo -->
         <div class="flex items-center gap-2 select-none flex-shrink-0 min-w-0">
-          <img src="logo.png" width="36" height="36" style="border-radius:50%;object-fit:cover;flex-shrink:0;min-width:36px;min-height:36px;" alt="Open Sparrow">
-          <span class="font-bold text-lg brand-text whitespace-nowrap">Open Sparrow</span>
+          <span class="brand-mark" aria-hidden="true">GT</span>
+          <span class="font-bold text-lg brand-text whitespace-nowrap">GTClaw</span>
         </div>
 
         <!-- Tabs -->
@@ -598,8 +628,8 @@
               <p class="text-sm mb-0.5" style="color:#0958D9;font-weight:500">服务状态</p>
               <p
                 class="text-2xl font-bold"
-                :class="serviceStatus === 'running' ? 'text-green-600' : 'text-blue-300'"
-                x-text="serviceStatus === 'running' ? '运行中' : '已停止'"
+                :class="statusLoadState === 'error' ? 'text-amber-600' : (serviceStatus === 'running' ? 'text-green-600' : 'text-blue-300')"
+                x-text="statusLoadState === 'error' ? '状态不可用' : (serviceStatus === 'running' ? '运行中' : '已停止')"
               ></p>
             </div>
           </div>
@@ -666,15 +696,15 @@
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div class="info-cell">
             <p class="text-xs mb-1 uppercase tracking-wide" style="color:#0958D9;font-weight:600">Profile</p>
-            <p class="font-semibold text-sm" style="color:#1D2B4E" x-text="serviceInfo.profile || '—'"></p>
+            <p class="font-semibold text-sm" style="color:#1D2B4E" x-text="statusLoadState === 'error' ? '不可用' : (serviceInfo.profile || '—')"></p>
           </div>
           <div class="info-cell">
             <p class="text-xs mb-1 uppercase tracking-wide" style="color:#0958D9;font-weight:600">配置路径</p>
-            <p class="font-mono text-xs truncate" style="color:#6B7A99" x-text="serviceInfo.configPath || '—'"></p>
+            <p class="font-mono text-xs truncate" style="color:#6B7A99" x-text="statusLoadState === 'error' ? '不可用' : (serviceInfo.configPath || '—')"></p>
           </div>
           <div class="info-cell">
             <p class="text-xs mb-1 uppercase tracking-wide" style="color:#0958D9;font-weight:600">端口</p>
-            <p class="font-semibold text-sm" style="color:#1D2B4E" x-text="serviceInfo.port || '—'"></p>
+            <p class="font-semibold text-sm" style="color:#1D2B4E" x-text="statusLoadState === 'error' ? '不可用' : (serviceInfo.port || '—')"></p>
           </div>
         </div>
       </div>
@@ -796,11 +826,165 @@
       </template>
     </div>
 
-    <!-- Tab 3: API Config -->
+    <!-- Tab 3: Model Routing -->
+    <div x-show="activeTab === 'routing'" x-cloak class="tab-content space-y-6">
+      <div class="glass-card rounded-2xl p-8 card-animate">
+        <div class="flex flex-col lg:flex-row lg:items-start gap-5">
+          <div class="flex-1">
+            <h2 class="text-lg font-bold mb-1" style="color:#1D2B4E">模型智能路由</h2>
+            <p class="text-sm" style="color:#6B7A99">Dashboard authoritative surface；读取与保存都只认 <span class="font-mono">/api/config/model-routing</span>。</p>
+          </div>
+          <div class="rounded-2xl px-4 py-3" style="background:#F7FAFF;border:1px solid #C7D8F8;min-width:260px">
+            <div class="text-xs font-semibold uppercase tracking-wide mb-2" style="color:#0958D9">Internal Invariants</div>
+            <div class="text-xs mb-1" style="color:#6B7A99">
+              provider id：
+              <span class="font-mono" style="color:#1D2B4E" x-text="modelRouting.router.providerId"></span>
+            </div>
+            <div class="text-xs" style="color:#6B7A99">
+              smart target：
+              <span class="font-mono" style="color:#1D2B4E" x-text="modelRouting.router.modelTarget"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+          <div class="info-cell">
+            <p class="text-xs mb-1 uppercase tracking-wide" style="color:#0958D9;font-weight:600">连接状态</p>
+            <p class="font-semibold text-sm" style="color:#1D2B4E" x-text="modelRouting.connection.baseUrlConfigured && modelRouting.connection.apiKeyConfigured ? '已闭合' : '需先保存 API 配置'"></p>
+            <p class="text-xs mt-2" style="color:#6B7A99" x-text="modelRouting.connection.baseUrl || '尚未记录 Base URL'"></p>
+          </div>
+          <div class="info-cell">
+            <p class="text-xs mb-1 uppercase tracking-wide" style="color:#0958D9;font-weight:600">当前主模型</p>
+            <p class="font-mono text-xs" style="color:#1D2B4E" x-text="modelRouting.effectivePrimaryModel || '—'"></p>
+          </div>
+          <div class="info-cell">
+            <p class="text-xs mb-1 uppercase tracking-wide" style="color:#0958D9;font-weight:600">读回状态</p>
+            <p class="font-semibold text-sm" style="color:#1D2B4E" x-text="modelRouting.loadState === 'loading' ? '读取中…' : (modelRouting.loadState === 'error' ? '读回失败' : (modelRouting.loadState === 'ready' ? '已读回 authoritative state' : '尚未读取'))"></p>
+            <p class="text-xs mt-2" style="color:#6B7A99" x-text="modelRouting.error || (modelRouting.router.configPresent ? 'smart routing 配置已存在' : '当前未保存 smart routing 配置')"></p>
+          </div>
+        </div>
+
+        <div class="note-box rounded-2xl p-4 mt-6 flex flex-col md:flex-row md:items-center gap-3">
+          <div class="flex-1">
+            <p class="text-sm font-semibold mb-1" style="color:#0958D9" x-text="modelRouting.compatibilityLane.title"></p>
+            <p class="text-sm" style="color:#0958D9" x-text="modelRouting.compatibilityLane.description"></p>
+            <p class="text-xs mt-2" style="color:#6B7A99" x-text="modelRouting.compatibilityLane.hint"></p>
+          </div>
+          <button @click="switchTab('api')" class="edit-btn" type="button">查看 API 配置</button>
+        </div>
+      </div>
+
+      <div class="glass-card rounded-2xl p-8 card-animate">
+        <div class="flex flex-col md:flex-row md:items-center gap-3 mb-6">
+          <div class="flex-1">
+            <h3 class="text-base font-bold" style="color:#1D2B4E">路由策略编辑</h3>
+            <p class="text-sm mt-1" style="color:#6B7A99">保存后会立即执行 authoritative read-after-write，不使用本地假回放。</p>
+          </div>
+          <button
+            @click="loadModelRoutingConfig()"
+            :disabled="modelRouting.loadState === 'loading' || modelRouting.saving"
+            class="outline-btn"
+            type="button"
+          >
+            <span x-text="modelRouting.loadState === 'loading' ? '读取中…' : '刷新读回'"></span>
+          </button>
+        </div>
+
+        <div class="flex flex-wrap gap-3 mb-6">
+          <button
+            @click="setModelRoutingMode('single')"
+            :class="modelRouting.mode === 'single' ? 'tab-active' : 'tab-inactive'"
+            type="button"
+          >
+            普通单模型
+          </button>
+          <button
+            @click="setModelRoutingMode('smart')"
+            :class="modelRouting.mode === 'smart' ? 'tab-active' : 'tab-inactive'"
+            type="button"
+          >
+            模型智能路由
+          </button>
+        </div>
+
+        <div x-show="modelRouting.mode === 'single'" x-cloak class="space-y-5">
+          <div>
+            <label class="block text-sm font-medium mb-1" style="color:#6B7A99">默认模型</label>
+            <input
+              type="text"
+              x-model="modelRouting.singleModeDefaultModel"
+              placeholder="例如 gpt-4o-mini"
+              class="light-input"
+            />
+            <p class="text-xs mt-2" style="color:#6B7A99">single 模式会把主模型设为 <span class="font-mono">openai/&lt;model&gt;</span>。</p>
+          </div>
+        </div>
+
+        <div x-show="modelRouting.mode === 'smart'" x-cloak class="space-y-5">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium mb-1" style="color:#6B7A99">SIMPLE</label>
+              <input type="text" x-model="modelRouting.tierModelMap.SIMPLE" placeholder="低复杂度模型" class="light-input" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-1" style="color:#6B7A99">MEDIUM</label>
+              <input type="text" x-model="modelRouting.tierModelMap.MEDIUM" placeholder="中复杂度模型" class="light-input" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-1" style="color:#6B7A99">COMPLEX</label>
+              <input type="text" x-model="modelRouting.tierModelMap.COMPLEX" placeholder="高复杂度模型" class="light-input" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-1" style="color:#6B7A99">REASONING</label>
+              <input type="text" x-model="modelRouting.tierModelMap.REASONING" placeholder="推理模型" class="light-input" />
+            </div>
+          </div>
+
+          <div class="rounded-2xl p-4" style="background:#F7FAFF;border:1px solid #C7D8F8">
+            <div class="flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <p class="text-sm font-semibold" style="color:#0958D9">高级路由 JSON</p>
+                <p class="text-xs mt-1" style="color:#6B7A99">仅编辑 router routing 对象；不是 native provider 选择器。</p>
+              </div>
+              <button @click="toggleModelRoutingAdvanced()" class="edit-btn" type="button" x-text="modelRouting.advancedOpen ? '收起' : '展开'"></button>
+            </div>
+            <div x-show="modelRouting.advancedOpen" x-cloak class="mt-4">
+              <textarea
+                x-model="modelRouting.routingText"
+                rows="10"
+                class="light-input"
+                style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace"
+              ></textarea>
+              <p class="text-xs mt-2" :style="modelRouting.routingError ? 'color:#B91C1C' : 'color:#6B7A99'" x-text="modelRouting.routingError || '默认值 {} 合法；若保存非空 routing，advanced 区会保持展开。'"></p>
+            </div>
+          </div>
+        </div>
+
+        <div x-show="modelRouting.error" x-cloak class="rounded-2xl px-4 py-3 mt-6" style="background:#FEF2F2;border:1px solid #FECACA;color:#B91C1C">
+          <p class="text-sm font-medium" x-text="modelRouting.error"></p>
+        </div>
+
+        <div class="flex flex-col md:flex-row md:items-center gap-3 mt-6">
+          <button
+            @click="saveModelRoutingConfig()"
+            :disabled="modelRouting.saving || modelRouting.loadState === 'loading'"
+            class="blue-btn flex items-center justify-center gap-2 px-6 py-3 rounded-xl"
+            type="button"
+          >
+            <span x-show="modelRouting.saving" class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin inline-block"></span>
+            <span x-text="modelRouting.saving ? '保存中…' : '保存模型智能路由'"></span>
+          </button>
+          <p class="text-xs" style="color:#6B7A99">保存请求使用 <span class="font-mono">POST /api/config/model-routing</span>，成功后立即重新 <span class="font-mono">GET /api/config/model-routing</span>。</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 4: API Config -->
     <div x-show="activeTab === 'api'" x-cloak class="tab-content">
       <div class="glass-card rounded-2xl p-8 max-w-xl card-animate">
-        <h2 class="text-lg font-bold mb-1" style="color:#1D2B4E">API 配置</h2>
-        <p class="text-sm mb-6" style="color:#6B7A99">支持任意 OpenAI 兼容接口，包括 Azure、国内中转等</p>
+        <h2 class="text-lg font-bold mb-1" style="color:#1D2B4E">API 配置（上游连接）</h2>
+        <p class="text-sm mb-2" style="color:#6B7A99">支持任意 OpenAI 兼容接口，包括 Azure、国内中转等。</p>
+        <p class="text-sm mb-6" style="color:#0958D9">API 配置仅负责上游 API 连接与兼容写入；模型智能路由请到“模型智能路由”页。</p>
 
         <div class="space-y-5">
           <div>
@@ -849,7 +1033,7 @@
       </div>
     </div>
 
-    <!-- Tab 4: Skill Store -->
+    <!-- Tab 5: Skill Store -->
     <div x-show="activeTab === 'skills'" x-cloak class="tab-content space-y-4">
 
       <!-- Search + Filter bar -->
@@ -1011,13 +1195,19 @@
         tabs: [
           { key: 'status',   label: '服务状态' },
           { key: 'channels', label: '渠道配置' },
-          { key: 'api',      label: 'API 配置' },
+          { key: 'routing',  label: '模型智能路由' },
+          { key: 'api',      label: 'API 配置（上游连接）' },
           { key: 'skills',   label: '🧩 Skill 商店' },
         ],
         version: '—',
 
         // Status Tab
-        serviceStatus: 'stopped',
+        serviceStatus: 'unknown',
+        statusLoadState: 'idle',
+        statusRecoveryTimer: null,
+        statusRecoveryInFlight: false,
+        statusRequestInFlight: null,
+        statusRecoveryDelayMs: 3000,
         daemonLoading: false,
         daemonAction_: '',
         cleanupLoading: false,
@@ -1074,6 +1264,9 @@
         apiSaving: false,
         showApiKey: false,
 
+        // Model Routing Tab
+        modelRouting: window.OpenSparrowDashboardModelRouting.createInitialState(),
+
         // Skill Store Tab
         skillList: [],
         skillTotal: 0,
@@ -1103,6 +1296,7 @@
         toastCounter: 0,
         requestTimeout: {
           status: 10000,
+          diagnostics: 30000,
           daemon: 90000,
           cleanup: 90000,
           reset: 120000,
@@ -1115,6 +1309,7 @@
           const keepOnDashboard = await this.loadStatus({ redirectOnReset: true });
           if (!keepOnDashboard) return;
           await this.loadConfig();
+          await this.loadModelRoutingConfig();
           await this.refreshDingtalkDiagnostics();
           this.$nextTick(() => this._animateCards());
         },
@@ -1122,6 +1317,7 @@
         switchTab(key) {
           this.activeTab = key;
           this.$nextTick(() => this._animateCards());
+          if (key === 'routing' && this.modelRouting.loadState === 'idle') this.loadModelRoutingConfig();
           if (key === 'skills') this.loadSkills();
         },
 
@@ -1144,36 +1340,95 @@
           return status.installed !== true && status.configExists === false;
         },
 
-        async loadStatus(options = {}) {
-          try {
-            const res = await this.fetchWithTimeout('/api/status', {}, this.requestTimeout.status);
-            if (!res.ok) return true;
-            const data = await res.json();
-            this.statusSnapshot.installed = data.installed === true;
-            this.statusSnapshot.daemon = data.daemon || 'unknown';
-            this.statusSnapshot.runtimeMode = data.runtimeMode || 'unknown';
-            this.statusSnapshot.configExists = data.configExists !== false;
-            this.statusSnapshot.profileDirExists = data.profileDirExists !== false;
-            this.serviceStatus = (
-              data.daemon === 'running' ||
-              data.runtimeMode === 'gateway-fallback' ||
-              data.gatewayHealthy === true
-            ) ? 'running' : 'stopped';
-            this.version = data.version || '1.0.0';
-            this.serviceInfo.profile = data.profile || '';
-            this.serviceInfo.configPath = data.configPath || '';
-            this.serviceInfo.port = String(data.gatewayPort ?? '');
-
-            if (options.redirectOnReset === true && this.shouldRedirectToSetup(this.statusSnapshot)) {
-              window.location.replace('/setup?force=1');
-              return false;
-            }
-            return true;
-          } catch (_) {
-            // Gracefully degrade when backend unavailable
-            this.version = '1.0.0';
-            return true;
+        clearStatusRecoveryTimer() {
+          if (this.statusRecoveryTimer !== null) {
+            clearTimeout(this.statusRecoveryTimer);
+            this.statusRecoveryTimer = null;
           }
+          this.statusRecoveryInFlight = false;
+        },
+
+        scheduleStatusRecovery() {
+          if (this.statusRecoveryTimer !== null) return;
+          this.statusRecoveryTimer = setTimeout(async () => {
+            this.statusRecoveryTimer = null;
+            if (this.statusRecoveryInFlight) {
+              this.scheduleStatusRecovery();
+              return;
+            }
+
+            this.statusRecoveryInFlight = true;
+            try {
+              await this.loadStatus({ recovery: true });
+            } finally {
+              this.statusRecoveryInFlight = false;
+              if (this.statusLoadState === 'error') {
+                this.scheduleStatusRecovery();
+              }
+            }
+          }, this.statusRecoveryDelayMs);
+          if (this.statusRecoveryTimer && typeof this.statusRecoveryTimer.unref === 'function') {
+            this.statusRecoveryTimer.unref();
+          }
+        },
+
+        markStatusUnavailable(options = {}) {
+          this.statusLoadState = 'error';
+          this.serviceStatus = 'unknown';
+          this.version = '—';
+          this.serviceInfo.profile = '';
+          this.serviceInfo.configPath = '';
+          this.serviceInfo.port = '';
+          if (options.scheduleRecovery !== false) {
+            this.scheduleStatusRecovery();
+          }
+        },
+
+        async loadStatus(options = {}) {
+          if (this.statusRequestInFlight) return this.statusRequestInFlight;
+
+          const statusRequest = (async () => {
+            try {
+              const res = await this.fetchWithTimeout('/api/status', {}, this.requestTimeout.status);
+              if (!res.ok) {
+                this.markStatusUnavailable();
+                return true;
+              }
+              const data = await res.json();
+              this.clearStatusRecoveryTimer();
+              this.statusLoadState = 'ready';
+              this.statusSnapshot.installed = data.installed === true;
+              this.statusSnapshot.daemon = data.daemon || 'unknown';
+              this.statusSnapshot.runtimeMode = data.runtimeMode || 'unknown';
+              this.statusSnapshot.configExists = data.configExists !== false;
+              this.statusSnapshot.profileDirExists = data.profileDirExists !== false;
+              this.serviceStatus = (
+                data.daemon === 'running' ||
+                data.runtimeMode === 'gateway-fallback' ||
+                data.gatewayHealthy === true
+              ) ? 'running' : 'stopped';
+              this.version = typeof data.version === 'string' && data.version.trim()
+                ? data.version.trim()
+                : '—';
+              this.serviceInfo.profile = data.profile || '';
+              this.serviceInfo.configPath = data.configPath || '';
+              this.serviceInfo.port = String(data.gatewayPort ?? '');
+
+              if (options.redirectOnReset === true && this.shouldRedirectToSetup(this.statusSnapshot)) {
+                window.location.replace('/setup?force=1');
+                return false;
+              }
+              return true;
+            } catch (_) {
+              this.markStatusUnavailable();
+              return true;
+            } finally {
+              this.statusRequestInFlight = null;
+            }
+          })();
+
+          this.statusRequestInFlight = statusRequest;
+          return statusRequest;
         },
 
         async loadConfig() {
@@ -1209,6 +1464,25 @@
             });
             return false;
           }
+        },
+
+        async loadModelRoutingConfig() {
+          return window.OpenSparrowDashboardModelRouting.load(this);
+        },
+
+        async saveModelRoutingConfig() {
+          return window.OpenSparrowDashboardModelRouting.save(this);
+        },
+
+        setModelRoutingMode(mode) {
+          this.modelRouting.mode = mode === 'smart' ? 'smart' : 'single';
+          if (this.modelRouting.mode !== 'smart') {
+            this.modelRouting.routingError = '';
+          }
+        },
+
+        toggleModelRoutingAdvanced() {
+          this.modelRouting.advancedOpen = !this.modelRouting.advancedOpen;
         },
 
         // ─── Helpers ─────────────────────────────────────────────────
@@ -1250,6 +1524,7 @@
 
         diagnosticsStatusLabel(report) {
           if (!report || typeof report !== 'object') return '未检测';
+          if (report.timedOut === true) return '诊断超时';
           if (report.status === 'ok') return '已读回';
           if (report.status === 'warning') return '需补 fresh live verification';
           return '配置未闭合';
@@ -1279,6 +1554,7 @@
             status: raw.status === 'ok' || raw.status === 'warning' ? raw.status : 'error',
             ready: raw.ready === true,
             daemon: typeof raw.daemon === 'string' ? raw.daemon : (this.statusSnapshot.daemon || 'unknown'),
+            timedOut: raw.timedOut === true,
             checks: Array.isArray(raw.checks) ? raw.checks.slice() : [],
             warnings: Array.isArray(raw.warnings) ? raw.warnings.slice() : [],
             errors,
@@ -1306,13 +1582,26 @@
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({}),
-            }, this.requestTimeout.status);
+            }, this.requestTimeout.diagnostics);
             const payload = await res.json().catch(() => ({}));
             const fallbackError = res.ok ? '' : `钉钉诊断请求失败（HTTP ${res.status}）`;
             card.diagnostics = this.normalizeDiagnosticsReport(payload, fallbackError);
             return res.ok;
           } catch (e) {
-            card.diagnostics = this.normalizeDiagnosticsReport({}, `钉钉诊断请求失败：${e?.message ?? String(e)}`);
+            if (e?.name === 'AbortError') {
+              const timeoutMessage = '钉钉诊断请求超时，请稍后重试；这不代表消息发送失败。';
+              card.diagnostics = this.normalizeDiagnosticsReport({
+                status: 'warning',
+                ready: false,
+                daemon: this.statusSnapshot.daemon || 'unknown',
+                timedOut: true,
+                warnings: [timeoutMessage],
+                errors: [],
+                probe: { code: null, summary: timeoutMessage },
+              });
+            } else {
+              card.diagnostics = this.normalizeDiagnosticsReport({}, `钉钉诊断请求失败：${e?.message ?? String(e)}`);
+            }
             return false;
           } finally {
             card.diagnosticsLoading = false;

@@ -20,6 +20,9 @@ import {
   findBundledPluginArchive,
 } from './install-helpers.mjs'
 import {
+  maybeFreshRebindMainSession,
+} from './lib/session-rebind.mjs'
+import {
   buildCustomRouterProviderConfig,
   buildCustomRouterUpstreamPayload,
   CUSTOM_ROUTER_PROVIDER_ID,
@@ -50,6 +53,12 @@ function resolvePathFromEnv(rawValue, fallbackPath) {
 }
 
 function resolvePortFromEnv(name, fallback) {
+  const raw = Number.parseInt(String(process.env[name] ?? '').trim(), 10)
+  if (!Number.isFinite(raw) || raw <= 0) return fallback
+  return raw
+}
+
+function resolveDurationFromEnv(name, fallback) {
   const raw = Number.parseInt(String(process.env[name] ?? '').trim(), 10)
   if (!Number.isFinite(raw) || raw <= 0) return fallback
   return raw
@@ -104,6 +113,7 @@ const CONFIG_FILE = path.join(PROFILE_DIR, 'openclaw.json')
 const UI_META_FILE = path.join(PROFILE_DIR, 'ui-meta.json')
 const WORKSPACE_DIR = path.join(PROFILE_DIR, 'workspace')
 const AUTH_PROFILES_FILE = path.join(PROFILE_DIR, 'agents', 'main', 'agent', 'auth-profiles.json')
+const MAIN_SESSION_STORE_FILE = path.join(PROFILE_DIR, 'agents', 'main', 'sessions', 'sessions.json')
 const INSTALL_STATE_FILE = path.join(PROFILE_DIR, 'install-state.json')
 const INSTALL_LOG_FILE = path.join(PROFILE_DIR, 'install.log')
 const DIAGNOSTIC_BUNDLE_FILE = path.join(PROFILE_DIR, 'diagnostic-bundle.json')
@@ -146,6 +156,7 @@ const WECOM_MIN_OPENCLAW_VERSION = '2026.3.23'
 const DEFAULT_PORT = resolvePortFromEnv('OPENSPARROW_UI_PORT', 19000)
 const CUSTOM_ROUTER_PORT = resolvePortFromEnv('OPENSPARROW_ROUTER_PORT', DEFAULT_CUSTOM_ROUTER_PORT)
 const GATEWAY_PORT = resolvePortFromEnv('OPENCLAW_GATEWAY_PORT', 18889)
+const SAVE_ROUTE_RESTART_TIMEOUT_MS = resolveDurationFromEnv('OPENSPARROW_SAVE_ROUTE_RESTART_TIMEOUT_MS', 30000)
 const SERVER_STARTED_AT = new Date().toISOString()
 const ACTIVE_UI_PORT = { value: null }
 const PACKAGED_RUNTIME_MODE = resolveBooleanEnv('OPENSPARROW_PACKAGED_RUNTIME', false)
@@ -166,6 +177,36 @@ const OC_TIMEOUT = {
   DAEMON_RESTART: 120000,
   PLUGIN_INSTALL: 300000,
   UNINSTALL_FULL: 90000,
+}
+
+const PLUGIN_INSTALL_TIMEOUT_MS = resolveDurationFromEnv(
+  'OPENSPARROW_PLUGIN_INSTALL_TIMEOUT_MS',
+  (PACKAGED_RUNTIME_MODE || REQUIRE_BUNDLED_PLUGINS) ? 120000 : OC_TIMEOUT.PLUGIN_INSTALL,
+)
+const PLUGIN_INSTALL_AUTHORITY_GRACE_MS = resolveDurationFromEnv(
+  'OPENSPARROW_PLUGIN_AUTHORITY_GRACE_MS',
+  (PACKAGED_RUNTIME_MODE || REQUIRE_BUNDLED_PLUGINS) ? 150000 : 0,
+)
+const PLUGIN_INSTALL_LATE_STAGE_AUTHORITY_GRACE_MS = resolveDurationFromEnv(
+  'OPENSPARROW_PLUGIN_LATE_STAGE_AUTHORITY_GRACE_MS',
+  (PACKAGED_RUNTIME_MODE || REQUIRE_BUNDLED_PLUGINS) ? 600000 : PLUGIN_INSTALL_AUTHORITY_GRACE_MS,
+)
+const PLUGIN_INSTALL_AUTHORITY_POLL_MS = resolveDurationFromEnv(
+  'OPENSPARROW_PLUGIN_AUTHORITY_POLL_MS',
+  500,
+)
+
+function buildInstallBypassState(verdict = 'none', {
+  used = false,
+  plugin = null,
+  reason = null,
+} = {}) {
+  return {
+    verdict,
+    used,
+    plugin,
+    reason,
+  }
 }
 
 function buildInstanceFingerprint() {
@@ -566,6 +607,30 @@ function syncInstalledPluginIntoProfile(pluginId) {
   return { ok: true, errors: [] }
 }
 
+function syncInstalledPluginIntoShared(pluginId) {
+  const id = String(pluginId ?? '').trim()
+  if (!id) return { ok: false, errors: ['plugin id 无效，无法同步到 shared 扩展目录'] }
+
+  const profileExtDir = path.join(PROFILE_EXTENSIONS_DIR, id)
+  const sharedExtDir = path.join(EXTENSIONS_DIR, id)
+  if (!fs.existsSync(profileExtDir)) {
+    return { ok: false, errors: [`profile 扩展目录不存在：${toUserPath(profileExtDir)}`] }
+  }
+
+  try {
+    fs.mkdirSync(EXTENSIONS_DIR, { recursive: true })
+    const removal = removeDirIfExists(sharedExtDir)
+    if (removal.error) {
+      return { ok: false, errors: [`清理 shared 扩展目录失败：${toUserPath(sharedExtDir)} (${removal.error})`] }
+    }
+    fs.cpSync(profileExtDir, sharedExtDir, { recursive: true, force: true })
+  } catch (e) {
+    return { ok: false, errors: [`同步插件到 shared 扩展目录失败：${toUserPath(sharedExtDir)} (${e?.message ?? String(e)})`] }
+  }
+
+  return { ok: true, errors: [] }
+}
+
 function patchDingtalkPluginDist() {
   const file = resolveDingtalkPluginDistFile()
   try {
@@ -928,6 +993,51 @@ function parseDaemonStateFromJson(parsed) {
   return 'unknown'
 }
 
+function normalizeBooleanLikeSignal(value) {
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'number') return value !== 0
+
+  const token = String(value ?? '').trim().toLowerCase()
+  if (!token) return null
+  if (['true', '1', 'ok', 'healthy', 'ready', 'running', 'online', 'active', 'connected', 'up'].includes(token)) {
+    return true
+  }
+  if (['false', '0', 'error', 'failed', 'unhealthy', 'not_ready', 'not-ready', 'offline', 'inactive', 'disconnected', 'down'].includes(token)) {
+    return false
+  }
+  if (token.includes('healthy') || token.includes('ready') || token.includes('running') || token.includes('online')) {
+    return true
+  }
+  if (token.includes('unhealthy') || token.includes('not ready') || token.includes('not-ready') || token.includes('offline') || token.includes('failed') || token.includes('error')) {
+    return false
+  }
+  return null
+}
+
+function parseDaemonRpcHealth(parsed) {
+  const candidates = [
+    parsed?.rpcHealthy,
+    parsed?.rpc?.healthy,
+    parsed?.rpc?.ok,
+    parsed?.rpc?.connected,
+    parsed?.service?.rpcHealthy,
+    parsed?.service?.rpc?.healthy,
+    parsed?.service?.rpc?.ok,
+    parsed?.service?.rpc?.connected,
+    parsed?.service?.runtime?.rpcHealthy,
+    parsed?.service?.runtime?.rpc?.healthy,
+    parsed?.service?.runtime?.rpc?.ok,
+    parsed?.service?.runtime?.rpc?.connected,
+  ]
+
+  for (const candidate of candidates) {
+    const normalized = normalizeBooleanLikeSignal(candidate)
+    if (normalized !== null) return normalized
+  }
+
+  return null
+}
+
 /**
  * Parse daemon state from command execution result.
  * @param {{stdout: string, stderr: string, code: number}} result
@@ -979,21 +1089,40 @@ async function isGatewayHealthy() {
  * Resolve daemon/runtime state without treating a busy port as daemon=running.
  * @returns {Promise<{
  *   daemon: 'running'|'stopped'|'not_installed'|'unknown',
+ *   daemonReported: 'running'|'stopped'|'not_installed'|'unknown',
  *   runtimeMode: 'daemon'|'gateway-fallback'|'port-occupied'|'stopped'|'unknown',
  *   gatewayHealthy: boolean,
+ *   rpcHealthy: boolean | null,
  *   gatewayPortBusy: boolean,
+ *   statusAuthority: {
+ *     verdict: 'authoritative'|'contradictory'|'unknown',
+ *     reasons: string[],
+ *     rpcHealthy: boolean | null,
+ *     daemonReported: 'running'|'stopped'|'not_installed'|'unknown',
+ *   },
  * }>}
  */
 async function resolveRuntimeState() {
-  let daemon = 'unknown'
+  let daemonReported = 'unknown'
+  let daemonStatusPayload = null
+  let rpcHealthy = null
   try {
     const result = await runOc(['daemon', 'status', '--json'], {
       timeoutMs: OC_TIMEOUT.STATUS,
       opName: 'daemon status',
     })
-    daemon = parseDaemonStateFromResult(result)
+    const cleanOut = stripAnsi(result.stdout).trim()
+    if (cleanOut) {
+      try {
+        daemonStatusPayload = JSON.parse(cleanOut)
+        rpcHealthy = parseDaemonRpcHealth(daemonStatusPayload)
+      } catch {
+        daemonStatusPayload = null
+      }
+    }
+    daemonReported = parseDaemonStateFromResult(result)
   } catch {
-    daemon = 'unknown'
+    daemonReported = 'unknown'
   }
 
   let gatewayHealthy = false
@@ -1010,22 +1139,68 @@ async function resolveRuntimeState() {
     gatewayPortBusy = false
   }
 
+  let daemon = daemonReported
   let runtimeMode = 'unknown'
-  if (daemon === 'running') {
-    runtimeMode = 'daemon'
+  const reasons = []
+  let verdict = 'unknown'
+
+  const hasPositiveDaemonLiveness = gatewayHealthy === true || rpcHealthy === true
+  if (daemonReported === 'running') {
+    if (hasPositiveDaemonLiveness) {
+      runtimeMode = 'daemon'
+      verdict = 'authoritative'
+      if (gatewayHealthy !== true && rpcHealthy === true) {
+        reasons.push('daemon reports running and rpc is healthy, but gateway health check is not yet healthy')
+      }
+      if (gatewayHealthy === true && rpcHealthy === false) {
+        reasons.push('live gateway health succeeded even though daemon status reported rpc unhealthy')
+      }
+    } else {
+      verdict = 'contradictory'
+      if (gatewayHealthy === false) reasons.push('daemon reports running but gateway health check failed')
+      if (rpcHealthy === false) reasons.push('daemon reports running but rpc probe failed')
+      if (gatewayPortBusy) {
+        reasons.push(`daemon reports running but gateway port ${GATEWAY_PORT} is occupied without a healthy same-profile runtime`)
+        daemon = 'unknown'
+        runtimeMode = 'port-occupied'
+      } else {
+        reasons.push(`daemon reports running but gateway port ${GATEWAY_PORT} is free`)
+        daemon = 'stopped'
+        runtimeMode = 'stopped'
+      }
+    }
   } else if (gatewayHealthy) {
     runtimeMode = 'gateway-fallback'
+    verdict = daemonReported === 'unknown' ? 'unknown' : 'authoritative'
+    if (daemonReported === 'unknown') {
+      reasons.push('gateway health succeeded before daemon status became authoritative')
+    }
   } else if (gatewayPortBusy) {
     runtimeMode = 'port-occupied'
-  } else if (daemon === 'stopped' || daemon === 'not_installed') {
+    verdict = daemonReported === 'unknown' ? 'unknown' : 'authoritative'
+    reasons.push(`gateway port ${GATEWAY_PORT} is occupied while current profile health check is unhealthy`)
+  } else if (daemonReported === 'stopped' || daemonReported === 'not_installed') {
     runtimeMode = 'stopped'
+    verdict = 'authoritative'
+  } else {
+    runtimeMode = 'unknown'
+    verdict = 'unknown'
+    reasons.push('no authoritative same-profile runtime signal is currently available')
   }
 
   return {
     daemon,
+    daemonReported,
     runtimeMode,
     gatewayHealthy,
+    rpcHealthy,
     gatewayPortBusy,
+    statusAuthority: {
+      verdict,
+      reasons,
+      rpcHealthy,
+      daemonReported,
+    },
   }
 }
 
@@ -1075,14 +1250,27 @@ function appendInstallLog(level, message, extra = null) {
 function buildEmptyInstallState() {
   return {
     status: 'idle',
+    installState: 'idle',
     summary: '等待安装开始',
     startedAt: null,
     updatedAt: new Date().toISOString(),
     finishedAt: null,
     currentStep: null,
+    currentPlugin: null,
+    blockingStep: null,
+    blockingPlugin: null,
     runtimeMode: null,
     packagedRuntimeMode: PACKAGED_RUNTIME_MODE,
     requireBundledPlugins: REQUIRE_BUNDLED_PLUGINS,
+    requestedChannels: {
+      dingtalk: false,
+      wecom: false,
+    },
+    requestedChannelReadiness: {
+      dingtalk: false,
+      wecom: false,
+    },
+    bypass: buildInstallBypassState(),
     warnings: [],
     errors: [],
     instance: buildInstanceFingerprint(),
@@ -1161,11 +1349,16 @@ function createInstallTracker() {
     },
     start(summary = '正在准备安装') {
       state.status = 'running'
+      state.installState = 'running'
       state.summary = summary
       state.startedAt = new Date().toISOString()
       state.finishedAt = null
       state.errors = []
       state.warnings = []
+      state.currentPlugin = null
+      state.blockingStep = null
+      state.blockingPlugin = null
+      state.bypass = buildInstallBypassState()
       state.channelProbes = normalizeChannelProbes()
       appendInstallLog('info', summary)
       return persist()
@@ -1188,28 +1381,48 @@ function createInstallTracker() {
       appendInstallLog(error ? 'error' : warning ? 'warn' : 'info', summary, { step: key })
       return persist()
     },
+    setMetadata(patch = {}) {
+      state = {
+        ...state,
+        ...patch,
+      }
+      return persist()
+    },
     setChannelProbes(channelProbes) {
       state.channelProbes = redactSecretLikeObject(normalizeChannelProbes(channelProbes))
       return persist()
     },
-    markError(summary, errors = []) {
+    markError(summary, errors = [], patch = {}) {
       if (state.currentStep) {
         updateStep(state.currentStep, { status: 'error', detail: summary })
       }
       state.status = 'error'
+      state.installState = patch.installState ?? state.installState ?? 'failed'
       state.summary = summary
       state.errors = Array.isArray(errors) ? errors.slice() : [String(errors)]
       state.finishedAt = new Date().toISOString()
+      state = {
+        ...state,
+        ...patch,
+      }
       appendInstallLog('error', summary, { errors: state.errors })
       return persist()
     },
-    complete(summary, runtimeMode = null, warnings = []) {
+    complete(summary, runtimeMode = null, warnings = [], patch = {}) {
       state.status = 'completed'
+      state.installState = patch.installState ?? 'completed'
       state.summary = summary
       state.currentStep = null
+      state.currentPlugin = null
+      state.blockingStep = patch.blockingStep ?? null
+      state.blockingPlugin = patch.blockingPlugin ?? null
       state.runtimeMode = runtimeMode
       state.finishedAt = new Date().toISOString()
       state.warnings = Array.isArray(warnings) ? warnings.slice() : []
+      state = {
+        ...state,
+        ...patch,
+      }
       appendInstallLog('info', summary, { runtimeMode, warnings: state.warnings })
       return persist()
     },
@@ -1714,6 +1927,370 @@ function buildProbeExecutionFailure(message, secrets = []) {
   }, secrets)
 }
 
+function hasWecomProbeAuthFailure(summary) {
+  const summaryLower = stripAnsi(String(summary ?? '')).toLowerCase()
+  return (
+    summaryLower.includes('status code 401')
+    || summaryLower.includes('invalid credential')
+    || summaryLower.includes('invalid secret')
+    || summaryLower.includes('unauthorized')
+    || summaryLower.includes('authentication failed')
+    || summaryLower.includes('auth failed')
+    || /invalid bot[_ -]?id/.test(summaryLower)
+    || /bot[_ -]?id or secret/.test(summaryLower)
+    || /code[:=\s-]*853000/.test(summaryLower)
+  )
+}
+
+function hasWecomRequestedAuthFailure(report) {
+  if (!report || typeof report !== 'object') return false
+  if (Array.isArray(report.errors) && report.errors.some((entry) => String(entry ?? '').includes('企业微信返回鉴权错误'))) {
+    return true
+  }
+  return hasWecomProbeAuthFailure(report?.probe?.summary ?? '')
+}
+
+function coerceCombinedProbeTruth({
+  requestedHasDingtalk,
+  requestedHasWecom,
+  channelProbes,
+}) {
+  if (!requestedHasDingtalk || !requestedHasWecom) return
+
+  const dingtalkProbe = channelProbes?.dingtalk
+  const wecomProbe = channelProbes?.wecom
+  if (!dingtalkProbe || dingtalkProbe.status !== 'ok' || dingtalkProbe.ready !== true) return
+  if (!hasWecomRequestedAuthFailure(wecomProbe)) return
+
+  const frozenWarning = '组合安装检测到企业微信鉴权失败；当前不把钉钉写成 ready，以保持 frozen requested-channel truth'
+  const warnings = Array.isArray(dingtalkProbe.warnings) ? dingtalkProbe.warnings.filter(Boolean) : []
+  channelProbes.dingtalk = {
+    ...dingtalkProbe,
+    status: 'warning',
+    ready: false,
+    warnings: warnings.includes(frozenWarning) ? warnings : [frozenWarning, ...warnings],
+  }
+}
+
+function isTimeoutLikeIssue(detail) {
+  const text = stripAnsi(detail).toLowerCase()
+  return text.includes('timed out') || text.includes('timeout')
+}
+
+function normalizePluginPackageName(spec) {
+  const raw = String(spec ?? '').trim()
+  if (!raw) return ''
+  if (raw.startsWith('@')) {
+    const secondAt = raw.indexOf('@', 1)
+    return secondAt === -1 ? raw : raw.slice(0, secondAt)
+  }
+  const firstAt = raw.indexOf('@')
+  return firstAt === -1 ? raw : raw.slice(0, firstAt)
+}
+
+function buildPluginAuthorityRelativePaths(pluginId) {
+  const paths = ['openclaw.plugin.json', 'package.json', path.join('dist', 'index.js')]
+  if (pluginId === DINGTALK_PLUGIN_ID) {
+    paths.push(path.join('node_modules', '@openclaw-china', 'dingtalk', 'dist', 'index.js'))
+  }
+  return paths
+}
+
+function inspectPluginDirectoryFootprint(extDir, pluginId, packageSpec) {
+  const id = String(pluginId ?? '').trim()
+  const expectedPackageName = normalizePluginPackageName(packageSpec)
+  const packageJsonPath = path.join(extDir, 'package.json')
+  const manifestPath = path.join(extDir, 'openclaw.plugin.json')
+  const criticalRelativePaths = buildPluginAuthorityRelativePaths(id)
+  const criticalPaths = criticalRelativePaths.map((relativePath) => path.join(extDir, relativePath))
+  const missingCriticalPaths = criticalPaths.filter((candidate) => !fs.existsSync(candidate))
+
+  let packageName = ''
+  let manifestId = ''
+  try {
+    if (fs.existsSync(packageJsonPath)) {
+      const parsed = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'))
+      packageName = String(parsed?.name ?? '').trim()
+    }
+  } catch {
+    packageName = ''
+  }
+  try {
+    if (fs.existsSync(manifestPath)) {
+      const parsed = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
+      manifestId = String(parsed?.id ?? '').trim()
+    }
+  } catch {
+    manifestId = ''
+  }
+
+  const exists = fs.existsSync(extDir)
+  const packageNameMatches = Boolean(packageName && expectedPackageName && packageName === expectedPackageName)
+  const pluginIdMatches = Boolean(manifestId && id && manifestId === id)
+
+  return {
+    extDir: toUserPath(extDir),
+    exists,
+    packageName,
+    expectedPackageName,
+    packageNameMatches,
+    manifestId,
+    pluginIdMatches,
+    missingCriticalPaths: missingCriticalPaths.map((candidate) => toUserPath(candidate)),
+    structurallyReady: Boolean(
+      exists
+      && fs.existsSync(manifestPath)
+      && fs.existsSync(packageJsonPath)
+      && packageNameMatches
+      && pluginIdMatches
+      && missingCriticalPaths.length === 0
+    ),
+  }
+}
+
+function inspectPluginExtensionFootprint(rootDir, pluginId, packageSpec) {
+  const id = String(pluginId ?? '').trim()
+  return inspectPluginDirectoryFootprint(path.join(rootDir, id), id, packageSpec)
+}
+
+function listStagedPluginCandidates(rootDir, pluginId, packageSpec) {
+  const id = String(pluginId ?? '').trim()
+  if (!id || !fs.existsSync(rootDir)) return []
+
+  let entries = []
+  try {
+    entries = fs.readdirSync(rootDir, { withFileTypes: true })
+  } catch {
+    return []
+  }
+
+  return entries
+    .filter((entry) => entry.isDirectory() && entry.name.startsWith('.openclaw-install-stage-'))
+    .map((entry) => {
+      const candidatePath = path.join(rootDir, entry.name)
+      let mtimeMs = 0
+      try {
+        mtimeMs = fs.statSync(candidatePath).mtimeMs ?? 0
+      } catch {
+        mtimeMs = 0
+      }
+      return {
+        ...inspectPluginDirectoryFootprint(candidatePath, id, packageSpec),
+        candidatePath,
+        candidateName: entry.name,
+        mtimeMs,
+      }
+    })
+    .sort((left, right) => right.mtimeMs - left.mtimeMs)
+}
+
+function findStagedPluginFootprints(rootDir, pluginId, packageSpec) {
+  return listStagedPluginCandidates(rootDir, pluginId, packageSpec)
+    .filter((candidate) => candidate.structurallyReady)
+}
+
+function hasMatchingStagedPluginShell(rootDir, pluginId, packageSpec) {
+  const id = String(pluginId ?? '').trim()
+  if (!id) return false
+
+  return listStagedPluginCandidates(rootDir, id, packageSpec).some((candidate) => (
+    candidate.pluginIdMatches
+    || candidate.packageNameMatches
+  ))
+}
+
+function promoteStagedPluginFootprint(rootDir, pluginId, packageSpec) {
+  const id = String(pluginId ?? '').trim()
+  if (!id) {
+    return {
+      ok: false,
+      found: false,
+      warnings: [],
+      errors: ['plugin id 无效，无法提升 staged 扩展目录'],
+    }
+  }
+
+  const candidates = findStagedPluginFootprints(rootDir, id, packageSpec)
+  if (candidates.length === 0) {
+    return {
+      ok: false,
+      found: false,
+      warnings: [],
+      errors: [],
+    }
+  }
+
+  const selected = candidates[0]
+  const targetDir = path.join(rootDir, id)
+
+  try {
+    fs.mkdirSync(rootDir, { recursive: true })
+    const removal = removeDirIfExists(targetDir)
+    if (removal.error) {
+      return {
+        ok: false,
+        found: true,
+        warnings: [],
+        errors: [`清理目标扩展目录失败：${toUserPath(targetDir)} (${removal.error})`],
+      }
+    }
+
+    try {
+      fs.renameSync(selected.candidatePath, targetDir)
+    } catch (renameError) {
+      fs.cpSync(selected.candidatePath, targetDir, { recursive: true, force: true })
+      removeDirIfExists(selected.candidatePath)
+      void renameError
+    }
+
+    return {
+      ok: true,
+      found: true,
+      warnings: [],
+      errors: [],
+    }
+  } catch (e) {
+    return {
+      ok: false,
+      found: true,
+      warnings: [],
+      errors: [`提升 staged 扩展目录失败：${toUserPath(targetDir)} (${e?.message ?? String(e)})`],
+    }
+  }
+}
+
+function inspectPluginInstallAuthority(pluginId, packageSpec) {
+  return {
+    shared: inspectPluginExtensionFootprint(EXTENSIONS_DIR, pluginId, packageSpec),
+    profile: inspectPluginExtensionFootprint(PROFILE_EXTENSIONS_DIR, pluginId, packageSpec),
+  }
+}
+
+function closeInstalledPluginAuthority(pluginId, packageSpec) {
+  const id = String(pluginId ?? '').trim()
+  let authority = inspectPluginInstallAuthority(id, packageSpec)
+  const warnings = []
+
+  if (!authority.shared.structurallyReady) {
+    const stagedShared = promoteStagedPluginFootprint(EXTENSIONS_DIR, id, packageSpec)
+    if (stagedShared.found && !stagedShared.ok) {
+      return {
+        ok: false,
+        authority,
+        warnings,
+        errors: stagedShared.errors,
+      }
+    }
+    if (stagedShared.ok) {
+      warnings.push(...stagedShared.warnings)
+      authority = inspectPluginInstallAuthority(id, packageSpec)
+    }
+  }
+
+  if (!authority.profile.structurallyReady) {
+    const stagedProfile = promoteStagedPluginFootprint(PROFILE_EXTENSIONS_DIR, id, packageSpec)
+    if (stagedProfile.found && !stagedProfile.ok) {
+      return {
+        ok: false,
+        authority,
+        warnings,
+        errors: stagedProfile.errors,
+      }
+    }
+    if (stagedProfile.ok) {
+      warnings.push(...stagedProfile.warnings)
+      authority = inspectPluginInstallAuthority(id, packageSpec)
+    }
+  }
+
+  if (authority.profile.structurallyReady) {
+    if (!authority.shared.structurallyReady) {
+      const sharedSync = syncInstalledPluginIntoShared(id)
+      if (!sharedSync.ok) {
+        warnings.push(...sharedSync.errors)
+      } else {
+        authority = inspectPluginInstallAuthority(id, packageSpec)
+      }
+    }
+
+    return {
+      ok: true,
+      authority,
+      warnings,
+    }
+  }
+
+  if (authority.shared.structurallyReady) {
+    const profileSync = syncInstalledPluginIntoProfile(id)
+    if (!profileSync.ok) {
+      return {
+        ok: false,
+        authority,
+        warnings,
+        errors: profileSync.errors,
+      }
+    }
+
+    authority = inspectPluginInstallAuthority(id, packageSpec)
+    if (authority.profile.structurallyReady) {
+      return {
+        ok: true,
+        authority,
+        warnings,
+      }
+    }
+  }
+
+  return {
+    ok: false,
+    authority,
+    warnings,
+    errors: [
+      `插件 ${packageSpec} 未在 shared/profile 扩展目录中建立当前 profile 可用的结构化 footprint`,
+    ],
+  }
+}
+
+async function waitForInstalledPluginAuthority(pluginId, packageSpec, options = {}) {
+  const id = String(pluginId ?? '').trim()
+  const graceMs = Number.isFinite(options?.graceMs) ? Math.max(0, options.graceMs) : PLUGIN_INSTALL_AUTHORITY_GRACE_MS
+  const lateStageGraceMs = Number.isFinite(options?.lateStageGraceMs)
+    ? Math.max(0, options.lateStageGraceMs)
+    : PLUGIN_INSTALL_LATE_STAGE_AUTHORITY_GRACE_MS
+  const pollMs = Number.isFinite(options?.pollMs) ? Math.max(100, options.pollMs) : Math.max(100, PLUGIN_INSTALL_AUTHORITY_POLL_MS)
+  let closure = closeInstalledPluginAuthority(id, packageSpec)
+  if (closure.ok) return closure
+
+  const hasMatchingShell = (
+    hasMatchingStagedPluginShell(EXTENSIONS_DIR, id, packageSpec)
+    || hasMatchingStagedPluginShell(PROFILE_EXTENSIONS_DIR, id, packageSpec)
+  )
+  if (!hasMatchingShell) return closure
+
+  const waitMs = Math.max(graceMs, lateStageGraceMs)
+  if (waitMs <= 0) return closure
+
+  const startedAt = Date.now()
+  const deadline = startedAt + waitMs
+  while (!closure.ok) {
+    const remainingMs = deadline - Date.now()
+    if (remainingMs <= 0) break
+    await new Promise((resolve) => setTimeout(resolve, Math.min(pollMs, remainingMs)))
+    closure = closeInstalledPluginAuthority(id, packageSpec)
+  }
+
+  if (!closure.ok) return closure
+
+  const waitedMs = Math.max(0, Date.now() - startedAt)
+  return {
+    ...closure,
+    warnings: [
+      ...closure.warnings,
+      `plugin install late-stage authority catch-up closed after timeout wait (${waitedMs}ms)`,
+    ],
+  }
+}
+
 async function ensurePluginsAllowIncludes(ids) {
   const want = Array.isArray(ids) ? ids : [ids]
   const pluginIds = want
@@ -1739,8 +2316,10 @@ async function ensurePluginsAllowIncludes(ids) {
 
   const merged = [...current]
   for (const id of pluginIds) {
-    const extDir = path.join(EXTENSIONS_DIR, id)
-    const installed = fs.existsSync(extDir)
+    const installed = (
+      fs.existsSync(path.join(EXTENSIONS_DIR, id))
+      || fs.existsSync(path.join(PROFILE_EXTENSIONS_DIR, id))
+    )
     if (installed) {
       if (!merged.includes(id)) merged.push(id)
     } else {
@@ -1775,13 +2354,28 @@ async function ensurePluginsAllowIncludes(ids) {
  * @param {string} spec
  * @param {string} pluginId
  * @param {{pin?: boolean}} [options]
- * @returns {Promise<{ok: boolean, errors: string[]}>}
+ * @returns {Promise<{
+ *   ok: boolean,
+ *   errors: string[],
+ *   warnings: string[],
+ *   bypass: {verdict: string, used: boolean, plugin: string | null, reason: string | null},
+ *   authority: {shared: any, profile: any},
+ * }>}
  */
 async function installPluginPackage(spec, pluginId, options = {}) {
   const packageSpec = String(spec ?? '').trim()
   const id = String(pluginId ?? '').trim()
   if (!packageSpec || !id) {
-    return { ok: false, errors: ['plugin package spec / id 无效'] }
+    return {
+      ok: false,
+      errors: ['plugin package spec / id 无效'],
+      warnings: [],
+      bypass: buildInstallBypassState('failed', {
+        plugin: id || null,
+        reason: 'plugin package spec / id 无效',
+      }),
+      authority: inspectPluginInstallAuthority(id, packageSpec),
+    }
   }
 
   const bundledArchive = findBundledPluginArchive(BUNDLED_PLUGINS_DIR, packageSpec)
@@ -1791,6 +2385,12 @@ async function installPluginPackage(spec, pluginId, options = {}) {
       errors: [
         `打包安装要求使用 bundled plugin archive，但未在 plugins/ 中找到 ${packageSpec}。请重新构建交付包，避免在新 Mac 上走在线安装。`,
       ],
+      warnings: [],
+      bypass: buildInstallBypassState('failed', {
+        plugin: id,
+        reason: `missing bundled plugin archive for ${packageSpec}`,
+      }),
+      authority: inspectPluginInstallAuthority(id, packageSpec),
     }
   }
 
@@ -1800,34 +2400,78 @@ async function installPluginPackage(spec, pluginId, options = {}) {
   args.push('--force')
 
   const result = await runOc(args, {
-    timeoutMs: OC_TIMEOUT.PLUGIN_INSTALL,
+    timeoutMs: PLUGIN_INSTALL_TIMEOUT_MS,
     opName: `plugins install ${packageSpec}`,
   })
+  const authority = inspectPluginInstallAuthority(id, packageSpec)
   if (result.code !== 0) {
+    const detail = compactProbeOutput(`${result.stdout}\n${result.stderr}`) || `exit code ${result.code}`
+    if ((PACKAGED_RUNTIME_MODE || REQUIRE_BUNDLED_PLUGINS) && result.code === 124 && isTimeoutLikeIssue(detail)) {
+      const authorityClosure = await waitForInstalledPluginAuthority(id, packageSpec)
+      if (authorityClosure.ok) {
+        return {
+          ok: true,
+          errors: [],
+          warnings: [
+            `plugin install safe bypass: ${id} 在 ${PLUGIN_INSTALL_TIMEOUT_MS}ms 内未退出，但 packaged plugin footprint 已结构化就绪`,
+            ...authorityClosure.warnings,
+          ],
+          bypass: buildInstallBypassState('safe_bypass', {
+            used: true,
+            plugin: id,
+            reason: `plugin install timed out after ${PLUGIN_INSTALL_TIMEOUT_MS}ms, but packaged plugin footprint is structurally ready`,
+          }),
+          authority: authorityClosure.authority,
+        }
+      }
+
+      return {
+        ok: false,
+        errors: [
+          `plugin install blocked at ${id}: timed out after ${PLUGIN_INSTALL_TIMEOUT_MS}ms, and safe bypass authority was not established`,
+        ],
+        warnings: [],
+        bypass: buildInstallBypassState('failed', {
+          plugin: id,
+          reason: `plugin install timed out after ${PLUGIN_INSTALL_TIMEOUT_MS}ms without structurally ready packaged footprint`,
+        }),
+        authority: authorityClosure.authority,
+      }
+    }
+
     return {
       ok: false,
-      errors: [`安装插件 ${packageSpec} 失败：${compactProbeOutput(`${result.stdout}
-${result.stderr}`) || `exit code ${result.code}`}`],
+      errors: [`安装插件 ${packageSpec} 失败：${detail}`],
+      warnings: [],
+      bypass: buildInstallBypassState('failed', {
+        plugin: id,
+        reason: `plugin install failed for ${packageSpec}`,
+      }),
+      authority,
     }
   }
 
-  const extDir = path.join(EXTENSIONS_DIR, id)
-  if (!fs.existsSync(extDir)) {
+  const authorityClosure = closeInstalledPluginAuthority(id, packageSpec)
+  if (!authorityClosure.ok) {
     return {
       ok: false,
-      errors: [`插件 ${packageSpec} 安装完成，但未找到扩展目录：${toUserPath(extDir)}`],
+      errors: authorityClosure.errors,
+      warnings: authorityClosure.warnings,
+      bypass: buildInstallBypassState('failed', {
+        plugin: id,
+        reason: `plugin install finished without structurally ready packaged footprint for ${packageSpec}`,
+      }),
+      authority: authorityClosure.authority,
     }
   }
 
-  const profileSync = syncInstalledPluginIntoProfile(id)
-  if (!profileSync.ok) {
-    return {
-      ok: false,
-      errors: profileSync.errors,
-    }
+  return {
+    ok: true,
+    errors: [],
+    warnings: authorityClosure.warnings,
+    bypass: buildInstallBypassState(),
+    authority: authorityClosure.authority,
   }
-
-  return { ok: true, errors: [] }
 }
 
 /**
@@ -2108,22 +2752,8 @@ async function buildWecomProbeReport() {
   } else if (normalized.hasCallbackFields) {
     warnings.push('企业微信回调入站字段不完整：如需回调，请同时填写 Token、EncodingAESKey、Callback Path')
   }
-  const hasWecomAuthContext =
-    summaryLower.includes('channels.wecom')
-    || summaryLower.includes('wecom:')
-    || summaryLower.includes('qywx:')
-    || summaryLower.includes('enterprise wechat')
-
-  if (
-    hasWecomAuthContext
-    && (
-      summaryLower.includes('status code 401')
-      || summaryLower.includes('invalid credential')
-      || summaryLower.includes('invalid secret')
-      || summaryLower.includes('unauthorized')
-    )
-  ) {
-    warnings.push('企业微信返回鉴权错误，请检查 Bot ID / Bot Secret；若启用了自建应用回调，再同时检查 CorpSecret / Token / EncodingAESKey')
+  if (hasWecomProbeAuthFailure(probeSummary)) {
+    errors.push('企业微信返回鉴权错误，请检查 Bot ID / Bot Secret；若启用了自建应用回调，再同时检查 CorpSecret / Token / EncodingAESKey')
   }
 
   if (
@@ -2277,9 +2907,12 @@ async function installGatewayRuntimeWithFallback() {
  * Restart gateway runtime, with fallback when daemon is unavailable on Windows.
  * @returns {Promise<{ok: boolean, mode?: 'daemon'|'gateway-fallback', warning?: string, error?: string}>}
  */
-async function restartGatewayRuntimeWithFallback() {
+async function restartGatewayRuntimeWithFallback(options = {}) {
+  const timeoutMs = Number.isFinite(options?.timeoutMs) && options.timeoutMs > 0
+    ? options.timeoutMs
+    : OC_TIMEOUT.DAEMON_RESTART
   const r = await runOc(['daemon', 'restart'], {
-    timeoutMs: OC_TIMEOUT.DAEMON_RESTART,
+    timeoutMs,
     opName: 'daemon restart',
   })
   if (r.code === 0) return { ok: true, mode: 'daemon' }
@@ -2321,6 +2954,42 @@ async function restartGatewayRuntimeWithFallback() {
       error: `daemon restart failed: ${detail}; gateway fallback failed: ${e?.message ?? String(e)}`,
     }
   }
+}
+
+function buildSaveFollowUp(configEndpoint, saveEndpoint = null) {
+  const followUp = {
+    statusEndpoint: '/api/status',
+    configEndpoint,
+  }
+  if (saveEndpoint) followUp.saveEndpoint = saveEndpoint
+  return followUp
+}
+
+function buildPersistenceSummary(parts = {}) {
+  return {
+    complete: Object.values(parts).every((value) => value === true),
+    ...parts,
+  }
+}
+
+async function buildRestartSummary(restartResult) {
+  const base = {
+    ok: restartResult.ok === true,
+    mode: restartResult.mode ?? null,
+    warning: restartResult.warning ?? null,
+    error: restartResult.error ?? null,
+    issue: restartResult.error ?? restartResult.warning ?? null,
+    timeoutLike: false,
+  }
+
+  if (base.ok) return base
+
+  base.timeoutLike = isRestartTimeoutLikeIssue(base.issue ?? '')
+  base.runtime = await resolveRuntimeState()
+  if (!base.mode && typeof base.runtime?.runtimeMode === 'string') {
+    base.mode = base.runtime.runtimeMode
+  }
+  return base
 }
 
 // ---------------------------------------------------------------------------
@@ -2412,24 +3081,35 @@ function sendFile(res, filePath) {
 async function handleStatus(res) {
   const configExists = fs.existsSync(CONFIG_FILE)
   const profileDirExists = fs.existsSync(PROFILE_DIR)
-  const { daemon, runtimeMode, gatewayHealthy, gatewayPortBusy } = await resolveRuntimeState()
+  const {
+    daemon,
+    daemonReported,
+    runtimeMode,
+    gatewayHealthy,
+    rpcHealthy,
+    gatewayPortBusy,
+    statusAuthority,
+  } = await resolveStableRuntimeState()
   const installed = configExists && (
-    daemon === 'running' ||
-    runtimeMode === 'gateway-fallback' ||
-    gatewayHealthy === true
+    runtimeMode === 'daemon' ||
+    runtimeMode === 'gateway-fallback'
   )
 
   sendJson(res, 200, {
     installed,
     daemon,
+    daemonReported,
     runtimeMode,
+    version: getBundledOpenClawVersion() || null,
     packagedRuntimeMode: PACKAGED_RUNTIME_MODE,
     requireBundledPlugins: REQUIRE_BUNDLED_PLUGINS,
     instance: buildInstanceFingerprint(),
     configExists,
     profileDirExists,
     gatewayHealthy,
+    rpcHealthy,
     gatewayPortBusy,
+    statusAuthority,
     profile: PROFILE,
     configPath: toUserPath(CONFIG_FILE),
     gatewayPort: GATEWAY_PORT,
@@ -2479,6 +3159,25 @@ async function buildDiagnosticsBundle() {
 function persistDiagnosticBundle(bundle) {
   writeJsonFile(DIAGNOSTIC_BUNDLE_FILE, bundle)
   return bundle
+}
+
+function extractRequestedChannelIssue(report, fallback) {
+  if (!report || typeof report !== 'object') return fallback
+  if (Array.isArray(report.errors) && report.errors.length > 0) return String(report.errors[0] ?? fallback)
+  if (Array.isArray(report.warnings) && report.warnings.length > 0) return String(report.warnings[0] ?? fallback)
+  const summary = String(report?.probe?.summary ?? '').trim()
+  return summary || fallback
+}
+
+function buildRequestedChannelReadiness({
+  requestedHasDingtalk,
+  requestedHasWecom,
+  channelProbes,
+}) {
+  return {
+    dingtalk: !requestedHasDingtalk || channelProbes?.dingtalk?.ready === true,
+    wecom: !requestedHasWecom || channelProbes?.wecom?.ready === true,
+  }
 }
 
 /** GET /api/diagnostics */
@@ -2763,13 +3462,85 @@ async function handleInstall(res, body) {
 
   const requestedHasDingtalk = channels.some((ch) => ch.type === 'dingtalk')
   const requestedHasWecom = channels.some((ch) => ch.type === 'wecom')
+  const requestedChannels = {
+    dingtalk: requestedHasDingtalk,
+    wecom: requestedHasWecom,
+  }
+  const pluginOutcomes = {
+    [DINGTALK_PLUGIN_ID]: {
+      ok: !requestedHasDingtalk,
+      bypass: buildInstallBypassState(),
+    },
+    [WECOM_PLUGIN_ID]: {
+      ok: !requestedHasWecom,
+      bypass: buildInstallBypassState(),
+    },
+  }
   let dingtalkPluginReady = !requestedHasDingtalk
   let wecomPluginReady = !requestedHasWecom
+  installTracker.setMetadata({
+    requestedChannels,
+    requestedChannelReadiness: {
+      dingtalk: !requestedHasDingtalk,
+      wecom: !requestedHasWecom,
+    },
+  })
   installTracker.note('渠道与 API 输入校验通过', 'info', {
     requestedHasDingtalk,
     requestedHasWecom,
     channelCount: channels.length,
   })
+
+  async function finishInstallError({
+    summary,
+    errors: terminalErrors,
+    warnings: terminalWarnings = warnings,
+    installState = 'failed',
+    blockingStep = installTracker.snapshot().currentStep ?? 'plugins',
+    blockingPlugin = null,
+    bypass = buildInstallBypassState(installState, {
+      plugin: blockingPlugin,
+      reason: summary,
+    }),
+    requestedChannelReadiness = {
+      dingtalk: !requestedHasDingtalk,
+      wecom: !requestedHasWecom,
+    },
+    statusCode = 500,
+  }) {
+    installTracker.setMetadata({
+      installState,
+      blockingStep,
+      blockingPlugin,
+      currentPlugin: blockingPlugin,
+      requestedChannelReadiness,
+      bypass,
+    })
+    installTracker.markError(summary, terminalErrors, {
+      installState,
+      blockingStep,
+      blockingPlugin,
+      currentPlugin: blockingPlugin,
+      requestedChannelReadiness,
+      bypass,
+    })
+    const installStatus = readInstallState()
+    persistDiagnosticBundle(await buildDiagnosticsBundle())
+    sendJson(res, statusCode, redactSecretLikeObject({
+      ok: false,
+      summary,
+      errors: terminalErrors,
+      warnings: terminalWarnings,
+      installState,
+      blockingStep,
+      blockingPlugin,
+      requestedChannels,
+      requestedChannelReadiness,
+      bypass,
+      channelProbes: installStatus.channelProbes,
+      installStatus,
+    }, probeSecrets))
+  }
 
   if (requestedHasWecom) {
     installTracker.startStep('plugins', '正在校验 bundled runtime 与企业微信插件要求')
@@ -2814,26 +3585,103 @@ async function handleInstall(res, body) {
   }
 
   if (requestedHasDingtalk) {
+    installTracker.setMetadata({
+      currentPlugin: DINGTALK_PLUGIN_ID,
+      blockingStep: 'plugins',
+      blockingPlugin: DINGTALK_PLUGIN_ID,
+    })
+    installTracker.note('正在安装 requested plugin: channels', 'info', {
+      step: 'plugins',
+      plugin: DINGTALK_PLUGIN_ID,
+      packageSpec: DINGTALK_PLUGIN_PACKAGE,
+    })
     const dingtalkInstall = await installPluginPackage(DINGTALK_PLUGIN_PACKAGE, DINGTALK_PLUGIN_ID)
+    pluginOutcomes[DINGTALK_PLUGIN_ID] = dingtalkInstall
     dingtalkPluginReady = dingtalkInstall.ok
-    errors.push(...dingtalkInstall.errors)
+    warnings.push(...dingtalkInstall.warnings)
     if (dingtalkInstall.ok) {
+      if (dingtalkInstall.bypass.used) {
+        installTracker.note('requested plugin safe bypass 已成立: channels', 'warn', {
+          step: 'plugins',
+          plugin: DINGTALK_PLUGIN_ID,
+          verdict: dingtalkInstall.bypass.verdict,
+          reason: dingtalkInstall.bypass.reason,
+        })
+      }
       const patch = patchDingtalkPluginDist()
       if (!patch.ok) warnings.push(patch.message)
       if (patch.ok && patch.changed) warnings.push(patch.message)
+    } else {
+      installTracker.finishStep('plugins', '安装渠道插件失败', { error: dingtalkInstall.errors[0] })
+      await finishInstallError({
+        summary: `plugin install failed before requested channel dingtalk was ready`,
+        errors: dingtalkInstall.errors,
+        installState: 'failed',
+        blockingStep: 'plugins',
+        blockingPlugin: DINGTALK_PLUGIN_ID,
+        bypass: dingtalkInstall.bypass,
+        requestedChannelReadiness: {
+          dingtalk: false,
+          wecom: !requestedHasWecom,
+        },
+      })
+      return
     }
   }
 
   if (requestedHasWecom) {
+    installTracker.setMetadata({
+      currentPlugin: WECOM_PLUGIN_ID,
+      blockingStep: 'plugins',
+      blockingPlugin: WECOM_PLUGIN_ID,
+    })
+    installTracker.note('正在安装 requested plugin: wecom-openclaw-plugin', 'info', {
+      step: 'plugins',
+      plugin: WECOM_PLUGIN_ID,
+      packageSpec: WECOM_PLUGIN_PACKAGE,
+    })
     const wecomInstall = await installPluginPackage(WECOM_PLUGIN_PACKAGE, WECOM_PLUGIN_ID, { pin: true })
+    pluginOutcomes[WECOM_PLUGIN_ID] = wecomInstall
     wecomPluginReady = wecomInstall.ok
-    errors.push(...wecomInstall.errors)
+    warnings.push(...wecomInstall.warnings)
+    if (wecomInstall.ok && wecomInstall.bypass.used) {
+      installTracker.note('requested plugin safe bypass 已成立: wecom-openclaw-plugin', 'warn', {
+        step: 'plugins',
+        plugin: WECOM_PLUGIN_ID,
+        verdict: wecomInstall.bypass.verdict,
+        reason: wecomInstall.bypass.reason,
+      })
+    }
+    if (!wecomInstall.ok) {
+      installTracker.finishStep('plugins', '安装渠道插件失败', { error: wecomInstall.errors[0] })
+      await finishInstallError({
+        summary: `plugin install failed before requested channel wecom was ready`,
+        errors: wecomInstall.errors,
+        installState: 'failed',
+        blockingStep: 'plugins',
+        blockingPlugin: WECOM_PLUGIN_ID,
+        bypass: wecomInstall.bypass,
+        requestedChannelReadiness: {
+          dingtalk: !requestedHasDingtalk,
+          wecom: false,
+        },
+      })
+      return
+    }
   }
   if (errors.length > 0) {
     installTracker.finishStep('plugins', '安装渠道插件失败', { error: errors[0] })
   } else {
     installTracker.finishStep('plugins', '安装渠道插件完成')
   }
+  installTracker.setMetadata({
+    currentPlugin: null,
+    blockingStep: null,
+    blockingPlugin: null,
+    bypass: pluginOutcomes[WECOM_PLUGIN_ID].bypass.used
+      ? pluginOutcomes[WECOM_PLUGIN_ID].bypass
+      : pluginOutcomes[DINGTALK_PLUGIN_ID].bypass,
+  })
 
   // Step 2: Write base gateway config
   installTracker.startStep('config', '正在写入基础配置与 API 连接')
@@ -3025,39 +3873,93 @@ async function handleInstall(res, body) {
     dingtalk: dingtalkProbe,
     wecom: wecomProbe,
   }, probeSecrets)
+  coerceCombinedProbeTruth({
+    requestedHasDingtalk,
+    requestedHasWecom,
+    channelProbes,
+  })
   installTracker.setChannelProbes(channelProbes)
+  const requestedChannelReadiness = buildRequestedChannelReadiness({
+    requestedHasDingtalk,
+    requestedHasWecom,
+    channelProbes,
+  })
+  const requestedReady = requestedChannelReadiness.dingtalk && requestedChannelReadiness.wecom
+  const bypassState = pluginOutcomes[WECOM_PLUGIN_ID].bypass.used
+    ? pluginOutcomes[WECOM_PLUGIN_ID].bypass
+    : pluginOutcomes[DINGTALK_PLUGIN_ID].bypass
 
-  let finalPayload
+  if (!requestedReady) {
+    const blockedByWecom = requestedHasWecom && !requestedChannelReadiness.wecom
+    const blockedChannel = blockedByWecom ? 'wecom' : 'dingtalk'
+    const blockingPlugin = blockedByWecom ? WECOM_PLUGIN_ID : DINGTALK_PLUGIN_ID
+    const blockingProbe = blockedByWecom ? wecomProbe : dingtalkProbe
+    const blockingIssue = extractRequestedChannelIssue(
+      blockingProbe,
+      `requested channel ${blockedChannel} is not authoritatively ready`,
+    )
+    const terminalErrors = [
+      ...errors,
+      `plugin install gate did not close cleanly for requested channel ${blockedChannel}: ${blockingIssue}`,
+    ]
+    const installState = (bypassState.used && !(requestedHasDingtalk && requestedHasWecom))
+      ? 'blocked_degraded'
+      : 'failed'
+    installTracker.finishStep('probe', '连接验证失败', { error: terminalErrors[0] })
+    await finishInstallError({
+      summary: `requested channels are not authoritatively ready after install`,
+      errors: terminalErrors,
+      installState,
+      blockingStep: 'probe',
+      blockingPlugin,
+      bypass: bypassState.used
+        ? bypassState
+        : buildInstallBypassState(installState, {
+            plugin: blockingPlugin,
+            reason: blockingIssue,
+          }),
+      requestedChannelReadiness,
+    })
+    return
+  }
+
   if (errors.length > 0) {
     installTracker.finishStep('probe', '连接验证失败', { error: errors[0] })
-    installTracker.markError('安装失败，请查看诊断信息', errors)
-    finalPayload = redactSecretLikeObject({
-      ok: false,
+    await finishInstallError({
+      summary: '安装失败，请查看诊断信息',
       errors,
-      warnings,
-      runtimeMode,
-      dingtalkProbe: channelProbes.dingtalk,
-      wecomProbe: channelProbes.wecom,
-      channelProbes,
-      installStatus: readInstallState(),
-    }, probeSecrets)
-    persistDiagnosticBundle(await buildDiagnosticsBundle())
-    sendJson(res, 500, finalPayload)
-  } else {
-    installTracker.finishStep('probe', '连接验证完成')
-    installTracker.complete('安装完成，可导出诊断信息', runtimeMode, warnings)
-    finalPayload = redactSecretLikeObject({
-      ok: true,
-      warnings,
-      runtimeMode,
-      dingtalkProbe: channelProbes.dingtalk,
-      wecomProbe: channelProbes.wecom,
-      channelProbes,
-      installStatus: readInstallState(),
-    }, probeSecrets)
-    persistDiagnosticBundle(await buildDiagnosticsBundle())
-    sendJson(res, 200, finalPayload)
+      installState: 'failed',
+      blockingStep: 'probe',
+      blockingPlugin: null,
+      bypass: bypassState,
+      requestedChannelReadiness,
+    })
+    return
   }
+
+  installTracker.finishStep('probe', '连接验证完成')
+  installTracker.complete('安装完成，可导出诊断信息', runtimeMode, warnings, {
+    installState: 'completed',
+    blockingStep: null,
+    blockingPlugin: null,
+    requestedChannelReadiness,
+    bypass: bypassState,
+  })
+  const finalPayload = redactSecretLikeObject({
+    ok: true,
+    installState: 'completed',
+    requestedChannels,
+    requestedChannelReadiness,
+    bypass: bypassState,
+    warnings,
+    runtimeMode,
+    dingtalkProbe: channelProbes.dingtalk,
+    wecomProbe: channelProbes.wecom,
+    channelProbes,
+    installStatus: readInstallState(),
+  }, probeSecrets)
+  persistDiagnosticBundle(await buildDiagnosticsBundle())
+  sendJson(res, 200, finalPayload)
 }
 
 /**
@@ -3222,6 +4124,9 @@ function handleGetModelRouting(res) {
 async function handleUpdateApi(res, body) {
   const { baseUrl, apiKey, model } = body
   const errors = []
+  const warnings = []
+  let providerConfigWritten = baseUrl === undefined && model === undefined
+  let authProfileWritten = apiKey === undefined
 
   // Keep legacy compatibility for the old dashboard API form:
   // it may still submit baseUrl/apiKey/model together, and provider model updates
@@ -3262,7 +4167,23 @@ async function handleUpdateApi(res, body) {
       timeoutMs: OC_TIMEOUT.CONFIG_SET,
       opName: 'config set models.providers.openai',
     })
-    if (r.code !== 0) errors.push(`config set models.providers.openai failed: ${r.stderr}`)
+    if (r.code !== 0) {
+      errors.push(`config set models.providers.openai failed: ${r.stderr}`)
+    } else {
+      const nextPrimaryModel = `openai/${currentModel}`
+      const rModel = await runOc([
+        'models', 'set',
+        nextPrimaryModel,
+      ], {
+        timeoutMs: OC_TIMEOUT.MODEL_SET,
+        opName: 'models set',
+      })
+      if (rModel.code !== 0) {
+        errors.push(`models set failed: ${rModel.stderr}`)
+      } else {
+        providerConfigWritten = true
+      }
+    }
   }
 
   if (apiKey !== undefined) {
@@ -3276,22 +4197,68 @@ async function handleUpdateApi(res, body) {
         order: { openai: ['openai:default'] },
       }
       fs.writeFileSync(AUTH_PROFILES_FILE, JSON.stringify(authData, null, 2), 'utf8')
+      authProfileWritten = true
     } catch (e) {
       errors.push(`writing auth-profiles.json failed: ${e.message}`)
     }
   }
 
-  // Restart daemon to apply changes
-  const restartResult = await restartGatewayRuntimeWithFallback()
-  if (!restartResult.ok) {
-    errors.push(restartResult.error ?? 'daemon restart failed')
+  const persistence = buildPersistenceSummary({
+    providerConfigWritten,
+    authProfileWritten,
+  })
+
+  if (errors.length > 0 || !persistence.complete) {
+    sendJson(res, 500, {
+      ok: false,
+      saveState: 'rejected',
+      persisted: false,
+      persistence,
+      errors,
+      followUp: buildSaveFollowUp('/api/config', '/api/config/api'),
+    })
+    return
   }
 
-  if (errors.length > 0) {
-    sendJson(res, 500, { ok: false, errors })
-  } else {
-    sendJson(res, 200, { ok: true })
+  // Restart daemon to apply changes
+  const restartResult = await restartGatewayRuntimeWithFallback({
+    timeoutMs: SAVE_ROUTE_RESTART_TIMEOUT_MS,
+  })
+  const restart = await buildRestartSummary(restartResult)
+  const followUp = buildSaveFollowUp('/api/config', '/api/config/api')
+
+  if (!restart.ok) {
+    if (restart.issue) warnings.push(restart.issue)
+    sendJson(res, 200, {
+      ok: true,
+      saveState: 'saved_degraded',
+      persisted: true,
+      persistence,
+      warnings,
+      restart,
+      followUp,
+    })
+    return
   }
+
+  if (restart.warning) warnings.push(restart.warning)
+  const sessionRebind = maybeFreshRebindMainSession({
+    storePath: MAIN_SESSION_STORE_FILE,
+    providerConfigWritten,
+    authProfileWritten,
+    runtimeRestarted: true,
+  })
+
+  sendJson(res, 200, {
+    ok: true,
+    saveState: 'saved',
+    persisted: true,
+    persistence,
+    warnings,
+    restart,
+    followUp,
+    sessionRebind,
+  })
 }
 
 /** POST /api/config/model-routing */
@@ -3300,31 +4267,36 @@ async function handleUpdateModelRouting(res, body) {
   if (!result.ok) {
     sendJson(res, result.status ?? 400, {
       ok: false,
+      saveState: 'rejected',
+      persisted: false,
       errors: Array.isArray(result.errors) ? result.errors : ['模型智能路由保存失败'],
+      followUp: buildSaveFollowUp('/api/config/model-routing'),
     })
     return
   }
 
-  const restartResult = await restartGatewayRuntimeWithFallback()
-  if (!restartResult.ok) {
-    sendJson(res, 500, {
-      ok: false,
-      errors: [restartResult.error ?? 'daemon restart failed'],
-    })
-    return
-  }
+  const restartResult = await restartGatewayRuntimeWithFallback({
+    timeoutMs: SAVE_ROUTE_RESTART_TIMEOUT_MS,
+  })
+  const restart = await buildRestartSummary(restartResult)
 
   const payload = {
     ok: true,
+    saveState: restart.ok ? 'saved' : 'saved_degraded',
+    persisted: true,
     mode: result.mode,
     effectivePrimaryModel: result.effectivePrimaryModel,
     message: result.message,
+    restart,
+    followUp: buildSaveFollowUp('/api/config/model-routing'),
   }
-  if (restartResult.mode && restartResult.mode !== 'daemon') {
-    payload.runtimeMode = restartResult.mode
+  if (restart.mode && restart.mode !== 'daemon') {
+    payload.runtimeMode = restart.mode
   }
-  if (restartResult.warning) {
-    payload.warning = restartResult.warning
+  const warning = restart.issue
+  if (warning) {
+    payload.warning = warning
+    payload.warnings = [warning]
   }
   sendJson(res, 200, payload)
 }
@@ -4088,7 +5060,12 @@ async function requestHandler(req, res) {
     return
   }
 
-  if (method === 'GET' && (pathname.endsWith('.css') || pathname.endsWith('.js') || pathname.endsWith('.mjs'))) {
+  if (method === 'GET' && (
+    pathname.endsWith('.css') ||
+    pathname.endsWith('.js') ||
+    pathname.endsWith('.mjs') ||
+    pathname.endsWith('.png')
+  )) {
     // Serve only from the public directory, prevent path traversal
     const safeName = path.basename(pathname)
     sendFile(res, path.join(PUBLIC_DIR, safeName))

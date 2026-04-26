@@ -143,9 +143,196 @@ gateway fallback 启动路径现在不再把“端口已占用”直接视为成
 - `bin/node_modules/openclaw` 只作为 fallback
 - build/export 阶段必须有 drift guard，防止 `lib` 与 `bin` 出现版本分叉仍被打包
 
+## 2026-04-23 fresh combined packaged truth
+
+fresh verifier 本轮实际验证的 rebuild artifact：
+
+- `/tmp/f032-packaged-rebuild-botvDw/gtclaw-mac-release-arm64-20260423-141103/GTClaw-0.1.0-alpha-macOS-arm64`
+- `/tmp/f032-packaged-rebuild-botvDw/gtclaw-mac-release-arm64-20260423-141103.zip`
+
+已确认：
+
+- GTClaw branding PASS
+- `/api/status` authoritative status truth PASS
+- dashboard 存在 dedicated model-routing UI surface
+- `POST /api/config/api` 只保留为 compatibility lane，不再承担 routing truth
+- `GET /api/config/model-routing` / `POST /api/config/model-routing` 是 authoritative model-routing load/save surface
+- truthful save contract 允许：
+  - `saved`
+  - `saved_degraded`
+  - `rejected`
+- fresh verifier 实际拿到：
+  - `POST /api/config/api` → `HTTP 200`, `ok:true`, `persisted:true`, `saveState:"saved_degraded"`
+  - `POST /api/config/model-routing` → `HTTP 200`, `ok:true`, `persisted:true`, `saveState:"saved_degraded"`
+- follow-up `GET` / reopen 都能读回 persisted truth
+- internal ids 维持：
+  - `opensparrow-router`
+  - `opensparrow-router/auto`
+- new files 已包含在 fresh artifact 中
+- combined packaged truth PASS
+
+## 2026-04-24 F-034 fresh packaged replay closeout
+
+本轮 closeout 只基于 fresh packaged replay，不基于 stale historical PASS。
+
+fresh closeout evidence roots：
+
+- artifact dir：`/private/tmp/f034-packaged-rebuild-lT3AVc/gtclaw-mac-release-arm64-20260424-003358/GTClaw-0.1.0-alpha-macOS-arm64`
+- artifact zip：`/private/tmp/f034-packaged-rebuild-lT3AVc/gtclaw-mac-release-arm64-20260424-003358.zip`
+- replay root：`/private/tmp/f034-packaged-round5-replays-MOZFDx`
+- capture root：`/private/tmp/f034-packaged-round5-captures-rhqPgf`
+
+已确认：
+
+- `F-034` 已 source PASS + fresh packaged PASS
+- `step=plugins` 没有 regression 回到 indefinite running / fake success
+- router invariants 保持：
+  - `providerId=opensparrow-router`
+  - `modelTarget=opensparrow-router/auto`
+
+fresh replay matrix：
+
+`dingtalk-only`
+
+- `/api/install = HTTP 200`
+- final `status=completed`
+- final `installState=completed`
+- `blockingStep=null`
+- `blockingPlugin=null`
+- `bypass={verdict:none, used:false}`
+- `requestedChannelReadiness={dingtalk:true,wecom:true}`
+- `channelProbes.dingtalk={status:ok, ready:true}`
+- `six-surface consistency=true`
+- passing replay 观察到 `staged-shell -> critical-dist -> final-authority lag` signature
+- 这次 passing replay 没有真的跨过 `120000ms` timeout，因此 fresh PASS 不是靠 timeout safe_bypass 触发的
+
+`wecom-only`
+
+- `/api/install = HTTP 200`
+- final `status=completed`
+- final `installState=completed`
+- `blockingStep=null`
+- `blockingPlugin=null`
+- `bypass={verdict:none, used:false}`
+- `requestedChannelReadiness={dingtalk:true,wecom:true}`
+- `channelProbes.wecom={status:ok, ready:true}`
+- `six-surface consistency=true`
+
+`dingtalk+wecom`
+
+- `/api/install = HTTP 500`
+- final `status=error`
+- final `installState=failed`
+- `blockingStep=probe`
+- `blockingPlugin=wecom-openclaw-plugin`
+- `bypass={verdict:failed, used:false, plugin:wecom-openclaw-plugin}`
+- `requestedChannelReadiness={dingtalk:false,wecom:false}`
+- `channelProbes.dingtalk={status:warning, ready:false}`
+- `channelProbes.wecom={status:error, ready:false}`
+- `six-surface consistency=true`
+- 这是 exact frozen `F-033` probe truth，已保持
+
+residual facts only：
+
+- `dingtalk-only` 这次 passing replay 没直接 exercise packaged timeout+grace-wait path
+- `wecom-only` 是 config-only probe summary，但在当前 acceptance 下仍是 packaged PASS
+- 这些 residual risks 不升格为 blocker
+
+## 2026-04-25 packaged channels late-stage authority closure
+
+本节只记录 `packaged-channels-late-stage-authority-closure` 的 fresh closeout truth。它是新的 packaged install authority packet，不是 `F-034` reopen，也不是 dashboard/UI patch；`F-033` / `F-034` 历史身份保持不变。
+
+Source PASS：
+
+- `node --check ui/server.mjs` PASS
+- `node --test ui/tests/packaged-single-channel-plugin-timeout-parity.test.mjs` PASS, `3/3`
+- `node --test ui/tests/packaged-plugin-install-hang-bypass.test.mjs` PASS, `10/10`
+- `node --test ui/tests/packaged-plugin-profile-sync.test.mjs` PASS, `5/5`
+- `git diff --check` packet write-set PASS
+
+Source implementation truth：
+
+- `OPENSPARROW_PLUGIN_LATE_STAGE_AUTHORITY_GRACE_MS` provides bounded late-stage authority grace.
+- Packaged default late-stage grace = `600000ms`.
+- Staged shell matching is required before late-stage wait activates.
+- Structural readiness requires `openclaw.plugin.json`, `package.json`, `dist/index.js`, package/id match, and for channels `node_modules/@openclaw-china/dingtalk/dist/index.js`.
+- Promotion closes final shared/profile authority only after structural readiness.
+- Negative no-authority lane remains precise failed, not fake success.
+
+Fresh packaged PASS：
+
+- build exit code：`0`
+- build root：`/private/tmp/packaged-channels-late-stage-rebuild-77vgKb`
+- artifact dir：`/private/tmp/packaged-channels-late-stage-rebuild-77vgKb/gtclaw-mac-release-arm64-20260424-235728/GTClaw-0.1.0-alpha-macOS-arm64`
+- artifact zip：`/private/tmp/packaged-channels-late-stage-rebuild-77vgKb/gtclaw-mac-release-arm64-20260424-235728.zip`
+- zip SHA256：`d30c2b29023ac118c688eed3e7e109227fef84c229e6e2c6561fce11086a10d9`
+- artifact `ui/server.mjs` `node --check` PASS
+- artifact inspection PASS
+
+Replay method：
+
+- replay root：`/private/tmp/packaged-channels-late-stage-replay-UrwTeG`
+- fresh artifact started with bundled node
+- each lane used isolated `HOME`, `OPENCLAW_HOME`, profile, UI/gateway/router ports
+- controlled runtime fixture used only to force deterministic plugin timing
+- dingtalk late-stage lane used plugin timeout `250ms`, normal authority grace `300ms`, late-stage grace `1500ms`, DingTalk dependency delay `800ms`
+- explicitly not fast install replay
+
+Lane results：
+
+`dingtalk-only` late-stage path：
+
+- `HTTP 200`
+- `status=completed`
+- `installState=completed`
+- `blockingStep=null`
+- `blockingPlugin=null`
+- `requestedChannelReadiness.dingtalk=true`
+- `channelProbes.dingtalk={status:ok,ready:true}`
+
+`wecom-only` preservation：
+
+- `HTTP 200`
+- `status=completed`
+- `installState=completed`
+- no plugin indefinite running
+- six surfaces consistent
+
+`dingtalk+wecom` combined `F-033` preservation：
+
+- `HTTP 500`
+- `status=error`
+- `installState=failed`
+- `blockingStep=probe`
+- `blockingPlugin=wecom-openclaw-plugin`
+- `requestedChannelReadiness={dingtalk:false,wecom:false}`
+- `channelProbes.dingtalk={status:warning,ready:false}`
+- `channelProbes.wecom={status:error,ready:false}`
+
+Late-stage authority evidence：
+
+- DingTalk install start：`2026-04-25T08:09:19.545Z`
+- staged shell created：`2026-04-25T08:09:19.546Z`
+- timeout boundary：`2026-04-25T08:09:19.795Z`
+- late DingTalk dependency created：`2026-04-25T08:09:20.373Z`
+- final shared/profile `extensions/channels` both exist with all required files
+- `install.log` includes safe bypass reason: timed out after `250ms`, footprint structurally ready, plus late-stage catch-up closed after timeout wait
+
+Six-surface and router truth：
+
+- all three lanes consistent across `/api/install`, `/api/install/status`, `install-state.json`, `/api/diagnostics`, `/api/diagnostics/export`, `diagnostic-bundle.json`
+- all lanes preserve `providerId=opensparrow-router`
+- all lanes preserve `modelTarget=opensparrow-router/auto`
+
+Risks：
+
+- Packaged replay used controlled runtime fixture to force timeout and late dependency timing; intentional for this packet.
+- `init.sh` still stops on missing legacy frozen dir `opensparrow_win` in isolated worktree; non-blocking.
+
 ## 当前边界
 
 - P0 packaged diagnostics endpoints 已走通，channel probe persistence 已补齐
-- 这不是 packaged channel PASS 证明
-- 这不是 WeCom / DingTalk full closure 结论
-- WeCom / DingTalk 仍然需要 fresh packaged channel-specific evidence
+- 2026-04-23 fresh rebuild artifact 已完成 combined packaged verification，但这不改写 true `F-027` 的历史身份
+- 本文同步的是 packaged-mac diagnostics / runtime authority / save-contract truth，不是 Windows support truth
+- DingTalk / WeCom 的 channel-specific closure 仍以 `F-030` 的既有 historical closeout 为准，不在本文重写
+- `packaged-channels-late-stage-authority-closure` 只同步 late-stage authority closure truth，不重写 `F-033` / `F-034` 历史身份
