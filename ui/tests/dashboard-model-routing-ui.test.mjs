@@ -27,10 +27,20 @@ function toPlain(value) {
   return JSON.parse(JSON.stringify(value))
 }
 
-test('dashboard exposes a dedicated model-routing surface separate from the API compatibility lane', () => {
-  assert.match(dashboardHtml, /label: '模型智能路由'/)
-  assert.match(dashboardHtml, /API 配置（上游连接）/)
-  assert.match(dashboardHtml, /API 配置仅负责上游 API 连接与兼容写入/)
+test('dashboard exposes one unified model configuration primary tab', () => {
+  assert.match(dashboardHtml, /label: '模型配置'/)
+  assert.doesNotMatch(dashboardHtml, /\{\s*key:\s*'routing',\s*label:\s*'模型智能路由'\s*\}/)
+  assert.doesNotMatch(dashboardHtml, /\{\s*key:\s*'api',\s*label:\s*'API 配置（上游连接）'\s*\}/)
+  assert.match(dashboardHtml, /单模型/)
+  assert.match(dashboardHtml, /模型智能路由/)
+  assert.match(dashboardHtml, /Base URL/)
+  assert.match(dashboardHtml, /API Key/)
+  assert.match(dashboardHtml, /Model ID/)
+  for (const tier of ['SIMPLE', 'MEDIUM', 'COMPLEX', 'REASONING']) {
+    assert.match(dashboardHtml, new RegExp(`modelRouting\\.tierConnectionMap\\.${tier}\\.baseUrl`))
+    assert.match(dashboardHtml, new RegExp(`modelRouting\\.tierConnectionMap\\.${tier}\\.apiKey`))
+    assert.match(dashboardHtml, new RegExp(`modelRouting\\.tierConnectionMap\\.${tier}\\.model`))
+  }
 })
 
 test('dashboard model-routing state module freezes the internal router ids and authoritative endpoints', () => {
@@ -44,16 +54,46 @@ test('dashboard model-routing state module freezes the internal router ids and a
   assert.equal(api.ENDPOINTS.save, '/api/config/model-routing')
 })
 
-test('model-routing save payload stays scoped to routing mode data instead of native provider selection', () => {
+test('single model save payload includes baseUrl, apiKey, and model', () => {
+  const api = loadRoutingStateApi()
+  const payload = toPlain(api.buildSavePayload({
+    mode: 'single',
+    single: {
+      baseUrl: 'https://single.example/v1',
+      apiKey: 'entered-single-key',
+      model: 'single-model',
+    },
+    router: {
+      providerId: 'tampered-provider',
+      modelTarget: 'tampered-target',
+    },
+  }))
+
+  assert.deepEqual(payload, {
+    mode: 'single',
+    baseUrl: 'https://single.example/v1',
+    apiKey: 'entered-single-key',
+    model: 'single-model',
+  })
+  assert.ok(!('router' in payload))
+  assert.ok(!('providerId' in payload))
+  assert.ok(!('modelTarget' in payload))
+})
+
+test('smart model save payload includes four per-tier connection objects and routing only', () => {
   const api = loadRoutingStateApi()
   const payload = toPlain(api.buildSavePayload({
     mode: 'smart',
-    singleModeDefaultModel: 'ignored-model',
-    tierModelMap: {
-      SIMPLE: 'gpt-4o-mini',
-      MEDIUM: 'gpt-4.1-mini',
-      COMPLEX: 'gpt-4.1',
-      REASONING: 'o4-mini',
+    single: {
+      baseUrl: 'https://ignored.example/v1',
+      apiKey: 'ignored-single-key',
+      model: 'ignored-model',
+    },
+    tierConnectionMap: {
+      SIMPLE: { baseUrl: 'https://simple.example/v1', apiKey: 'simple-key', model: 'simple-model' },
+      MEDIUM: { baseUrl: 'https://medium.example/v1', apiKey: 'medium-key', model: 'medium-model' },
+      COMPLEX: { baseUrl: 'https://complex.example/v1', apiKey: 'complex-key', model: 'complex-model' },
+      REASONING: { baseUrl: 'https://reasoning.example/v1', apiKey: 'reasoning-key', model: 'reasoning-model' },
     },
     routingText: '{"default":"SIMPLE"}',
     router: {
@@ -64,11 +104,11 @@ test('model-routing save payload stays scoped to routing mode data instead of na
 
   assert.deepEqual(payload, {
     mode: 'smart',
-    tierModelMap: {
-      SIMPLE: 'gpt-4o-mini',
-      MEDIUM: 'gpt-4.1-mini',
-      COMPLEX: 'gpt-4.1',
-      REASONING: 'o4-mini',
+    tierConnectionMap: {
+      SIMPLE: { baseUrl: 'https://simple.example/v1', apiKey: 'simple-key', model: 'simple-model' },
+      MEDIUM: { baseUrl: 'https://medium.example/v1', apiKey: 'medium-key', model: 'medium-model' },
+      COMPLEX: { baseUrl: 'https://complex.example/v1', apiKey: 'complex-key', model: 'complex-model' },
+      REASONING: { baseUrl: 'https://reasoning.example/v1', apiKey: 'reasoning-key', model: 'reasoning-model' },
     },
     routing: { default: 'SIMPLE' },
   })

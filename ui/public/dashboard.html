@@ -826,13 +826,13 @@
       </template>
     </div>
 
-    <!-- Tab 3: Model Routing -->
-    <div x-show="activeTab === 'routing'" x-cloak class="tab-content space-y-6">
+    <!-- Tab 3: Model Configuration -->
+    <div x-show="activeTab === 'modelConfig'" x-cloak class="tab-content space-y-6">
       <div class="glass-card rounded-2xl p-8 card-animate">
         <div class="flex flex-col lg:flex-row lg:items-start gap-5">
           <div class="flex-1">
-            <h2 class="text-lg font-bold mb-1" style="color:#1D2B4E">模型智能路由</h2>
-            <p class="text-sm" style="color:#6B7A99">Dashboard authoritative surface；读取与保存都只认 <span class="font-mono">/api/config/model-routing</span>。</p>
+            <h2 class="text-lg font-bold mb-1" style="color:#1D2B4E">模型配置</h2>
+            <p class="text-sm" style="color:#6B7A99">单模型与模型智能路由共用同一个 authoritative surface；读取与保存都只认 <span class="font-mono">/api/config/model-routing</span>。</p>
           </div>
           <div class="rounded-2xl px-4 py-3" style="background:#F7FAFF;border:1px solid #C7D8F8;min-width:260px">
             <div class="text-xs font-semibold uppercase tracking-wide mb-2" style="color:#0958D9">Internal Invariants</div>
@@ -849,9 +849,9 @@
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
           <div class="info-cell">
-            <p class="text-xs mb-1 uppercase tracking-wide" style="color:#0958D9;font-weight:600">连接状态</p>
-            <p class="font-semibold text-sm" style="color:#1D2B4E" x-text="modelRouting.connection.baseUrlConfigured && modelRouting.connection.apiKeyConfigured ? '已闭合' : '需先保存 API 配置'"></p>
-            <p class="text-xs mt-2" style="color:#6B7A99" x-text="modelRouting.connection.baseUrl || '尚未记录 Base URL'"></p>
+            <p class="text-xs mb-1 uppercase tracking-wide" style="color:#0958D9;font-weight:600">当前模式</p>
+            <p class="font-semibold text-sm" style="color:#1D2B4E" x-text="modelRouting.mode === 'smart' ? '模型智能路由' : '单模型'"></p>
+            <p class="text-xs mt-2" style="color:#6B7A99" x-text="modelRouting.mode === 'smart' ? '按 tier 使用独立上游连接' : '使用 OpenAI compatible 单一上游连接'"></p>
           </div>
           <div class="info-cell">
             <p class="text-xs mb-1 uppercase tracking-wide" style="color:#0958D9;font-weight:600">当前主模型</p>
@@ -870,7 +870,6 @@
             <p class="text-sm" style="color:#0958D9" x-text="modelRouting.compatibilityLane.description"></p>
             <p class="text-xs mt-2" style="color:#6B7A99" x-text="modelRouting.compatibilityLane.hint"></p>
           </div>
-          <button @click="switchTab('api')" class="edit-btn" type="button">查看 API 配置</button>
         </div>
       </div>
 
@@ -896,7 +895,7 @@
             :class="modelRouting.mode === 'single' ? 'tab-active' : 'tab-inactive'"
             type="button"
           >
-            普通单模型
+            单模型
           </button>
           <button
             @click="setModelRoutingMode('smart')"
@@ -908,35 +907,122 @@
         </div>
 
         <div x-show="modelRouting.mode === 'single'" x-cloak class="space-y-5">
-          <div>
-            <label class="block text-sm font-medium mb-1" style="color:#6B7A99">默认模型</label>
-            <input
-              type="text"
-              x-model="modelRouting.singleModeDefaultModel"
-              placeholder="例如 gpt-4o-mini"
-              class="light-input"
-            />
-            <p class="text-xs mt-2" style="color:#6B7A99">single 模式会把主模型设为 <span class="font-mono">openai/&lt;model&gt;</span>。</p>
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div>
+              <label class="block text-sm font-medium mb-1" style="color:#6B7A99">Base URL</label>
+              <input
+                type="text"
+                x-model="modelRouting.single.baseUrl"
+                placeholder="https://api.openai.com/v1"
+                class="light-input"
+              />
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-1" style="color:#6B7A99">API Key</label>
+              <input
+                type="password"
+                x-model="modelRouting.single.apiKey"
+                :placeholder="modelRouting.single.apiKeyConfigured ? '留空则保留已保存 key' : '请输入 API Key'"
+                class="light-input"
+              />
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-1" style="color:#6B7A99">Model ID</label>
+              <input
+                type="text"
+                x-model="modelRouting.single.model"
+                placeholder="例如 gpt-4o-mini"
+                class="light-input"
+              />
+            </div>
           </div>
+          <p class="text-xs" style="color:#6B7A99">单模型保存会写入 OpenAI compatible provider 与 auth profile，并把主模型设为 <span class="font-mono">openai/&lt;Model ID&gt;</span>。读回只显示 <span class="font-mono">apiKeyConfigured</span>。</p>
         </div>
 
         <div x-show="modelRouting.mode === 'smart'" x-cloak class="space-y-5">
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label class="block text-sm font-medium mb-1" style="color:#6B7A99">SIMPLE</label>
-              <input type="text" x-model="modelRouting.tierModelMap.SIMPLE" placeholder="低复杂度模型" class="light-input" />
+          <div class="space-y-4">
+            <div class="rounded-2xl p-4" style="background:#F7FAFF;border:1px solid #C7D8F8">
+              <div class="flex items-center justify-between gap-3 mb-3">
+                <p class="text-sm font-bold" style="color:#1D2B4E">SIMPLE</p>
+                <p class="text-xs" style="color:#6B7A99" x-text="modelRouting.tierConnectionMap.SIMPLE.apiKeyConfigured ? 'key 已配置' : 'key 未配置'"></p>
+              </div>
+              <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div>
+                  <label class="block text-sm font-medium mb-1" style="color:#6B7A99">Base URL</label>
+                  <input type="text" x-model="modelRouting.tierConnectionMap.SIMPLE.baseUrl" placeholder="https://upstream.example/v1" class="light-input" />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium mb-1" style="color:#6B7A99">API Key</label>
+                  <input type="password" x-model="modelRouting.tierConnectionMap.SIMPLE.apiKey" :placeholder="modelRouting.tierConnectionMap.SIMPLE.apiKeyConfigured ? '留空则保留已保存 key' : '请输入 API Key'" class="light-input" />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium mb-1" style="color:#6B7A99">Model ID</label>
+                  <input type="text" x-model="modelRouting.tierConnectionMap.SIMPLE.model" placeholder="simple model id" class="light-input" />
+                </div>
+              </div>
             </div>
-            <div>
-              <label class="block text-sm font-medium mb-1" style="color:#6B7A99">MEDIUM</label>
-              <input type="text" x-model="modelRouting.tierModelMap.MEDIUM" placeholder="中复杂度模型" class="light-input" />
+
+            <div class="rounded-2xl p-4" style="background:#F7FAFF;border:1px solid #C7D8F8">
+              <div class="flex items-center justify-between gap-3 mb-3">
+                <p class="text-sm font-bold" style="color:#1D2B4E">MEDIUM</p>
+                <p class="text-xs" style="color:#6B7A99" x-text="modelRouting.tierConnectionMap.MEDIUM.apiKeyConfigured ? 'key 已配置' : 'key 未配置'"></p>
+              </div>
+              <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div>
+                  <label class="block text-sm font-medium mb-1" style="color:#6B7A99">Base URL</label>
+                  <input type="text" x-model="modelRouting.tierConnectionMap.MEDIUM.baseUrl" placeholder="https://upstream.example/v1" class="light-input" />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium mb-1" style="color:#6B7A99">API Key</label>
+                  <input type="password" x-model="modelRouting.tierConnectionMap.MEDIUM.apiKey" :placeholder="modelRouting.tierConnectionMap.MEDIUM.apiKeyConfigured ? '留空则保留已保存 key' : '请输入 API Key'" class="light-input" />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium mb-1" style="color:#6B7A99">Model ID</label>
+                  <input type="text" x-model="modelRouting.tierConnectionMap.MEDIUM.model" placeholder="medium model id" class="light-input" />
+                </div>
+              </div>
             </div>
-            <div>
-              <label class="block text-sm font-medium mb-1" style="color:#6B7A99">COMPLEX</label>
-              <input type="text" x-model="modelRouting.tierModelMap.COMPLEX" placeholder="高复杂度模型" class="light-input" />
+
+            <div class="rounded-2xl p-4" style="background:#F7FAFF;border:1px solid #C7D8F8">
+              <div class="flex items-center justify-between gap-3 mb-3">
+                <p class="text-sm font-bold" style="color:#1D2B4E">COMPLEX</p>
+                <p class="text-xs" style="color:#6B7A99" x-text="modelRouting.tierConnectionMap.COMPLEX.apiKeyConfigured ? 'key 已配置' : 'key 未配置'"></p>
+              </div>
+              <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div>
+                  <label class="block text-sm font-medium mb-1" style="color:#6B7A99">Base URL</label>
+                  <input type="text" x-model="modelRouting.tierConnectionMap.COMPLEX.baseUrl" placeholder="https://upstream.example/v1" class="light-input" />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium mb-1" style="color:#6B7A99">API Key</label>
+                  <input type="password" x-model="modelRouting.tierConnectionMap.COMPLEX.apiKey" :placeholder="modelRouting.tierConnectionMap.COMPLEX.apiKeyConfigured ? '留空则保留已保存 key' : '请输入 API Key'" class="light-input" />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium mb-1" style="color:#6B7A99">Model ID</label>
+                  <input type="text" x-model="modelRouting.tierConnectionMap.COMPLEX.model" placeholder="complex model id" class="light-input" />
+                </div>
+              </div>
             </div>
-            <div>
-              <label class="block text-sm font-medium mb-1" style="color:#6B7A99">REASONING</label>
-              <input type="text" x-model="modelRouting.tierModelMap.REASONING" placeholder="推理模型" class="light-input" />
+
+            <div class="rounded-2xl p-4" style="background:#F7FAFF;border:1px solid #C7D8F8">
+              <div class="flex items-center justify-between gap-3 mb-3">
+                <p class="text-sm font-bold" style="color:#1D2B4E">REASONING</p>
+                <p class="text-xs" style="color:#6B7A99" x-text="modelRouting.tierConnectionMap.REASONING.apiKeyConfigured ? 'key 已配置' : 'key 未配置'"></p>
+              </div>
+              <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div>
+                  <label class="block text-sm font-medium mb-1" style="color:#6B7A99">Base URL</label>
+                  <input type="text" x-model="modelRouting.tierConnectionMap.REASONING.baseUrl" placeholder="https://upstream.example/v1" class="light-input" />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium mb-1" style="color:#6B7A99">API Key</label>
+                  <input type="password" x-model="modelRouting.tierConnectionMap.REASONING.apiKey" :placeholder="modelRouting.tierConnectionMap.REASONING.apiKeyConfigured ? '留空则保留已保存 key' : '请输入 API Key'" class="light-input" />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium mb-1" style="color:#6B7A99">Model ID</label>
+                  <input type="text" x-model="modelRouting.tierConnectionMap.REASONING.model" placeholder="reasoning model id" class="light-input" />
+                </div>
+              </div>
             </div>
           </div>
 
@@ -972,68 +1058,14 @@
             type="button"
           >
             <span x-show="modelRouting.saving" class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin inline-block"></span>
-            <span x-text="modelRouting.saving ? '保存中…' : '保存模型智能路由'"></span>
+            <span x-text="modelRouting.saving ? '保存中…' : '保存模型配置'"></span>
           </button>
           <p class="text-xs" style="color:#6B7A99">保存请求使用 <span class="font-mono">POST /api/config/model-routing</span>，成功后立即重新 <span class="font-mono">GET /api/config/model-routing</span>。</p>
         </div>
       </div>
     </div>
 
-    <!-- Tab 4: API Config -->
-    <div x-show="activeTab === 'api'" x-cloak class="tab-content">
-      <div class="glass-card rounded-2xl p-8 max-w-xl card-animate">
-        <h2 class="text-lg font-bold mb-1" style="color:#1D2B4E">API 配置（上游连接）</h2>
-        <p class="text-sm mb-2" style="color:#6B7A99">支持任意 OpenAI 兼容接口，包括 Azure、国内中转等。</p>
-        <p class="text-sm mb-6" style="color:#0958D9">API 配置仅负责上游 API 连接与兼容写入；模型智能路由请到“模型智能路由”页。</p>
-
-        <div class="space-y-5">
-          <div>
-            <label class="block text-sm font-medium mb-1" style="color:#6B7A99">Base URL</label>
-            <input type="text" x-model="apiForm.baseUrl"
-                   placeholder="https://api.openai.com/v1 或你的中转地址"
-                   class="light-input" />
-          </div>
-          <div>
-            <label class="block text-sm font-medium mb-1" style="color:#6B7A99">API Key</label>
-            <div class="relative">
-              <input
-                :type="showApiKey ? 'text' : 'password'"
-                x-model="apiForm.apiKey"
-                :placeholder="showApiKey ? '请输入 API Key' : 'sk-xxxxxxxxxxxxxxxxxxxxxxxx'"
-                class="light-input"
-                style="padding-right:60px"
-              />
-              <button
-                @click="showApiKey = !showApiKey"
-                class="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium transition-colors"
-                style="color:#1677FF;background:none;border:none;cursor:pointer"
-                onmouseover="this.style.color='#0958D9'"
-                onmouseout="this.style.color='#1677FF'"
-                x-text="showApiKey ? '隐藏' : '显示'"
-              ></button>
-            </div>
-          </div>
-          <div>
-            <label class="block text-sm font-medium mb-1" style="color:#6B7A99">模型名称</label>
-            <input type="text" x-model="apiForm.model"
-                   placeholder="请输入模型名称，如 gpt-4o-mini"
-                   class="light-input" />
-          </div>
-
-          <button
-            @click="saveApiConfig()"
-            :disabled="apiSaving"
-            class="blue-btn w-full font-semibold py-3 rounded-xl flex items-center justify-center gap-2"
-            style="box-shadow:0 4px 16px rgba(22,119,255,0.25)"
-          >
-            <span x-show="apiSaving" class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin inline-block"></span>
-            <span x-text="apiSaving ? '保存中…' : '保存配置'"></span>
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Tab 5: Skill Store -->
+    <!-- Tab 4: Skill Store -->
     <div x-show="activeTab === 'skills'" x-cloak class="tab-content space-y-4">
 
       <!-- Search + Filter bar -->
@@ -1195,8 +1227,7 @@
         tabs: [
           { key: 'status',   label: '服务状态' },
           { key: 'channels', label: '渠道配置' },
-          { key: 'routing',  label: '模型智能路由' },
-          { key: 'api',      label: 'API 配置（上游连接）' },
+          { key: 'modelConfig', label: '模型配置' },
           { key: 'skills',   label: '🧩 Skill 商店' },
         ],
         version: '—',
@@ -1317,7 +1348,7 @@
         switchTab(key) {
           this.activeTab = key;
           this.$nextTick(() => this._animateCards());
-          if (key === 'routing' && this.modelRouting.loadState === 'idle') this.loadModelRoutingConfig();
+          if (key === 'modelConfig' && this.modelRouting.loadState === 'idle') this.loadModelRoutingConfig();
           if (key === 'skills') this.loadSkills();
         },
 

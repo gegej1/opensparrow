@@ -250,6 +250,15 @@ async function getJson(url) {
   return { status: response.status, payload }
 }
 
+function buildTierConnectionMap(keySuffix = 'new') {
+  return {
+    SIMPLE: { baseUrl: 'https://simple.example/v1', apiKey: `simple-${keySuffix}`, model: 'simple-model' },
+    MEDIUM: { baseUrl: 'https://medium.example/v1', apiKey: `medium-${keySuffix}`, model: 'medium-model' },
+    COMPLEX: { baseUrl: 'https://complex.example/v1', apiKey: `complex-${keySuffix}`, model: 'complex-model' },
+    REASONING: { baseUrl: 'https://reasoning.example/v1', apiKey: `reasoning-${keySuffix}`, model: 'reasoning-model' },
+  }
+}
+
 async function withSaveHarness(testContext, options, run) {
   const homeDir = makeTempDir()
   const runtimeRoot = path.join(homeDir, 'fake-runtime')
@@ -257,7 +266,7 @@ async function withSaveHarness(testContext, options, run) {
   const gatewayPort = await findFreePort()
 
   writeFakeOpenClawRuntime(runtimeRoot)
-  writeJson(getConfigPath(homeDir), {
+  writeJson(getConfigPath(homeDir), options?.initialConfig ?? {
     models: {
       providers: {
         openai: {
@@ -268,13 +277,15 @@ async function withSaveHarness(testContext, options, run) {
       default: 'openai/gpt-4o-mini',
     },
   })
-  writeJson(getAuthProfilesPath(homeDir), {
-    version: 1,
-    profiles: {
-      'openai:default': { type: 'api_key', provider: 'openai', key: 'sk-existing' },
-    },
-    order: { openai: ['openai:default'] },
-  })
+  if (options?.initialAuth !== null) {
+    writeJson(getAuthProfilesPath(homeDir), options?.initialAuth ?? {
+      version: 1,
+      profiles: {
+        'openai:default': { type: 'api_key', provider: 'openai', key: 'existing-single-key' },
+      },
+      order: { openai: ['openai:default'] },
+    })
+  }
 
   const ui = await startUiServer({
     homeDir,
@@ -333,12 +344,7 @@ test('model-routing save returns saved_degraded without drifting internal router
   await withSaveHarness(t, {}, async ({ homeDir, uiBaseUrl }) => {
     const result = await postJson(`${uiBaseUrl}/api/config/model-routing`, {
       mode: 'smart',
-      tierModelMap: {
-        SIMPLE: 'gpt-4o-mini',
-        MEDIUM: 'gpt-4.1-mini',
-        COMPLEX: 'gpt-4.1',
-        REASONING: 'o4-mini',
-      },
+      tierConnectionMap: buildTierConnectionMap('router'),
       routing: {
         default: 'SIMPLE',
       },
@@ -358,6 +364,7 @@ test('model-routing save returns saved_degraded without drifting internal router
     const config = JSON.parse(fs.readFileSync(getConfigPath(homeDir), 'utf8'))
     assert.equal(config.agents.defaults.model.primary, 'opensparrow-router/auto')
     assert.equal(config.plugins.entries['opensparrow-router'].enabled, true)
+    assert.equal(config.plugins.entries['opensparrow-router'].config.tierConnectionMap.SIMPLE.model, 'simple-model')
 
     const readBack = await getJson(`${uiBaseUrl}/api/config/model-routing`)
     assert.equal(readBack.status, 200)
@@ -366,6 +373,208 @@ test('model-routing save returns saved_degraded without drifting internal router
     assert.equal(readBack.payload.effectivePrimaryModel, 'opensparrow-router/auto')
     assert.equal(readBack.payload.router.providerId, 'opensparrow-router')
     assert.equal(readBack.payload.router.modelTarget, 'opensparrow-router/auto')
+    assert.equal(readBack.payload.tierConnectionMap.SIMPLE.apiKeyConfigured, true)
+    assert.equal(Object.hasOwn(readBack.payload.tierConnectionMap.SIMPLE, 'apiKey'), false)
+    assert.equal(JSON.stringify(readBack.payload).includes('simple-router'), false)
+  })
+})
+
+test('single model-routing empty key preserves an existing OpenAI key and masks readback', { timeout: 15000 }, async (t) => {
+  await withSaveHarness(t, {}, async ({ homeDir, uiBaseUrl }) => {
+    const result = await postJson(`${uiBaseUrl}/api/config/model-routing`, {
+      mode: 'single',
+      baseUrl: 'https://single-preserve.example/v1',
+      apiKey: '',
+      model: 'single-preserve-model',
+    })
+
+    assert.equal(result.status, 200)
+    assert.equal(result.payload.ok, true)
+    assert.equal(result.payload.saveState, 'saved_degraded')
+    assert.equal(result.payload.mode, 'single')
+    assert.equal(result.payload.effectivePrimaryModel, 'openai/single-preserve-model')
+
+    const config = JSON.parse(fs.readFileSync(getConfigPath(homeDir), 'utf8'))
+    assert.equal(config.models.providers.openai.baseUrl, 'https://single-preserve.example/v1')
+    assert.equal(config.models.providers.openai.models[0].id, 'single-preserve-model')
+    assert.equal(config.agents.defaults.model.primary, 'openai/single-preserve-model')
+
+    const auth = JSON.parse(fs.readFileSync(getAuthProfilesPath(homeDir), 'utf8'))
+    assert.equal(auth.profiles['openai:default'].key, 'existing-single-key')
+
+    const readBack = await getJson(`${uiBaseUrl}/api/config/model-routing`)
+    assert.equal(readBack.status, 200)
+    assert.equal(readBack.payload.single.baseUrl, 'https://single-preserve.example/v1')
+    assert.equal(readBack.payload.single.model, 'single-preserve-model')
+    assert.equal(readBack.payload.single.apiKeyConfigured, true)
+    assert.equal(Object.hasOwn(readBack.payload.single, 'apiKey'), false)
+    assert.equal(JSON.stringify(readBack.payload).includes('existing-single-key'), false)
+  })
+})
+
+test('single model-routing empty key without an existing key is rejected precisely', { timeout: 15000 }, async (t) => {
+  await withSaveHarness(t, { initialAuth: null }, async ({ uiBaseUrl }) => {
+    const result = await postJson(`${uiBaseUrl}/api/config/model-routing`, {
+      mode: 'single',
+      baseUrl: 'https://single-reject.example/v1',
+      apiKey: '',
+      model: 'single-reject-model',
+    })
+
+    assert.equal(result.status, 400)
+    assert.equal(result.payload.ok, false)
+    assert.equal(result.payload.saveState, 'rejected')
+    assert.match(result.payload.errors.join('\n'), /API Key/)
+    assert.match(result.payload.errors.join('\n'), /不存在可保留的 OpenAI API Key/)
+  })
+})
+
+test('legacy shared smart config readback is represented as masked per-tier legacy-shared state', { timeout: 15000 }, async (t) => {
+  await withSaveHarness(t, {
+    initialConfig: {
+      models: {
+        providers: {
+          openai: {
+            baseUrl: 'https://existing.example/v1',
+            models: [{ id: 'gpt-4o-mini', name: 'gpt-4o-mini', api: 'openai-completions' }],
+          },
+        },
+        default: 'openai/gpt-4o-mini',
+      },
+      agents: {
+        defaults: {
+          model: {
+            primary: 'opensparrow-router/auto',
+          },
+        },
+      },
+      plugins: {
+        allow: ['opensparrow-router'],
+        entries: {
+          'opensparrow-router': {
+            enabled: true,
+            config: {
+              baseUrl: 'https://legacy-shared.example/v1',
+              apiKey: 'legacy-shared-key',
+              tierModelMap: {
+                SIMPLE: 'legacy-simple-model',
+                MEDIUM: 'legacy-medium-model',
+                COMPLEX: 'legacy-complex-model',
+                REASONING: 'legacy-reasoning-model',
+              },
+              routing: {},
+            },
+          },
+        },
+      },
+    },
+  }, async ({ uiBaseUrl }) => {
+    const readBack = await getJson(`${uiBaseUrl}/api/config/model-routing`)
+
+    assert.equal(readBack.status, 200)
+    assert.equal(readBack.payload.mode, 'smart')
+    assert.equal(readBack.payload.tierConnectionMap.SIMPLE.baseUrl, 'https://legacy-shared.example/v1')
+    assert.equal(readBack.payload.tierConnectionMap.SIMPLE.model, 'legacy-simple-model')
+    assert.equal(readBack.payload.tierConnectionMap.SIMPLE.apiKeyConfigured, true)
+    assert.equal(readBack.payload.tierConnectionMap.SIMPLE.source, 'legacy-shared')
+    assert.equal(Object.hasOwn(readBack.payload.tierConnectionMap.SIMPLE, 'apiKey'), false)
+    assert.equal(JSON.stringify(readBack.payload).includes('legacy-shared-key'), false)
+  })
+})
+
+test('smart model-routing empty tier keys preserve existing per-tier keys and masks readback', { timeout: 15000 }, async (t) => {
+  const existingTierConnectionMap = buildTierConnectionMap('existing')
+  await withSaveHarness(t, {
+    initialConfig: {
+      models: {
+        providers: {
+          openai: {
+            baseUrl: 'https://existing.example/v1',
+            models: [{ id: 'gpt-4o-mini', name: 'gpt-4o-mini', api: 'openai-completions' }],
+          },
+        },
+        default: 'openai/gpt-4o-mini',
+      },
+      agents: {
+        defaults: {
+          model: {
+            primary: 'opensparrow-router/auto',
+          },
+        },
+      },
+      plugins: {
+        allow: ['opensparrow-router'],
+        entries: {
+          'opensparrow-router': {
+            enabled: true,
+            config: {
+              tierConnectionMap: existingTierConnectionMap,
+              tierModelMap: {
+                SIMPLE: 'simple-model',
+                MEDIUM: 'medium-model',
+                COMPLEX: 'complex-model',
+                REASONING: 'reasoning-model',
+              },
+              routing: {},
+            },
+          },
+        },
+      },
+    },
+  }, async ({ homeDir, uiBaseUrl }) => {
+    const incomingTierConnectionMap = {
+      SIMPLE: { baseUrl: 'https://simple-new.example/v1', apiKey: '', model: 'simple-new-model' },
+      MEDIUM: { baseUrl: 'https://medium-new.example/v1', apiKey: '', model: 'medium-new-model' },
+      COMPLEX: { baseUrl: 'https://complex-new.example/v1', apiKey: '', model: 'complex-new-model' },
+      REASONING: { baseUrl: 'https://reasoning-new.example/v1', apiKey: '', model: 'reasoning-new-model' },
+    }
+    const result = await postJson(`${uiBaseUrl}/api/config/model-routing`, {
+      mode: 'smart',
+      tierConnectionMap: incomingTierConnectionMap,
+      routing: { default: 'SIMPLE' },
+    })
+
+    assert.equal(result.status, 200)
+    assert.equal(result.payload.ok, true)
+    assert.equal(result.payload.mode, 'smart')
+    assert.equal(result.payload.effectivePrimaryModel, 'opensparrow-router/auto')
+
+    const config = JSON.parse(fs.readFileSync(getConfigPath(homeDir), 'utf8'))
+    assert.equal(config.plugins.entries['opensparrow-router'].config.tierConnectionMap.SIMPLE.apiKey, existingTierConnectionMap.SIMPLE.apiKey)
+    assert.equal(config.plugins.entries['opensparrow-router'].config.tierConnectionMap.SIMPLE.baseUrl, 'https://simple-new.example/v1')
+    assert.equal(config.plugins.entries['opensparrow-router'].config.tierModelMap.REASONING, 'reasoning-new-model')
+
+    const readBack = await getJson(`${uiBaseUrl}/api/config/model-routing`)
+    assert.equal(readBack.payload.tierConnectionMap.SIMPLE.apiKeyConfigured, true)
+    assert.equal(Object.hasOwn(readBack.payload.tierConnectionMap.SIMPLE, 'apiKey'), false)
+    assert.equal(JSON.stringify(readBack.payload).includes(existingTierConnectionMap.SIMPLE.apiKey), false)
+
+    const configReadBack = await getJson(`${uiBaseUrl}/api/config`)
+    assert.equal(configReadBack.status, 200)
+    assert.equal(JSON.stringify(configReadBack.payload).includes(existingTierConnectionMap.SIMPLE.apiKey), false)
+  })
+})
+
+test('smart model-routing empty tier key without existing or legacy key is rejected precisely', { timeout: 15000 }, async (t) => {
+  await withSaveHarness(t, {}, async ({ uiBaseUrl }) => {
+    const emptyTierConnectionMap = {
+      SIMPLE: { baseUrl: 'https://simple-empty.example/v1', apiKey: '', model: 'simple-empty-model' },
+      MEDIUM: { baseUrl: 'https://medium-empty.example/v1', apiKey: 'medium-new-key', model: 'medium-empty-model' },
+      COMPLEX: { baseUrl: 'https://complex-empty.example/v1', apiKey: 'complex-new-key', model: 'complex-empty-model' },
+      REASONING: { baseUrl: 'https://reasoning-empty.example/v1', apiKey: 'reasoning-new-key', model: 'reasoning-empty-model' },
+    }
+
+    const result = await postJson(`${uiBaseUrl}/api/config/model-routing`, {
+      mode: 'smart',
+      tierConnectionMap: emptyTierConnectionMap,
+      routing: {},
+    })
+
+    assert.equal(result.status, 400)
+    assert.equal(result.payload.ok, false)
+    assert.equal(result.payload.saveState, 'rejected')
+    assert.match(result.payload.errors.join('\n'), /tierConnectionMap\.SIMPLE\.apiKey/)
+    assert.match(result.payload.errors.join('\n'), /不存在可保留的 API Key/)
   })
 })
 
@@ -397,12 +606,7 @@ test('model-routing save still returns a truthful degraded response when restart
   }, async ({ uiBaseUrl }) => {
     const result = await postJson(`${uiBaseUrl}/api/config/model-routing`, {
       mode: 'smart',
-      tierModelMap: {
-        SIMPLE: 'gpt-4o-mini',
-        MEDIUM: 'gpt-4.1-mini',
-        COMPLEX: 'gpt-4.1',
-        REASONING: 'o4-mini',
-      },
+      tierConnectionMap: buildTierConnectionMap('slow'),
       routing: {
         default: 'SIMPLE',
       },

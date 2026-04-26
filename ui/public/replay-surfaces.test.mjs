@@ -327,7 +327,7 @@ test('dashboard loadStatus auto-recovers from transient unavailable status to la
   }
 })
 
-test('dashboard loadModelRoutingConfig uses the authoritative model-routing endpoint and preserves router invariants', async () => {
+test('dashboard loadModelRoutingConfig uses unified readback and masks API keys', async () => {
   const { factory } = loadPageFactory('ui/public/dashboard.html', 'dashboard')
   const instance = factory()
 
@@ -337,21 +337,30 @@ test('dashboard loadModelRoutingConfig uses the authoritative model-routing endp
     if (url === '/api/config/model-routing') {
       return createResponse({
         ok: true,
+        surface: 'model-configuration',
         mode: 'smart',
-        connection: {
-          baseUrl: 'https://router.example/v1',
-          baseUrlConfigured: true,
+        single: {
+          baseUrl: 'https://single.example/v1',
+          model: 'single-model',
           apiKeyConfigured: true,
-          source: 'last-saved-api-config',
+          apiKey: 'plain-single-key',
+          source: 'openai-provider',
         },
-        singleModeDefaultModel: 'gpt-4o-mini',
-        tierModelMap: {
-          SIMPLE: 'gpt-4o-mini',
-          MEDIUM: 'gpt-4.1-mini',
-          COMPLEX: 'gpt-4.1',
-          REASONING: 'o4-mini',
+        tierConnectionMap: {
+          SIMPLE: { baseUrl: 'https://simple.example/v1', model: 'simple-model', apiKeyConfigured: true, apiKey: 'plain-simple-key', source: 'tierConnectionMap' },
+          MEDIUM: { baseUrl: 'https://medium.example/v1', model: 'medium-model', apiKeyConfigured: true, apiKey: 'plain-medium-key', source: 'tierConnectionMap' },
+          COMPLEX: { baseUrl: 'https://complex.example/v1', model: 'complex-model', apiKeyConfigured: true, apiKey: 'plain-complex-key', source: 'tierConnectionMap' },
+          REASONING: { baseUrl: 'https://reasoning.example/v1', model: 'reasoning-model', apiKeyConfigured: true, apiKey: 'plain-reasoning-key', source: 'tierConnectionMap' },
         },
-        routing: { default: 'SIMPLE' },
+        smart: {
+          tiers: {
+            SIMPLE: { baseUrl: 'https://simple.example/v1', model: 'simple-model', apiKeyConfigured: true, apiKey: 'plain-simple-key', source: 'tierConnectionMap' },
+            MEDIUM: { baseUrl: 'https://medium.example/v1', model: 'medium-model', apiKeyConfigured: true, apiKey: 'plain-medium-key', source: 'tierConnectionMap' },
+            COMPLEX: { baseUrl: 'https://complex.example/v1', model: 'complex-model', apiKeyConfigured: true, apiKey: 'plain-complex-key', source: 'tierConnectionMap' },
+            REASONING: { baseUrl: 'https://reasoning.example/v1', model: 'reasoning-model', apiKeyConfigured: true, apiKey: 'plain-reasoning-key', source: 'tierConnectionMap' },
+          },
+          routing: { default: 'SIMPLE' },
+        },
         effectivePrimaryModel: 'opensparrow-router/auto',
         router: {
           providerId: 'opensparrow-router',
@@ -371,22 +380,32 @@ test('dashboard loadModelRoutingConfig uses the authoritative model-routing endp
   assert.equal(instance.modelRouting.router.providerId, 'opensparrow-router')
   assert.equal(instance.modelRouting.router.modelTarget, 'opensparrow-router/auto')
   assert.equal(instance.modelRouting.effectivePrimaryModel, 'opensparrow-router/auto')
+  assert.equal(instance.modelRouting.single.baseUrl, 'https://single.example/v1')
+  assert.equal(instance.modelRouting.single.model, 'single-model')
+  assert.equal(instance.modelRouting.single.apiKey, '')
+  assert.equal(instance.modelRouting.tierConnectionMap.SIMPLE.baseUrl, 'https://simple.example/v1')
+  assert.equal(instance.modelRouting.tierConnectionMap.SIMPLE.model, 'simple-model')
+  assert.equal(instance.modelRouting.tierConnectionMap.SIMPLE.apiKey, '')
+  assert.equal(JSON.stringify(instance.modelRouting).includes('plain-simple-key'), false)
+  assert.equal(JSON.stringify(instance.modelRouting).includes('plain-single-key'), false)
 })
 
-test('dashboard saveModelRoutingConfig re-reads authoritative model-routing state instead of replaying the local draft', async () => {
+test('dashboard saveModelRoutingConfig sends single-mode payload and re-reads authoritative state', async () => {
   const { factory } = loadPageFactory('ui/public/dashboard.html', 'dashboard')
   const instance = factory()
   instance.showToast = () => {}
 
   instance.modelRouting.mode = 'single'
-  instance.modelRouting.singleModeDefaultModel = 'draft-model'
-  instance.modelRouting.connection.baseUrlConfigured = true
-  instance.modelRouting.connection.apiKeyConfigured = true
+  instance.modelRouting.single.baseUrl = 'https://draft-single.example/v1'
+  instance.modelRouting.single.apiKey = 'entered-single-key'
+  instance.modelRouting.single.model = 'draft-model'
 
   const requests = []
+  let postedPayload = null
   instance.fetchWithTimeout = async (url, options = {}) => {
     requests.push({ url, method: options.method ?? 'GET' })
     if (url === '/api/config/model-routing' && options.method === 'POST') {
+      postedPayload = JSON.parse(options.body)
       return createResponse({
         ok: true,
         mode: 'single',
@@ -397,21 +416,21 @@ test('dashboard saveModelRoutingConfig re-reads authoritative model-routing stat
     if (url === '/api/config/model-routing') {
       return createResponse({
         ok: true,
+        surface: 'model-configuration',
         mode: 'single',
-        connection: {
+        single: {
           baseUrl: 'https://authoritative.example/v1',
-          baseUrlConfigured: true,
+          model: 'server-model',
           apiKeyConfigured: true,
-          source: 'last-saved-api-config',
+          source: 'openai-provider',
         },
-        singleModeDefaultModel: 'server-model',
-        tierModelMap: {
-          SIMPLE: 'gpt-4o-mini',
-          MEDIUM: 'gpt-4.1-mini',
-          COMPLEX: 'gpt-4.1',
-          REASONING: 'o4-mini',
+        tierConnectionMap: {
+          SIMPLE: { baseUrl: '', model: '', apiKeyConfigured: false, source: 'empty' },
+          MEDIUM: { baseUrl: '', model: '', apiKeyConfigured: false, source: 'empty' },
+          COMPLEX: { baseUrl: '', model: '', apiKeyConfigured: false, source: 'empty' },
+          REASONING: { baseUrl: '', model: '', apiKeyConfigured: false, source: 'empty' },
         },
-        routing: {},
+        smart: { tiers: {}, routing: {} },
         effectivePrimaryModel: 'openai/server-model',
         router: {
           providerId: 'opensparrow-router',
@@ -426,13 +445,86 @@ test('dashboard saveModelRoutingConfig re-reads authoritative model-routing stat
   const saved = await instance.saveModelRoutingConfig()
 
   assert.equal(saved, true)
+  assert.deepEqual(postedPayload, {
+    mode: 'single',
+    baseUrl: 'https://draft-single.example/v1',
+    apiKey: 'entered-single-key',
+    model: 'draft-model',
+  })
   assert.deepEqual(requests, [
     { url: '/api/config/model-routing', method: 'POST' },
     { url: '/api/config/model-routing', method: 'GET' },
   ])
-  assert.equal(instance.modelRouting.singleModeDefaultModel, 'server-model')
-  assert.equal(instance.modelRouting.connection.baseUrl, 'https://authoritative.example/v1')
+  assert.equal(instance.modelRouting.single.model, 'server-model')
+  assert.equal(instance.modelRouting.single.baseUrl, 'https://authoritative.example/v1')
+  assert.equal(instance.modelRouting.single.apiKey, '')
   assert.equal(instance.modelRouting.effectivePrimaryModel, 'openai/server-model')
+})
+
+test('dashboard saveModelRoutingConfig sends smart-mode tier connections and re-reads authoritative state', async () => {
+  const { factory } = loadPageFactory('ui/public/dashboard.html', 'dashboard')
+  const instance = factory()
+  instance.showToast = () => {}
+
+  instance.modelRouting.mode = 'smart'
+  for (const tier of ['SIMPLE', 'MEDIUM', 'COMPLEX', 'REASONING']) {
+    instance.modelRouting.tierConnectionMap[tier].baseUrl = `https://${tier.toLowerCase()}.draft.example/v1`
+    instance.modelRouting.tierConnectionMap[tier].apiKey = `${tier.toLowerCase()}-draft-key`
+    instance.modelRouting.tierConnectionMap[tier].model = `${tier.toLowerCase()}-draft-model`
+  }
+  instance.modelRouting.routingText = '{"default":"SIMPLE"}'
+
+  const requests = []
+  let postedPayload = null
+  instance.fetchWithTimeout = async (url, options = {}) => {
+    requests.push({ url, method: options.method ?? 'GET' })
+    if (url === '/api/config/model-routing' && options.method === 'POST') {
+      postedPayload = JSON.parse(options.body)
+      return createResponse({
+        ok: true,
+        mode: 'smart',
+        effectivePrimaryModel: 'opensparrow-router/auto',
+        message: 'saved',
+      })
+    }
+    if (url === '/api/config/model-routing') {
+      return createResponse({
+        ok: true,
+        surface: 'model-configuration',
+        mode: 'smart',
+        single: { baseUrl: '', model: '', apiKeyConfigured: false, source: 'openai-provider' },
+        tierConnectionMap: {
+          SIMPLE: { baseUrl: 'https://simple.authoritative.example/v1', model: 'simple-server-model', apiKeyConfigured: true, source: 'tierConnectionMap' },
+          MEDIUM: { baseUrl: 'https://medium.authoritative.example/v1', model: 'medium-server-model', apiKeyConfigured: true, source: 'tierConnectionMap' },
+          COMPLEX: { baseUrl: 'https://complex.authoritative.example/v1', model: 'complex-server-model', apiKeyConfigured: true, source: 'tierConnectionMap' },
+          REASONING: { baseUrl: 'https://reasoning.authoritative.example/v1', model: 'reasoning-server-model', apiKeyConfigured: true, source: 'tierConnectionMap' },
+        },
+        smart: { routing: { default: 'SIMPLE' } },
+        effectivePrimaryModel: 'opensparrow-router/auto',
+        router: {
+          providerId: 'opensparrow-router',
+          modelTarget: 'opensparrow-router/auto',
+          configPresent: true,
+        },
+      })
+    }
+    throw new Error(`Unexpected request: ${url}`)
+  }
+
+  const saved = await instance.saveModelRoutingConfig()
+
+  assert.equal(saved, true)
+  assert.deepEqual(requests, [
+    { url: '/api/config/model-routing', method: 'POST' },
+    { url: '/api/config/model-routing', method: 'GET' },
+  ])
+  assert.deepEqual(Object.keys(postedPayload.tierConnectionMap), ['SIMPLE', 'MEDIUM', 'COMPLEX', 'REASONING'])
+  assert.equal(postedPayload.tierConnectionMap.SIMPLE.baseUrl, 'https://simple.draft.example/v1')
+  assert.equal(postedPayload.tierConnectionMap.REASONING.model, 'reasoning-draft-model')
+  assert.deepEqual(postedPayload.routing, { default: 'SIMPLE' })
+  assert.equal(instance.modelRouting.tierConnectionMap.SIMPLE.baseUrl, 'https://simple.authoritative.example/v1')
+  assert.equal(instance.modelRouting.tierConnectionMap.SIMPLE.model, 'simple-server-model')
+  assert.equal(instance.modelRouting.tierConnectionMap.SIMPLE.apiKey, '')
 })
 
 test('dashboard saveChannelConfig refreshes card fields from authoritative read-back instead of local payload replay', async () => {

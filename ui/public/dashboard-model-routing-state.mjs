@@ -1,11 +1,5 @@
 (function attachDashboardModelRoutingState(globalScope) {
   const TIER_KEYS = ['SIMPLE', 'MEDIUM', 'COMPLEX', 'REASONING']
-  const EMPTY_TIER_MODEL_MAP = Object.freeze({
-    SIMPLE: '',
-    MEDIUM: '',
-    COMPLEX: '',
-    REASONING: '',
-  })
 
   const INVARIANTS = Object.freeze({
     providerId: 'opensparrow-router',
@@ -18,9 +12,9 @@
   })
 
   const COMPATIBILITY_LANE = Object.freeze({
-    title: 'API 配置（上游连接）',
-    description: 'API 配置仅负责上游 API 连接与兼容写入，不承担模型智能路由 truth。',
-    hint: '模型智能路由的 authoritative load/save 只认 /api/config/model-routing。',
+    title: '兼容 API 写入',
+    description: '旧 /api/config/api 仅保留给兼容调用；模型配置以本页 /api/config/model-routing 为 authoritative surface。',
+    hint: '高级路由 JSON 只编辑 routing object，不能修改 provider id 或 target。',
   })
 
   function isPlainObject(value) {
@@ -35,22 +29,62 @@
     }
   }
 
-  function normalizeTierModelMap(rawValue = {}) {
-    const next = { ...EMPTY_TIER_MODEL_MAP }
-    for (const key of TIER_KEYS) {
-      const value = String(rawValue?.[key] ?? '').trim()
-      if (value) next[key] = value
+  function emptyTierConnection() {
+    return {
+      baseUrl: '',
+      apiKey: '',
+      model: '',
+      apiKeyConfigured: false,
+      source: 'empty',
+    }
+  }
+
+  function emptyTierConnectionMap() {
+    return Object.fromEntries(TIER_KEYS.map((tier) => [tier, emptyTierConnection()]))
+  }
+
+  function normalizeSingle(rawValue = {}) {
+    return {
+      baseUrl: String(rawValue?.baseUrl ?? '').trim(),
+      apiKey: '',
+      model: String(rawValue?.model ?? '').trim(),
+      apiKeyConfigured: rawValue?.apiKeyConfigured === true,
+      source: String(rawValue?.source ?? '').trim() || 'openai-provider',
+    }
+  }
+
+  function normalizeTierConnection(rawValue = {}) {
+    return {
+      baseUrl: String(rawValue?.baseUrl ?? '').trim(),
+      apiKey: '',
+      model: String(rawValue?.model ?? '').trim(),
+      apiKeyConfigured: rawValue?.apiKeyConfigured === true,
+      source: String(rawValue?.source ?? '').trim() || 'empty',
+    }
+  }
+
+  function normalizeTierConnectionMap(rawValue = {}) {
+    const next = emptyTierConnectionMap()
+    for (const tier of TIER_KEYS) {
+      next[tier] = normalizeTierConnection(isPlainObject(rawValue?.[tier]) ? rawValue[tier] : {})
     }
     return next
   }
 
-  function normalizeConnection(rawValue = {}) {
-    return {
-      baseUrl: String(rawValue?.baseUrl ?? '').trim(),
-      baseUrlConfigured: rawValue?.baseUrlConfigured === true,
-      apiKeyConfigured: rawValue?.apiKeyConfigured === true,
-      source: String(rawValue?.source ?? '').trim(),
+  function legacyTierConnectionMap(payload = {}) {
+    const connection = isPlainObject(payload?.connection) ? payload.connection : {}
+    const tierModelMap = isPlainObject(payload?.tierModelMap) ? payload.tierModelMap : {}
+    const next = emptyTierConnectionMap()
+    for (const tier of TIER_KEYS) {
+      next[tier] = {
+        baseUrl: String(connection.baseUrl ?? '').trim(),
+        apiKey: '',
+        model: String(tierModelMap[tier] ?? '').trim(),
+        apiKeyConfigured: connection.apiKeyConfigured === true,
+        source: connection.apiKeyConfigured === true || connection.baseUrlConfigured === true ? 'legacy-shared' : 'empty',
+      }
     }
+    return next
   }
 
   function formatRoutingText(value = {}) {
@@ -58,7 +92,7 @@
     return JSON.stringify(normalized, null, 2)
   }
 
-  function extractError(payload = {}, status = null, fallback = '模型智能路由请求失败') {
+  function extractError(payload = {}, status = null, fallback = '模型配置请求失败') {
     if (Array.isArray(payload?.errors) && payload.errors.length > 0) {
       return payload.errors.map((item) => String(item ?? '').trim()).filter(Boolean).join('；')
     }
@@ -112,9 +146,8 @@
       saveError: '',
       routingError: '',
       mode: 'single',
-      connection: normalizeConnection(),
-      singleModeDefaultModel: '',
-      tierModelMap: normalizeTierModelMap(),
+      single: normalizeSingle(),
+      tierConnectionMap: emptyTierConnectionMap(),
       routingText: '{}',
       advancedOpen: false,
       effectivePrimaryModel: '',
@@ -135,13 +168,23 @@
       throw new Error('检测到内部模型路由标识漂移，已拒绝加载非 authoritative routing state')
     }
 
-    const routingObject = isPlainObject(payload?.routing) ? cloneJson(payload.routing, {}) : {}
+    const smart = isPlainObject(payload?.smart) ? payload.smart : {}
+    const tiers = isPlainObject(smart?.tiers)
+      ? smart.tiers
+      : (isPlainObject(payload?.tierConnectionMap) ? payload.tierConnectionMap : legacyTierConnectionMap(payload))
+    const routingObject = isPlainObject(smart?.routing)
+      ? cloneJson(smart.routing, {})
+      : (isPlainObject(payload?.routing) ? cloneJson(payload.routing, {}) : {})
     const parseResult = parseRoutingText(JSON.stringify(routingObject))
 
     state.mode = String(payload?.mode ?? '').trim() === 'smart' ? 'smart' : 'single'
-    state.connection = normalizeConnection(payload?.connection)
-    state.singleModeDefaultModel = String(payload?.singleModeDefaultModel ?? '').trim()
-    state.tierModelMap = normalizeTierModelMap(payload?.tierModelMap)
+    state.single = normalizeSingle(isPlainObject(payload?.single) ? payload.single : {
+      baseUrl: payload?.connection?.baseUrl,
+      model: payload?.singleModeDefaultModel,
+      apiKeyConfigured: payload?.connection?.apiKeyConfigured,
+      source: payload?.connection?.source,
+    })
+    state.tierConnectionMap = normalizeTierConnectionMap(tiers)
     state.routingText = formatRoutingText(routingObject)
     state.routingError = ''
     state.advancedOpen = shouldAutoExpandAdvanced(routingObject, parseResult)
@@ -161,9 +204,12 @@
   function buildSavePayload(state = {}) {
     const mode = String(state?.mode ?? '').trim() === 'smart' ? 'smart' : 'single'
     if (mode === 'single') {
+      const single = isPlainObject(state?.single) ? state.single : {}
       return {
         mode: 'single',
-        singleModeDefaultModel: String(state?.singleModeDefaultModel ?? '').trim(),
+        baseUrl: String(single.baseUrl ?? '').trim(),
+        apiKey: String(single.apiKey ?? '').trim(),
+        model: String(single.model ?? '').trim(),
       }
     }
 
@@ -174,9 +220,17 @@
       throw error
     }
 
+    const sourceMap = isPlainObject(state?.tierConnectionMap) ? state.tierConnectionMap : {}
     return {
       mode: 'smart',
-      tierModelMap: normalizeTierModelMap(state?.tierModelMap),
+      tierConnectionMap: Object.fromEntries(TIER_KEYS.map((tier) => {
+        const connection = isPlainObject(sourceMap[tier]) ? sourceMap[tier] : {}
+        return [tier, {
+          baseUrl: String(connection.baseUrl ?? '').trim(),
+          apiKey: String(connection.apiKey ?? '').trim(),
+          model: String(connection.model ?? '').trim(),
+        }]
+      })),
       routing: parseResult.value,
     }
   }
@@ -191,14 +245,14 @@
       const payload = await response.json().catch(() => ({}))
       if (!response.ok || payload?.ok === false) {
         state.loadState = 'error'
-        state.error = extractError(payload, response.status, '读取模型智能路由配置失败')
+        state.error = extractError(payload, response.status, '读取模型配置失败')
         return false
       }
       applyPayload(state, payload)
       return true
     } catch (error) {
       state.loadState = 'error'
-      state.error = `读取模型智能路由配置失败：${error instanceof Error ? error.message : String(error)}`
+      state.error = `读取模型配置失败：${error instanceof Error ? error.message : String(error)}`
       return false
     }
   }
@@ -230,7 +284,7 @@
 
       const result = await response.json().catch(() => ({}))
       if (!response.ok || result?.ok === false) {
-        const message = extractError(result, response.status, '保存模型智能路由失败')
+        const message = extractError(result, response.status, '保存模型配置失败')
         state.saveError = message
         if (typeof host.showToast === 'function') host.showToast(message, 'error')
         return false
@@ -243,8 +297,8 @@
       if (typeof host.showToast === 'function') {
         host.showToast(
           reloaded
-            ? `模型智能路由已保存${warning}`
-            : `模型智能路由已保存，但 authoritative 回读失败${warning}`,
+            ? `模型配置已保存${warning}`
+            : `模型配置已保存，但 authoritative 回读失败${warning}`,
           reloaded ? 'success' : 'error'
         )
       }
@@ -261,8 +315,10 @@
   globalScope.OpenSparrowDashboardModelRouting = {
     ENDPOINTS,
     INVARIANTS,
+    TIER_KEYS,
     createInitialState: buildInitialState,
     buildSavePayload,
+    applyPayload,
     load,
     save,
   }

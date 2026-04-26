@@ -810,5 +810,34 @@
     "evidence_hint": "Source PASS + fresh packaged verifier PASS on build root `/private/tmp/packaged-channels-late-stage-rebuild-77vgKb`, artifact dir `/private/tmp/packaged-channels-late-stage-rebuild-77vgKb/gtclaw-mac-release-arm64-20260424-235728/GTClaw-0.1.0-alpha-macOS-arm64`, zip `/private/tmp/packaged-channels-late-stage-rebuild-77vgKb/gtclaw-mac-release-arm64-20260424-235728.zip`, SHA256 `d30c2b29023ac118c688eed3e7e109227fef84c229e6e2c6561fce11086a10d9`, replay root `/private/tmp/packaged-channels-late-stage-replay-UrwTeG`, and DingTalk late-stage evidence from `2026-04-25T08:09:19.545Z` through `2026-04-25T08:09:20.373Z`",
     "risk": "medium",
     "passes": true
+  },
+  {
+    "id": "unified-model-configuration-surface",
+    "priority": 1,
+    "category": "dashboard",
+    "component": "unified-model-configuration-surface",
+    "description": "Close the new dashboard/model-routing configuration surface packet by replacing the split model/API main tabs with one `模型配置` surface containing `单模型` and `模型智能路由` modes, saving single and per-tier smart model configuration through `/api/config/model-routing`, masking all keys in readback and diagnostics surfaces, proving packaged per-tier runtime dispatch, and preserving `opensparrow-router` / `opensparrow-router/auto` without reopening F-031 or rewriting F-027.",
+    "depends_on": [
+      "F-031",
+      "F-032"
+    ],
+    "acceptance_criteria": [
+      "`specs/unified-model-configuration-surface/{spec,plan,tasks}.md` freezes this as a new dashboard/model-routing configuration surface packet, not an F-031 reopen, F-027 rewrite, native provider routing change, or F-033/F-034/install packet.",
+      "Source verifier PASS confirms `node --check ui/server.mjs`, `node --check ui/public/dashboard-model-routing-state.mjs`, `node --check ui/lib/model-routing-config.mjs`, dashboard model-routing UI tests `4/4`, replay surfaces `20/20`, packaged save contract truth `9/9`, model-routing runtime dispatch `1/1`, dashboard status shell `9/9`, and `git diff --check` on allowed files.",
+      "Fresh packaged verifier PASS on artifact `gtclaw-mac-release-arm64-20260426-193709` confirms `/api/status.instance.packRoot` points to the fresh artifact, `/dashboard` shows main nav `模型配置`, no peer main tab `API 配置（上游连接）`, no peer main tab `模型智能路由`, single mode has `Base URL` / `API Key` / `Model ID`, and smart mode has all four tiers with `Base URL` / `API Key` / `Model ID`.",
+      "Packaged API verification confirms single-mode `POST /api/config/model-routing` returns `HTTP 200`, `ok=true`, `mode=single`, `saveState=saved_degraded`, does not echo the synthetic key, and GET readback returns `effectivePrimaryModel = openai/single-packaged-model-193709`, `single.apiKeyConfigured = true`, and no plain key.",
+      "Packaged API verification confirms smart-mode `POST /api/config/model-routing` returns `HTTP 200`, `ok=true`, `mode=smart`, `saveState=saved_degraded`, and GET readback returns `effectivePrimaryModel = opensparrow-router/auto`, all four tiers `apiKeyConfigured=true`, distinct tier models, and no plain key or `apiKey` property.",
+      "Runtime dispatch verification confirms SIMPLE, MEDIUM, COMPLEX, and REASONING route to distinct fixture ports/models, authorization is checked internally as `authOk=true` without printing key values, security surfaces contain no synthetic tier key leakage or plain `apiKey`, router response headers contain tier/model only, and router invariants remain `providerId=opensparrow-router` plus `modelTarget=opensparrow-router/auto`."
+    ],
+    "steps": [
+      "Freeze and implement the unified dashboard `模型配置` surface without changing F-031/F-027/F-033/F-034 identities or entering install/vendor/Windows/wrapper/packaging scope.",
+      "Run source verifier checks for syntax, dashboard UI contract, replay surfaces, save contract truth, runtime dispatch, dashboard status shell, and diff hygiene.",
+      "Run fresh packaged verification on an isolated artifact/profile using Chrome CDP fallback when Playwright is unavailable.",
+      "Verify single-mode and smart-mode packaged save/readback truth, masked key behavior, and per-tier runtime dispatch with controlled fixtures.",
+      "Close out only after Worker-A implementation complete, Source Verifier PASS, Packaged Verifier PACKAGED PASS, and Scope / Authority Reviewer APPROVED."
+    ],
+    "evidence_hint": "Accepted gates: Worker-A source implementation complete + Source Verifier PASS + Packaged Verifier PACKAGED PASS + Scope / Authority Reviewer APPROVED. Packaged artifact `/private/tmp/unified-model-config-rebuild-x7V8BL/gtclaw-mac-release-arm64-20260426-193709/GTClaw-0.1.0-alpha-macOS-arm64`, zip `/private/tmp/unified-model-config-rebuild-x7V8BL/gtclaw-mac-release-arm64-20260426-193709.zip`, SHA256 `d32c040a7cb601561137cb47eec6aa15f77fbeb3c8915e1a7f3eb8f214cf90ea`, UI/gateway/router ports `19371/19372/19373`, isolated `HOME` `/private/tmp/unified-model-config-home-193709`, isolated `OPENCLAW_HOME` `/private/tmp/unified-model-config-openclaw-193709`, profile `unified-model-config-verifier`, and controlled runtime fixtures SIMPLE `19411`, MEDIUM `19412`, COMPLEX `19413`, REASONING `19414`",
+    "risk": "medium",
+    "passes": true
   }
 ]

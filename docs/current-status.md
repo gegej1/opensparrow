@@ -1,6 +1,6 @@
 # OpenSparrow Current Status
 
-更新时间：`2026-04-24`
+更新时间：`2026-04-26`
 
 ## 严重事故记录
 
@@ -73,6 +73,7 @@
 - **关键 Node / shell 回归链存在**
 - **macOS packaged diagnostics / runtime truth / first-click 已有 fresh evidence**
 - **latest packaged mac artifact 已完成 combined packaged verification fresh evidence**
+- **unified model configuration surface 已完成 source PASS + fresh packaged PASS**
 - **latest mac release candidate 已恢复到可重新 cut RC 的状态，但对外发放前仍建议做独立新机复核**
 - **Windows-specific evidence 仍是独立后续线，不被当前 mac packaged PASS 自动覆盖**
 
@@ -104,6 +105,108 @@
 
 - 这不等于 Windows 线已完成
 - 也不等于 officialization 全部完成
+
+### 2.1 unified model configuration surface
+
+本轮 closeout 只基于 `unified-model-configuration-surface` 的四个 accepted gates：
+
+1. Worker-A source implementation complete
+2. Source Verifier PASS
+3. Packaged Verifier PACKAGED PASS
+4. Scope / Authority Reviewer APPROVED
+
+Packet identity：
+
+- `unified-model-configuration-surface`
+- 新 dashboard/model-routing configuration surface packet
+- 不是 `F-031` reopen
+- 不是 `F-027` rewrite
+- 不是 native provider routing
+- 不是 `F-033` / `F-034` / install packet
+
+Source evidence：
+
+- `node --check ui/server.mjs` PASS
+- `node --check ui/public/dashboard-model-routing-state.mjs` PASS
+- `node --check ui/lib/model-routing-config.mjs` PASS
+- `node --test ui/tests/dashboard-model-routing-ui.test.mjs` PASS, `4/4`
+- `node --test ui/public/replay-surfaces.test.mjs` PASS, `20/20`
+- `node --test ui/tests/packaged-save-contract-truth.test.mjs` PASS, `9/9`
+- `node --test ui/tests/model-routing-runtime-dispatch.test.mjs` PASS, `1/1`
+- `node --test ui/tests/dashboard-status-shell.test.mjs` PASS, `9/9`
+- `git diff --check` allowed files PASS
+
+Packaged evidence：
+
+- Artifact：`/private/tmp/unified-model-config-rebuild-x7V8BL/gtclaw-mac-release-arm64-20260426-193709/GTClaw-0.1.0-alpha-macOS-arm64`
+- Zip：`/private/tmp/unified-model-config-rebuild-x7V8BL/gtclaw-mac-release-arm64-20260426-193709.zip`
+- SHA256：`d32c040a7cb601561137cb47eec6aa15f77fbeb3c8915e1a7f3eb8f214cf90ea`
+- UI port `19371`, gateway `19372`, router `19373`
+- isolated `HOME`：`/private/tmp/unified-model-config-home-193709`
+- isolated `OPENCLAW_HOME`：`/private/tmp/unified-model-config-openclaw-193709`
+- profile：`unified-model-config-verifier`
+- `/api/status.instance.packRoot` 指向 fresh artifact，不是 stale deleted `/private/tmp` artifact
+
+Packaged UI truth：
+
+- `/dashboard` 使用 Chrome CDP fallback 验证，因为 Playwright unavailable
+- main nav contains `模型配置`
+- no peer main tab `API 配置（上游连接）`
+- no peer main tab `模型智能路由`
+- `单模型` mode has `Base URL` / `API Key` / `Model ID`
+- smart mode has `SIMPLE` / `MEDIUM` / `COMPLEX` / `REASONING`, each with `Base URL` / `API Key` / `Model ID`
+
+Single-mode packaged API truth：
+
+- `POST /api/config/model-routing` → `HTTP 200`
+- `ok=true`
+- `mode=single`
+- `saveState=saved_degraded`
+- response did not echo synthetic key
+- GET readback：
+  - `effectivePrimaryModel = openai/single-packaged-model-193709`
+  - `single.apiKeyConfigured = true`
+  - no plain key
+
+Smart-mode packaged API truth：
+
+- `POST /api/config/model-routing` → `HTTP 200`
+- `ok=true`
+- `mode=smart`
+- `saveState=saved_degraded`
+- GET readback：
+  - `effectivePrimaryModel = opensparrow-router/auto`
+  - all four tiers `apiKeyConfigured=true`
+  - distinct tier models read back
+  - no plain key or `apiKey` property
+
+Runtime per-tier dispatch truth：
+
+- `SIMPLE -> port 19411`, model `simple-fixture-model-193709`
+- `MEDIUM -> port 19412`, model `medium-fixture-model-193709`
+- `COMPLEX -> port 19413`, model `complex-fixture-model-193709`
+- `REASONING -> port 19414`, model `reasoning-fixture-model-193709`
+- each fixture received `/v1/chat/completions`
+- Authorization was checked internally as `authOk=true`
+- no key values were printed
+
+Security truth：
+
+- checked `/api/config/model-routing`, `/api/config`, `/api/status`, `/api/install/status`, `/api/diagnostics`, `diagnostic-bundle.json`, `ui-meta.json`
+- no synthetic tier key leakage
+- no plain `apiKey` property in exposed/readback surfaces
+- router response headers contain tier/model only, no key
+
+Router invariants：
+
+- `providerId = opensparrow-router`
+- `modelTarget = opensparrow-router/auto`
+- preserved through single readback, smart readback, and runtime dispatch
+
+Residual risks：
+
+- `saveState=saved_degraded` 是 isolated verifier profile 下的 expected truth，因为没有跑 full daemon install matrix；不得写成完整 daemon install matrix PASS
+- dashboard initially redirects to setup until config exists; after packaged single-mode save creates config, `/dashboard` loads normally
 
 ### 3. macOS packaged diagnostics / runtime truth / first-click
 
@@ -353,6 +456,7 @@ Risks：
 - **same-package retry / reinstall**：是（fresh artifact `193047` 上第 1 次与第 2 次 real `/api/install` 都为 `completed`）
 - **install timeout authority**：是（前端超时后会继续轮询 `/api/install/status` 的 terminal state）
 - **combined packaged truth**：是（branding / status authority / model-routing surface / truthful save contract 均已 fresh PASS）
+- **unified model configuration surface**：是（`模型配置` unified surface、single/smart save-readback、per-tier runtime dispatch、key masking、router invariants 均已 fresh packaged PASS）
 - **F-034 single-channel parity replay**：是（`dingtalk-only` / `wecom-only` fresh packaged PASS，combined lane 精确保持 `F-033` probe truth）
 - **packaged channels late-stage authority closure**：是（`dingtalk-only` timeout + late dependency path 已 fresh packaged PASS，WeCom-only 与 combined `F-033` truth 已保持）
 - **RC 级恢复**：是
@@ -466,6 +570,7 @@ Risks：
 - 当前 repo 的 authority order 已冻结
 - `F-031` 已完成 source truth PASS + combined packaged PASS
 - `F-032` 已完成 source truth PASS + combined packaged PASS
+- `unified-model-configuration-surface` 已完成 source PASS + fresh packaged PASS；它是新 dashboard/model-routing configuration surface packet，不重写 `F-031` / `F-027`
 - `F-034` 已完成 source truth PASS + fresh packaged replay PASS，且 closeout 只锚到 `2026-04-24` artifact/replay
 - `packaged-channels-late-stage-authority-closure` 已完成 source truth PASS + fresh packaged replay PASS，且 closeout 只锚到 `2026-04-25` late-stage authority evidence
 - F-035 packaged isolation + install stall hotfix 已有 fresh evidence

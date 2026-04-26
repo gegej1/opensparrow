@@ -171,6 +171,101 @@ fresh verifier 本轮实际验证的 rebuild artifact：
 - new files 已包含在 fresh artifact 中
 - combined packaged truth PASS
 
+## 2026-04-26 unified model configuration surface closeout
+
+本节只记录 `unified-model-configuration-surface` 的 fresh closeout truth。它是新的 dashboard/model-routing configuration surface packet，不是 `F-031` reopen，不是 `F-027` rewrite，不是 native provider routing，也不是 `F-033` / `F-034` / install packet。
+
+Accepted gates：
+
+- Worker-A source implementation complete
+- Source Verifier PASS
+- Packaged Verifier PACKAGED PASS
+- Scope / Authority Reviewer APPROVED
+
+Source evidence：
+
+- `node --check ui/server.mjs` PASS
+- `node --check ui/public/dashboard-model-routing-state.mjs` PASS
+- `node --check ui/lib/model-routing-config.mjs` PASS
+- `node --test ui/tests/dashboard-model-routing-ui.test.mjs` PASS, `4/4`
+- `node --test ui/public/replay-surfaces.test.mjs` PASS, `20/20`
+- `node --test ui/tests/packaged-save-contract-truth.test.mjs` PASS, `9/9`
+- `node --test ui/tests/model-routing-runtime-dispatch.test.mjs` PASS, `1/1`
+- `node --test ui/tests/dashboard-status-shell.test.mjs` PASS, `9/9`
+- `git diff --check` allowed files PASS
+
+Packaged evidence：
+
+- Artifact：`/private/tmp/unified-model-config-rebuild-x7V8BL/gtclaw-mac-release-arm64-20260426-193709/GTClaw-0.1.0-alpha-macOS-arm64`
+- Zip：`/private/tmp/unified-model-config-rebuild-x7V8BL/gtclaw-mac-release-arm64-20260426-193709.zip`
+- SHA256：`d32c040a7cb601561137cb47eec6aa15f77fbeb3c8915e1a7f3eb8f214cf90ea`
+- UI port `19371`, gateway `19372`, router `19373`
+- isolated `HOME`：`/private/tmp/unified-model-config-home-193709`
+- isolated `OPENCLAW_HOME`：`/private/tmp/unified-model-config-openclaw-193709`
+- profile：`unified-model-config-verifier`
+- `/api/status.instance.packRoot` pointed to fresh artifact, not stale deleted `/private/tmp` artifact
+
+Packaged UI truth：
+
+- `/dashboard` verified with Chrome CDP fallback because Playwright unavailable
+- main nav contains `模型配置`
+- no peer main tab `API 配置（上游连接）`
+- no peer main tab `模型智能路由`
+- `单模型` mode has `Base URL` / `API Key` / `Model ID`
+- smart mode has `SIMPLE` / `MEDIUM` / `COMPLEX` / `REASONING`, each with `Base URL` / `API Key` / `Model ID`
+
+Single-mode packaged API truth：
+
+- `POST /api/config/model-routing` → `HTTP 200`
+- `ok=true`
+- `mode=single`
+- `saveState=saved_degraded`
+- response did not echo synthetic key
+- GET readback：
+  - `effectivePrimaryModel = openai/single-packaged-model-193709`
+  - `single.apiKeyConfigured = true`
+  - no plain key
+
+Smart-mode packaged API truth：
+
+- `POST /api/config/model-routing` → `HTTP 200`
+- `ok=true`
+- `mode=smart`
+- `saveState=saved_degraded`
+- GET readback：
+  - `effectivePrimaryModel = opensparrow-router/auto`
+  - all four tiers `apiKeyConfigured=true`
+  - distinct tier models read back
+  - no plain key or `apiKey` property
+
+Runtime per-tier dispatch truth：
+
+- `SIMPLE -> port 19411`, model `simple-fixture-model-193709`
+- `MEDIUM -> port 19412`, model `medium-fixture-model-193709`
+- `COMPLEX -> port 19413`, model `complex-fixture-model-193709`
+- `REASONING -> port 19414`, model `reasoning-fixture-model-193709`
+- each fixture received `/v1/chat/completions`
+- Authorization was checked internally as `authOk=true`
+- no key values were printed
+
+Security truth：
+
+- checked `/api/config/model-routing`, `/api/config`, `/api/status`, `/api/install/status`, `/api/diagnostics`, `diagnostic-bundle.json`, `ui-meta.json`
+- no synthetic tier key leakage
+- no plain `apiKey` property in exposed/readback surfaces
+- router response headers contain tier/model only, no key
+
+Router invariants：
+
+- `providerId = opensparrow-router`
+- `modelTarget = opensparrow-router/auto`
+- preserved through single readback, smart readback, and runtime dispatch
+
+Residual risks：
+
+- `saveState=saved_degraded` is expected in isolated verifier profile because no full daemon install matrix was run; it is not a full daemon install matrix PASS.
+- dashboard initially redirects to setup until config exists; after packaged single-mode save creates config, `/dashboard` loads normally
+
 ## 2026-04-24 F-034 fresh packaged replay closeout
 
 本轮 closeout 只基于 fresh packaged replay，不基于 stale historical PASS。
@@ -333,6 +428,7 @@ Risks：
 
 - P0 packaged diagnostics endpoints 已走通，channel probe persistence 已补齐
 - 2026-04-23 fresh rebuild artifact 已完成 combined packaged verification，但这不改写 true `F-027` 的历史身份
+- 2026-04-26 `unified-model-configuration-surface` fresh packaged verification 已完成 unified `模型配置` surface、single/smart save-readback、per-tier runtime dispatch、key masking 与 router invariants；这不重写 `F-031` 或 `F-027`
 - 本文同步的是 packaged-mac diagnostics / runtime authority / save-contract truth，不是 Windows support truth
 - DingTalk / WeCom 的 channel-specific closure 仍以 `F-030` 的既有 historical closeout 为准，不在本文重写
 - `packaged-channels-late-stage-authority-closure` 只同步 late-stage authority closure truth，不重写 `F-033` / `F-034` 历史身份

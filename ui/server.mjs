@@ -4079,18 +4079,47 @@ async function configureChannel(channel) {
   return errors
 }
 
+function cloneJsonForReadback(value, fallback) {
+  try {
+    return JSON.parse(JSON.stringify(value))
+  } catch {
+    return fallback
+  }
+}
+
+function redactModelRoutingSecretsFromConfig(config = {}) {
+  const next = cloneJsonForReadback(config, {})
+  const routerConfig = next?.plugins?.entries?.[CUSTOM_ROUTER_PROVIDER_ID]?.config
+  if (!isPlainObject(routerConfig)) return next
+
+  const legacyApiKey = String(routerConfig.apiKey ?? '').trim()
+  if (legacyApiKey) routerConfig.apiKeyConfigured = true
+  delete routerConfig.apiKey
+
+  const tierConnectionMap = isPlainObject(routerConfig.tierConnectionMap) ? routerConfig.tierConnectionMap : {}
+  for (const tier of ROUTING_TIERS) {
+    const connection = isPlainObject(tierConnectionMap[tier]) ? tierConnectionMap[tier] : null
+    if (!connection) continue
+    const apiKey = String(connection.apiKey ?? '').trim()
+    if (apiKey) connection.apiKeyConfigured = true
+    delete connection.apiKey
+  }
+
+  return next
+}
+
 /** GET /api/config */
 function handleGetConfig(res) {
   try {
     const raw = fs.readFileSync(CONFIG_FILE, 'utf8')
-    const config = JSON.parse(raw)
+    const config = redactModelRoutingSecretsFromConfig(JSON.parse(raw))
     if (config?.channels?.dingtalk && typeof config.channels.dingtalk === 'object') {
       config.channels.dingtalk = enrichDingtalkChannelForUi(config.channels.dingtalk)
     }
     if (config?.channels?.wecom && typeof config.channels.wecom === 'object') {
       config.channels.wecom = enrichWecomChannelForUi(config.channels.wecom)
     }
-    sendJson(res, 200, config)
+    sendJson(res, 200, redactSecretLikeObject(config))
   } catch (e) {
     sendJson(res, 404, { error: `Cannot read config: ${e.message}` })
   }
