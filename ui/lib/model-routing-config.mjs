@@ -2,6 +2,9 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import {
+  buildCustomRouterProviderConfig,
+  CUSTOM_ROUTER_AUTH_PROFILE_ID,
+  CUSTOM_ROUTER_LOCAL_AUTH_KEY,
   CUSTOM_ROUTER_MODEL_TARGET,
   CUSTOM_ROUTER_PROVIDER_ID,
   normalizeCustomTierModelMap,
@@ -228,6 +231,40 @@ function writeOpenAIAuthProfile(authFile, currentAuth, apiKey) {
   })
 }
 
+function writeCustomRouterAuthProfile(authFile, currentAuth) {
+  const nextAuth = isPlainObject(currentAuth) ? cloneJson(currentAuth, {}) : {}
+  const profiles = isPlainObject(nextAuth.profiles) ? nextAuth.profiles : {}
+  const existingProfile = isPlainObject(profiles[CUSTOM_ROUTER_AUTH_PROFILE_ID])
+    ? profiles[CUSTOM_ROUTER_AUTH_PROFILE_ID]
+    : {}
+  const order = isPlainObject(nextAuth.order) ? nextAuth.order : {}
+  const currentRouterOrder = Array.isArray(order[CUSTOM_ROUTER_PROVIDER_ID])
+    ? order[CUSTOM_ROUTER_PROVIDER_ID].map((item) => String(item ?? '').trim()).filter(Boolean)
+    : []
+  const routerOrder = [
+    CUSTOM_ROUTER_AUTH_PROFILE_ID,
+    ...currentRouterOrder.filter((item) => item !== CUSTOM_ROUTER_AUTH_PROFILE_ID),
+  ]
+
+  writeJsonFile(authFile, {
+    ...nextAuth,
+    version: Number.isInteger(nextAuth.version) ? nextAuth.version : 1,
+    profiles: {
+      ...profiles,
+      [CUSTOM_ROUTER_AUTH_PROFILE_ID]: {
+        ...existingProfile,
+        type: 'api_key',
+        provider: CUSTOM_ROUTER_PROVIDER_ID,
+        key: CUSTOM_ROUTER_LOCAL_AUTH_KEY,
+      },
+    },
+    order: {
+      ...order,
+      [CUSTOM_ROUTER_PROVIDER_ID]: routerOrder,
+    },
+  })
+}
+
 function readBackingState(options = {}) {
   const config = readJsonFile(options.configFile, {}) ?? {}
   const auth = readJsonFile(options.authFile, {}) ?? {}
@@ -434,7 +471,7 @@ function persistSingleMode(options = {}, snapshot, payload = {}) {
       },
     ],
   })
-  setNestedPath(nextConfig, ['models', 'default'], `openai/${model}`)
+  delete nextConfig.models.default
   setNestedPath(nextConfig, ['agents', 'defaults', 'model', 'primary'], `openai/${model}`)
 
   try {
@@ -485,7 +522,7 @@ function persistSmartMode(options = {}, snapshot, payload = {}) {
   const allow = Array.isArray(currentPlugins.allow)
     ? currentPlugins.allow.map((item) => String(item ?? '').trim()).filter(Boolean)
     : []
-  if (!allow.includes(CUSTOM_ROUTER_PROVIDER_ID)) allow.push(CUSTOM_ROUTER_PROVIDER_ID)
+  const allowWithoutVirtualRouter = allow.filter((id) => id !== CUSTOM_ROUTER_PROVIDER_ID)
 
   nextConfig.plugins = {
     ...currentPlugins,
@@ -502,12 +539,17 @@ function persistSmartMode(options = {}, snapshot, payload = {}) {
         },
       },
     },
-    allow,
+    allow: allowWithoutVirtualRouter,
   }
+  setNestedPath(nextConfig, ['models', 'providers', CUSTOM_ROUTER_PROVIDER_ID], buildCustomRouterProviderConfig({
+    port: options.routerPort,
+  }))
+  delete nextConfig.models.default
   setNestedPath(nextConfig, ['agents', 'defaults', 'model', 'primary'], CUSTOM_ROUTER_MODEL_TARGET)
 
   try {
     writeJsonFile(options.configFile, nextConfig)
+    writeCustomRouterAuthProfile(options.authFile, snapshot.auth)
   } catch (error) {
     return {
       ok: false,

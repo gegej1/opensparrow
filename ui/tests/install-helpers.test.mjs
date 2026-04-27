@@ -4,7 +4,9 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-import { copyDirectoryEntries, findBundledPluginArchive } from '../install-helpers.mjs'
+import * as installHelpers from '../install-helpers.mjs'
+
+const { copyDirectoryEntries, findBundledPluginArchive } = installHelpers
 
 function makeTempDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'opensparrow-install-helpers-'))
@@ -38,4 +40,56 @@ test('findBundledPluginArchive resolves scoped package tarballs', () => {
     'wecom-wecom-openclaw-plugin-2026.4.22.tgz',
   )
   assert.equal(findBundledPluginArchive(root, '@missing/plugin'), null)
+})
+
+test('inspectBundledPluginReadiness reports required DingTalk and WeCom archives', () => {
+  assert.equal(typeof installHelpers.inspectBundledPluginReadiness, 'function')
+
+  const root = makeTempDir()
+  fs.writeFileSync(path.join(root, 'openclaw-china-channels-2026.4.24.tgz'), 'x', 'utf8')
+  fs.writeFileSync(path.join(root, 'wecom-wecom-openclaw-plugin-2026.4.22.tgz'), 'x', 'utf8')
+
+  const readiness = installHelpers.inspectBundledPluginReadiness(root, { required: true })
+
+  assert.equal(readiness.required, true)
+  assert.equal(readiness.ready, true)
+  assert.equal(readiness.pluginsDir, root)
+  assert.deepEqual(readiness.missing, [])
+  assert.deepEqual(Object.keys(readiness.archives).sort(), [
+    '@openclaw-china/channels',
+    '@wecom/wecom-openclaw-plugin',
+  ])
+  assert.deepEqual(readiness.archives['@openclaw-china/channels'], {
+    required: true,
+    ready: true,
+    archive: 'plugins/openclaw-china-channels-2026.4.24.tgz',
+  })
+  assert.deepEqual(readiness.archives['@wecom/wecom-openclaw-plugin'], {
+    required: true,
+    ready: true,
+    archive: 'plugins/wecom-wecom-openclaw-plugin-2026.4.22.tgz',
+  })
+})
+
+test('inspectBundledPluginReadiness reports missing package specs by package name', () => {
+  assert.equal(typeof installHelpers.inspectBundledPluginReadiness, 'function')
+
+  const root = makeTempDir()
+  fs.writeFileSync(path.join(root, 'wecom-wecom-openclaw-plugin-2026.4.22.tgz'), 'x', 'utf8')
+
+  const readiness = installHelpers.inspectBundledPluginReadiness(root, { required: true })
+
+  assert.equal(readiness.required, true)
+  assert.equal(readiness.ready, false)
+  assert.deepEqual(readiness.missing, ['@openclaw-china/channels'])
+  assert.deepEqual(readiness.archives['@openclaw-china/channels'], {
+    required: true,
+    ready: false,
+    archive: null,
+  })
+  assert.deepEqual(readiness.archives['@wecom/wecom-openclaw-plugin'], {
+    required: true,
+    ready: true,
+    archive: 'plugins/wecom-wecom-openclaw-plugin-2026.4.22.tgz',
+  })
 })

@@ -13,8 +13,11 @@ test('install state persists channel probes for packaged diagnostics', () => {
 })
 
 test('install flow and diagnostics export carry channelProbes', () => {
-  assert.match(serverSource, /const channelProbes = buildChannelProbes\(\{[\s\S]*dingtalk:\s*dingtalkProbe[\s\S]*wecom:\s*wecomProbe[\s\S]*\},\s*probeSecrets\)/)
+  assert.match(serverSource, /async function convergeInstallGateAuthority\(/)
+  assert.match(serverSource, /channelProbes = buildChannelProbes\(\{[\s\S]*dingtalk:\s*currentDingtalkProbe[\s\S]*wecom:\s*currentWecomProbe[\s\S]*\},\s*probeSecrets\)/)
   assert.match(serverSource, /installTracker\.setChannelProbes\(channelProbes\)/)
+  assert.match(serverSource, /convergeInstallGateAuthority\(\{[\s\S]*installTracker,[\s\S]*\}\)/)
+  assert.match(serverSource, /appendChannelProbeOutcomeMessages\(\{/)
   assert.match(serverSource, /const install = readInstallState\(\)/)
   assert.match(serverSource, /channelProbes,\s*\n\s*artifacts:/)
   assert.match(serverSource, /channelProbes,[\s\S]*channels:\s*channelProbes/)

@@ -6,9 +6,9 @@ script_dir="$(cd "$(dirname "$0")" && pwd)"
 resolve_pack_root() {
   local candidate
   for candidate in \
+    "$script_dir" \
     "$script_dir/.." \
-    "$script_dir/../../.." \
-    "$script_dir"; do
+    "$script_dir/../../.."; do
     if [[ -f "$candidate/ui/server.mjs" ]]; then
       printf '%s\n' "$(cd "$candidate" && pwd)"
       return 0
@@ -68,6 +68,11 @@ clear_quarantine_if_possible() {
 is_git_checkout() {
   local target="$1"
   [[ -e "$target/.git" ]]
+}
+
+is_source_checkout() {
+  local target="$1"
+  is_git_checkout "$target"
 }
 
 verify_runtime_cpu_arch() {
@@ -141,22 +146,43 @@ clear_quarantine_if_possible "$pack_root"
 verify_runtime_cpu_arch "$node_bin"
 verify_node_tool_symlinks "$runtime_root"
 
+launcher_role="packaged-root"
+mode_label="packaged runtime hardening"
+
+if is_source_checkout "$pack_root"; then
+  launcher_role="source-developer"
+  mode_label="source developer/debug mode"
+fi
+
 export OPENCLAW_HOME="${OPENCLAW_HOME:-$pack_root/.gtclaw-state}"
 mkdir -p "$OPENCLAW_HOME"
 export OPENCLAW_PROFILE="${OPENCLAW_PROFILE:-gtclaw-portable}"
 export OPENCLAW_GATEWAY_PORT="${OPENCLAW_GATEWAY_PORT:-$(resolve_free_port 18929)}"
 export OPENSPARROW_ROUTER_PORT="${OPENSPARROW_ROUTER_PORT:-$(resolve_free_port 18412)}"
+export OPENSPARROW_UI_PORT="${OPENSPARROW_UI_PORT:-$(resolve_free_port 19000)}"
 export USB_RUNTIME_ROOT="${USB_RUNTIME_ROOT:-$runtime_root}"
 export OPENSPARROW_AUTO_OPEN="${OPENSPARROW_AUTO_OPEN:-1}"
-export OPENSPARROW_PACKAGED_RUNTIME="${OPENSPARROW_PACKAGED_RUNTIME:-1}"
-export OPENSPARROW_REQUIRE_BUNDLED_PLUGINS="${OPENSPARROW_REQUIRE_BUNDLED_PLUGINS:-1}"
+export OPENSPARROW_LAUNCHER_ROLE="${OPENSPARROW_LAUNCHER_ROLE:-$launcher_role}"
+
+if [[ "$launcher_role" == "source-developer" ]]; then
+  export OPENSPARROW_PACKAGED_RUNTIME="${OPENSPARROW_PACKAGED_RUNTIME:-0}"
+  export OPENSPARROW_REQUIRE_BUNDLED_PLUGINS="${OPENSPARROW_REQUIRE_BUNDLED_PLUGINS:-0}"
+else
+  export OPENSPARROW_PACKAGED_RUNTIME="${OPENSPARROW_PACKAGED_RUNTIME:-1}"
+  export OPENSPARROW_REQUIRE_BUNDLED_PLUGINS="${OPENSPARROW_REQUIRE_BUNDLED_PLUGINS:-1}"
+fi
 
 printf '正在启动 GTClaw 管理界面...\n'
+if [[ "$launcher_role" == "source-developer" ]]; then
+  printf '提示：这是源码 source developer/debug mode，不是 packaged 用户安装入口。\n'
+  printf '如需验证 packaged 安装，请从交付包根目录的 01-开始部署.command 启动。\n'
+fi
 printf 'Home: %s\n' "$OPENCLAW_HOME"
 printf 'Profile: %s\n' "$OPENCLAW_PROFILE"
 printf 'Gateway: %s\n' "$OPENCLAW_GATEWAY_PORT"
 printf 'Router: %s\n' "$OPENSPARROW_ROUTER_PORT"
+printf 'UI: %s\n' "$OPENSPARROW_UI_PORT"
 printf 'Runtime: %s\n' "$USB_RUNTIME_ROOT"
-printf 'Mode: packaged runtime hardening\n'
+printf 'Mode: %s\n' "$mode_label"
 
 exec "$node_bin" "$server_file"

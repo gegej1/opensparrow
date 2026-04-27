@@ -257,6 +257,30 @@ verify_required_staged_packaged_source_files() {
     done
 }
 
+write_mac_compatibility_handoff_launcher() {
+    mkdir -p "${STAGING_DIR}/mac"
+    cat > "${STAGING_DIR}/mac/01-开始部署.command" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+
+script_dir="$(cd "$(dirname "$0")" && pwd)"
+root_launcher="$script_dir/../01-开始部署.command"
+
+if [[ ! -f "$root_launcher" ]]; then
+  echo "错误：mac/01-开始部署.command 是 compatibility / handoff 入口，但找不到交付包根目录的 01-开始部署.command。" >&2
+  echo "请从包含 01-开始部署.command 的交付包根目录启动，或重新生成完整交付包。" >&2
+  read -r -p "按 Enter 关闭..." _ || true
+  exit 1
+fi
+
+printf '提示：mac/01-开始部署.command 仅作为 compatibility / handoff 入口。\n'
+printf '正式 packaged first-click path 是交付包根目录的 01-开始部署.command。\n'
+printf '即将转交：%s\n' "$root_launcher"
+
+exec "$root_launcher" "$@"
+EOF
+}
+
 emit_mac_runtime_truth_manifest() {
     if [[ "$PLATFORM" == "windows" ]]; then
         return 0
@@ -520,6 +544,8 @@ copy_mac() {
     if [[ -f "$main_entry" ]]; then
         log_info "Placing 01-开始部署.command at pack root (main entry point)"
         cp "$main_entry" "${STAGING_DIR}/01-开始部署.command"
+        log_info "Generating mac/01-开始部署.command compatibility handoff"
+        write_mac_compatibility_handoff_launcher
     else
         log_warn "01-开始部署.command not found — skipping root copy"
     fi

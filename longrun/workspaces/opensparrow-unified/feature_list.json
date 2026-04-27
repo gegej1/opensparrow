@@ -839,5 +839,176 @@
     "evidence_hint": "Accepted gates: Worker-A source implementation complete + Source Verifier PASS + Packaged Verifier PACKAGED PASS + Scope / Authority Reviewer APPROVED. Packaged artifact `/private/tmp/unified-model-config-rebuild-x7V8BL/gtclaw-mac-release-arm64-20260426-193709/GTClaw-0.1.0-alpha-macOS-arm64`, zip `/private/tmp/unified-model-config-rebuild-x7V8BL/gtclaw-mac-release-arm64-20260426-193709.zip`, SHA256 `d32c040a7cb601561137cb47eec6aa15f77fbeb3c8915e1a7f3eb8f214cf90ea`, UI/gateway/router ports `19371/19372/19373`, isolated `HOME` `/private/tmp/unified-model-config-home-193709`, isolated `OPENCLAW_HOME` `/private/tmp/unified-model-config-openclaw-193709`, profile `unified-model-config-verifier`, and controlled runtime fixtures SIMPLE `19411`, MEDIUM `19412`, COMPLEX `19413`, REASONING `19414`",
     "risk": "medium",
     "passes": true
+  },
+  {
+    "id": "packaged-status-timeout-install-redirect-hotfix",
+    "priority": 1,
+    "category": "reliability",
+    "component": "packaged-status-and-install-wizard",
+    "description": "Fix the packaged mac install/dashboard reliability regression where `/api/status` exceeded the browser timeout after install and the wizard stayed on the spinner even after `/api/install/status` reported completed.",
+    "depends_on": [
+      "F-032",
+      "unified-model-configuration-surface"
+    ],
+    "acceptance_criteria": [
+      "`/api/status` keeps same-profile authoritative runtime truth while probing daemon status and gateway health concurrently so packaged dashboard status can complete within the UI timeout budget.",
+      "The install wizard treats a terminal `/api/install/status` payload with `status=completed` / `installState=completed` and daemon or gateway-fallback runtime as install-complete and redirects to `/dashboard` instead of waiting on a slow follow-up status call.",
+      "Source regression tests cover concurrent status probing and the timed-out install request plus completed install-status redirect path.",
+      "Fresh packaged mac smoke confirms the built artifact reports the fresh `instance.packRoot`, no-config `/api/status` returns within 10 seconds, an isolated no-channel install reaches `installState=completed`, and installed `/api/status` returns `installed=true`, `daemon=running`, `gatewayHealthy=true` within 10 seconds."
+    ],
+    "steps": [
+      "Reproduce the packaged symptom by showing direct `/api/status` exceeded the existing 10 second UI timeout while `/api/install/status` had already completed.",
+      "Add focused source regressions for status probe concurrency and terminal install-status redirect.",
+      "Implement bounded runtime probe parallelization in `ui/server.mjs` and terminal install completion handling in `ui/public/index.html`.",
+      "Run source verification and build a fresh mac package for isolated smoke verification.",
+      "Record artifact path, checksum, and smoke evidence in longrun progress."
+    ],
+    "evidence_hint": "Source PASS plus fresh artifact `/private/tmp/packaged-status-fix-build-hbQu8j/gtclaw-mac-release-arm64-20260427-010231/GTClaw-0.1.0-alpha-macOS-arm64`, zip `/private/tmp/packaged-status-fix-build-hbQu8j/gtclaw-mac-release-arm64-20260427-010231.zip`, SHA256 `6a1b62360dca1ea1bb6b7eb4f3feda72b43a741b8b998708d8eb901fd2b3df63`; smoke profile `packaged-status-fix`, UI/gateway/router ports `20180/20181/20182`, no-config `/api/status` 3.27s, no-channel install `HTTP 200` completed in 52.47s, installed `/api/status` 2.11s with `installed=true`, `daemon=running`, `runtimeMode=daemon`, `gatewayHealthy=true`.",
+    "risk": "medium",
+    "passes": true
+  },
+  {
+    "id": "packaged-router-latest-turn-routing-hotfix",
+    "priority": 1,
+    "category": "runtime",
+    "component": "packaged-model-router",
+    "description": "Fix the packaged smart-router regression where Feishu, WeCom, and DingTalk channel sessions could classify a new simple user prompt as REASONING because the router inspected all historical user messages instead of the latest user turn.",
+    "depends_on": [
+      "unified-model-configuration-surface",
+      "packaged-status-timeout-install-redirect-hotfix"
+    ],
+    "acceptance_criteria": [
+      "The router prompt extractor uses the latest non-empty user message, including array text blocks, instead of concatenating every historical user message in the request.",
+      "Regression tests prove an earlier REASONING user prompt followed by the current Chinese translation prompt routes to SIMPLE, while max_tokens=8192 no longer forces every tier to REASONING.",
+      "Pure backend channel-shaped simulation covers Feishu, WeCom, and DingTalk prompts across SIMPLE, MEDIUM, COMPLEX, and REASONING without using live platform callbacks.",
+      "Current smart configuration truth is recorded as SIMPLE/MEDIUM `gpt-5.4-mini`, COMPLEX `gpt-5.4`, REASONING `gpt-5.5`; `gpt-4o-mini` is not a smart tier in this configuration.",
+      "Fresh mac packaged output contains the updated router helper and a zip passes integrity verification."
+    ],
+    "steps": [
+      "Reproduce the live failure by probing the router with a prior REASONING prompt in history and a simple latest prompt, confirming it selected REASONING on the old helper.",
+      "Add a focused runtime dispatch regression for latest-turn classification.",
+      "Update `extractPromptFromMessages()` to return the latest non-empty user content.",
+      "Run source tests and build a fresh mac package with a packaged helper readback check.",
+      "Record artifact path, checksum, DingTalk applicability, and residual real-channel E2E risk in longrun progress."
+    ],
+    "evidence_hint": "Source PASS plus fresh package root `dist/usb-pack/opensparrow-0.1.0-alpha`, zip `/private/tmp/packaged-router-latest-turn-20260427-030615.zip`, SHA256 `a07190e8cb27c81f86c8c91ba4acab01ae34026edfcd7178282354af7aff26cb`, packaged helper check proving the latest simple Chinese prompt is extracted without the earlier `solve this logic proof` history, and pure backend packaged simulation proving Feishu/WeCom/DingTalk each route SIMPLE/MEDIUM/COMPLEX/REASONING to the expected fixture model.",
+    "risk": "medium",
+    "passes": true
+  },
+  {
+    "id": "packaged-mac-wrapper-packroot-ui-port-hotfix",
+    "priority": 1,
+    "category": "reliability",
+    "component": "packaged-mac-wrapper",
+    "description": "Fix the packaged mac launcher regression where running the generated package from inside the repo `dist/` tree could resolve `packRoot` back to the source checkout and reuse an occupied default UI port, causing the browser to show stale install failures such as missing bundled DingTalk channel plugins.",
+    "depends_on": [
+      "packaged-router-latest-turn-routing-hotfix"
+    ],
+    "acceptance_criteria": [
+      "The mac launcher resolves the packaged script directory before ancestor checkout fallbacks, so the root `01-开始部署.command` inside `dist/usb-pack/opensparrow-0.1.0-alpha` uses that package as `packRoot` even when the package lives under a repo checkout.",
+      "The mac launcher assigns `OPENSPARROW_UI_PORT` with `resolve_free_port 19000` and prints the selected UI port, matching the existing gateway/router free-port behavior.",
+      "The current generated package copies of root `01-开始部署.command` and `mac/01-开始部署.command` carry the same hotfix so the user-visible Finder path is immediately testable without a rebuild.",
+      "A live collision smoke with an existing source UI on `19000` proves the packaged launcher starts on an alternate UI port and `/api/status.instance.packRoot` points to the generated package, not the worktree root."
+    ],
+    "steps": [
+      "Reproduce the user symptom by confirming the generated package contains bundled plugin archives while the live `19000` service reported `instance.packRoot` as the worktree root.",
+      "Add wrapper regression tests for packaged script-directory precedence and UI free-port selection.",
+      "Update source mac wrapper and the current generated package wrapper copies.",
+      "Run wrapper tests, shell syntax checks, live port-collision smoke, diff hygiene, and zip integrity verification.",
+      "Record the new zip path, checksum, and known legacy init residual in longrun progress."
+    ],
+    "evidence_hint": "Source wrapper regression PASS `node --test ui/tests/packaged-mac-wrapper-hardening.test.mjs` with 5/5 tests; `bash -n` PASS for source/root-dist/mac-dist launchers; live collision smoke while old `19000` was occupied chose UI `19001`, router `18413`, runtimeRoot `dist/usb-pack/opensparrow-0.1.0-alpha/vendor/mac-openclaw`, and `/api/status.instance.packRoot` `dist/usb-pack/opensparrow-0.1.0-alpha`; fresh zip `/private/tmp/packaged-router-wrapper-root-ui-port-hotfix-20260427-085516.zip` passed `unzip -tq`, SHA256 `e0107fda9ea58ed2acd8826b0dac525536c8553fb3fa09c74f4bd21a535158d2`; `git diff --check` PASS; `init.sh` remains blocked only by known missing frozen legacy dir `opensparrow_win` in this worktree.",
+    "risk": "medium",
+    "passes": true
+  },
+  {
+    "id": "packaged-mac-entry-contract-hardening",
+    "priority": 1,
+    "category": "reliability",
+    "component": "packaged-mac-entry-contract",
+    "description": "Close the packaged mac entry contract so user-facing installs start only from the package root launcher, compatibility launchers hand off correctly, status readback proves the fresh package root, and bundled plugin archive readiness fails clearly when the wrong root or incomplete package is used.",
+    "depends_on": [
+      "packaged-mac-wrapper-packroot-ui-port-hotfix"
+    ],
+    "acceptance_criteria": [
+      "Source checks all passed, including wrapper `bash -n`, build script `bash -n`, server/helper `node --check`, related `node --test`, and `git diff --check`.",
+      "Fresh package was rebuilt by `scripts/build-usb-pack.sh --platform mac` at `dist/usb-pack/opensparrow-0.1.0-alpha`; package root stat was `Apr 27 10:45:47 2026`, and root launcher plus `mac/01` stat was `Apr 27 10:45:43 2026`.",
+      "The package root launcher SHA matched the source wrapper, `mac/01` was an independent handoff SHA, and the root launcher printed UI `19001` with Mode `packaged runtime hardening` while stale `localhost:19000` PID `11496` remained a source/worktree instance.",
+      "`/api/status.instance.packRoot` matched the fresh package root, `bundledPlugins.required=true`, `ready=true`, `missing=[]`, and both `plugins/openclaw-china-channels-2026.4.24.tgz` and `plugins/wecom-wecom-openclaw-plugin-2026.4.22.tgz` were ready.",
+      "Generated `mac/01-开始部署.command` passed as compatibility / handoff wording, handed off to the root launcher, and did not directly run `ui/server.mjs`.",
+      "Missing DingTalk archive negative passed: isolated fixture deletion produced `ready=false`, `missing` included `@openclaw-china/channels`, `/api/install` returned `HTTP 500`, and the wording pointed to wrong `packRoot` / incomplete package / root `01-开始部署.command` or regenerating a complete package without online install, ClawHub, or 在线安装 fallback wording."
+    ],
+    "steps": [
+      "Review the packet spec, plan, tasks, repo governance docs, existing packaged install docs, diagnostics docs, feature list, progress log, git status, and diff stat.",
+      "Record the entry contract in install, SOP, diagnostics, and release-process documentation without modifying implementation code.",
+      "Update longrun feature and progress records with Spec Review APPROVED, Batch Review APPROVED, and Batch Verify PASS.",
+      "Run closeout hygiene checks on the scoped documentation and JSON updates.",
+      "Write durable Mem0 memory for the packaged mac entry contract decision."
+    ],
+    "evidence_hint": "Accepted gates: Spec Review APPROVED + Batch Review APPROVED + Batch Verify PASS. Fresh package root `/Users/eduardogan/.config/superpowers/worktrees/opensparrow/feature-p0-packaged-mac-diagnostics/dist/usb-pack/opensparrow-0.1.0-alpha`; launcher printed UI `19001`; stale `localhost:19000` PID `11496` was source/worktree `packRoot`; `/api/status.instance.packRoot` matched the fresh package root; bundled DingTalk and WeCom archives were ready; missing DingTalk archive negative returned the packaged wrong-root/incomplete-package failure without online fallback wording.",
+    "risk": "medium",
+    "passes": true
+  },
+  {
+    "id": "packaged-runtime-profile-config-authority-hardening",
+    "priority": 1,
+    "category": "reliability",
+    "component": "packaged-runtime-profile-config-authority",
+    "description": "Close packaged runtime profile/config authority so OpenClaw child processes, status readback, install readiness, channel probes, and gateway health use the same current packaged profile config authority while preserving stale/foreign gateway safety and secret redaction.",
+    "depends_on": [
+      "packaged-mac-entry-contract-hardening"
+    ],
+    "acceptance_criteria": [
+      "Accepted gates are Spec Review APPROVED, Worker DONE, Batch Review APPROVED, and Batch Verify PASS.",
+      "Source verification passed: `node --check ui/server.mjs`, runtime profile config authority tests `3/3`, runtime status authority tests `6/6`, runtime state stability tests `3/3`, channel probe diagnostics tests `3/3`, install retry guards tests `6/6`, and `git diff --check`.",
+      "Fresh package verification passed after `scripts/build-usb-pack.sh --platform mac`; fresh package root was `/Users/eduardogan/.config/superpowers/worktrees/opensparrow/feature-p0-packaged-mac-diagnostics/dist/usb-pack/opensparrow-0.1.0-alpha`, package root stat was `2026-04-27 14:05:26 +0800`, root launcher stat was `2026-04-27 14:05:23 +0800`, bundled plugin tgz stats were `2026-04-27 14:04:34 / 14:04:35 +0800`, packaged `ui/server.mjs` and root launcher matched source via `diff -q`, and no zip was generated.",
+      "Package-root launcher verification used isolated state and launcher-printed UI ports `54486`, `54490`, and `55752`; `/api/status.instance.packRoot` matched the fresh package root, profile was `gtclaw-portable`, profileDir/configPath were isolated `.openclaw-gtclaw-portable` paths, and daemon status, health, and channel probe used the same server-side current-profile config authority.",
+      "Status authority classifications were `gateway_unhealthy` for baseline, `authoritative_ready` for DingTalk controlled replay, and `foreign_gateway_port` for the foreign listener negative; status readback confirmed `daemonStatusUsesProfileConfig=true` and `healthUsesProfileConfig=true`, with config path token mismatch covered by source tests.",
+      "DingTalk controlled replay persisted configured/enabled state with credential-present metadata, returned `/api/install` `HTTP 200`, `installState=completed`, `requestedChannelReadiness.dingtalk=true`, direct `/api/dingtalk/probe` `ready=true`, and classification `authoritative_ready` without real credential use or printed credential values.",
+      "Stale/foreign port negative preserved safety: external listener occupied gateway port `55753`, `/api/status` returned `installed=false`, `runtimeMode=port-occupied`, `gatewayPortBusy=true`, classification `foreign_gateway_port`, daemon not authoritative running, and `gatewayHealthy=false`.",
+      "Secret safety passed across status, install status, diagnostics, diagnostics export, diagnostic bundle, install-state, install log, and install response summary; no synthetic secret values, token, API key, auth profile secret, channel credential, or bearer token was printed, and no user-facing config-env action instruction was added."
+    ],
+    "steps": [
+      "Read project rules, governance, packet spec/plan/tasks, packaged diagnostics, feature list, progress log, worktree identity, and existing dirty state.",
+      "Record the verified profile/config authority facts in packaged mac diagnostics without changing implementation behavior.",
+      "Update longrun feature tracking and progress with only Spec Review, Worker, Batch Review, and Batch Verify facts.",
+      "Run JSON and diff hygiene validation for the closeout write-set.",
+      "Store one durable Mem0 decision for the packaged runtime profile/config authority closure."
+    ],
+    "evidence_hint": "Spec Review APPROVED + Worker DONE + Batch Review APPROVED + Batch Verify PASS. Fresh package root `/Users/eduardogan/.config/superpowers/worktrees/opensparrow/feature-p0-packaged-mac-diagnostics/dist/usb-pack/opensparrow-0.1.0-alpha`; UI ports `54486/54490/55752`; gateway/router ports `54487/54488`, `54489/54491`, `55753/55754`; status classifications `gateway_unhealthy`, `authoritative_ready`, and `foreign_gateway_port`; DingTalk replay completed with credential-present state and no real credential values printed; secret safety inspection found no leaks.",
+    "risk": "medium",
+    "passes": true
+  },
+  {
+    "id": "packaged-install-gate-authority-consumption-hardening",
+    "priority": 1,
+    "category": "reliability",
+    "component": "packaged-install-gate-authority-consumption",
+    "description": "Close packaged install-gate authority consumption so requested-channel readiness uses bounded same-profile authority convergence before terminal failure, preventing transient DingTalk daemon unknown snapshots from persisting after the same instance reaches authoritative ready while preserving foreign-port, gateway-unhealthy, config-token-mismatch, and missing-credential failures.",
+    "depends_on": [
+      "packaged-runtime-profile-config-authority-hardening"
+    ],
+    "acceptance_criteria": [
+      "Accepted gates are Spec Review APPROVED, Worker DONE, Batch Review APPROVED, and Batch Verify PASS.",
+      "Root cause is frozen as install gate consuming stale/transient probe snapshots as terminal requested-channel failure; this packet fixes install gate authority consumption and does not reopen the prior profile config propagation packet.",
+      "Source verification passed: `node --check ui/server.mjs`, install gate authority consumption tests `5/5`, install retry guards tests `6/6`, channel probe diagnostics tests `3/3`, runtime state stability tests `3/3`, runtime profile config authority tests `3/3`, and `git diff --check`.",
+      "Fresh package verification passed after `scripts/build-usb-pack.sh --platform mac`; fresh package root was `/Users/eduardogan/.config/superpowers/worktrees/opensparrow/feature-p0-packaged-mac-diagnostics/dist/usb-pack/opensparrow-0.1.0-alpha`, no zip was generated, package root mtime was `Apr 27 16:24:49 2026`, root launcher mtime was `Apr 27 16:24:44 2026`, source/package `ui/server.mjs` SHA256 was `13ff72e8425ceb1b9a22d045c6e66fab50fc77a5d49f81778959127c121f6bfd`, build output removed previous staging and printed `USB pack built successfully`, and package plugin tgz mtime matched the build.",
+      "Fresh package launch used package root `01-开始部署.command`, printed UI port `19003` instead of default `19000`, isolated transient replay `HOME` and `OPENCLAW_HOME`, success replay gateway/router ports `18931/18414`, foreign negative gateway/router ports `18929/18414`, and cleanup removed launcher/temp dirs/foreign listener PID `64983` with no listener residue on `19003/18929/18931/18414`.",
+      "DingTalk install gate replay passed via controlled fixture with safe synthetic credentials and real fresh package `/api/install`: HTTP `200`, `installState=completed`, `requestedChannelReadiness.dingtalk=true`, probe status `ok`, ready `true`, daemon `running`, authority classification `authoritative_ready`, warnings/errors `0/0`, and final install state used latest probe/authority evidence after transient daemon `unknown -> running` and health `gateway_unhealthy -> ok`.",
+      "Status authority readback passed: `/api/status.instance.packRoot` matched the fresh package root, profile was `gtclaw-portable`, profileDir/configPath were isolated packaged profile paths, gatewayPort was `18931`, classification was `authoritative_ready`, and daemon status plus health used profile config authority.",
+      "Negative verification passed: foreign port returned packaged `/api/install` `500`, `installState=failed`, DingTalk readiness false, classification `foreign_gateway_port`, runtime `port-occupied`, and `gatewayHealthy=false`; gateway unhealthy returned `500` with `gateway_unhealthy`; config path token mismatch returned `500` with `config_path_token_mismatch`; missing DingTalk credential remains source-covered as `400` input validation.",
+      "Secret safety passed across status, install status, diagnostics, diagnostics export, install-state, diagnostic bundle, install log, and install response summary with secret scan hits `[]` and no token, API key, auth profile secret, channel credential, or bearer token printed.",
+      "After closeout, the user manually reran the package-root `01-开始部署.command` path and confirmed the previously observed DingTalk install failure no longer reproduced; `dist/usb-pack/opensparrow-0.1.0-alpha` is recorded as the latest usable packaged mac root for this branch."
+    ],
+    "steps": [
+      "Read project rules, governance, packet spec/plan/tasks, packaged diagnostics, feature list, progress log, worktree identity, and existing dirty state.",
+      "Record the verified install-gate authority consumption facts in packaged mac diagnostics without changing implementation behavior.",
+      "Update longrun feature tracking and progress with only Spec Review, Worker, Batch Review, and Batch Verify facts.",
+      "Run JSON, diff hygiene, and scoped workaround wording validation for the closeout write-set.",
+      "Store one durable Mem0 decision for the packaged install-gate authority consumption closure."
+    ],
+    "evidence_hint": "Spec Review APPROVED + Worker DONE + Batch Review APPROVED + Batch Verify PASS. Fresh package root `/Users/eduardogan/.config/superpowers/worktrees/opensparrow/feature-p0-packaged-mac-diagnostics/dist/usb-pack/opensparrow-0.1.0-alpha`; UI port `19003`; success gateway/router `18931/18414`; foreign negative `18929/18414`; SHA256 `13ff72e8425ceb1b9a22d045c6e66fab50fc77a5d49f81778959127c121f6bfd`; DingTalk transient authority replay completed after daemon `unknown -> running` and health `gateway_unhealthy -> ok`; negative classifications `foreign_gateway_port`, `gateway_unhealthy`, and `config_path_token_mismatch` remained failures; secret scan hits `[]`; user manual package-root rerun confirmed the current package is normal and latest usable.",
+    "risk": "medium",
+    "passes": true
   }
 ]

@@ -242,9 +242,24 @@ test('router runtime dispatch uses each tier connection baseUrl, key, and model'
 
   const cases = [
     { tier: 'SIMPLE', body: { messages: [{ role: 'user', content: 'hi' }], max_tokens: 50 } },
+    {
+      tier: 'SIMPLE',
+      body: {
+        messages: [
+          { role: 'user', content: 'solve this logic proof' },
+          { role: 'assistant', content: 'ok' },
+          { role: 'user', content: '你好，回复 OK。\n\n把这句话翻译成英文：今天下午三点开会。' },
+        ],
+        max_tokens: 50,
+      },
+    },
     { tier: 'MEDIUM', body: { messages: [{ role: 'user', content: '请总结这段内容' }], max_tokens: 800 } },
     { tier: 'COMPLEX', body: { messages: [{ role: 'user', content: 'debug this stack trace and fix the code' }], max_tokens: 500 } },
     { tier: 'REASONING', body: { messages: [{ role: 'user', content: 'solve this logic proof' }], max_tokens: 1700 } },
+    { tier: 'SIMPLE', body: { messages: [{ role: 'user', content: 'hi' }], max_tokens: 8192 } },
+    { tier: 'MEDIUM', body: { messages: [{ role: 'user', content: '请总结这段内容' }], max_tokens: 8192 } },
+    { tier: 'COMPLEX', body: { messages: [{ role: 'user', content: 'debug this stack trace and fix the code' }], max_tokens: 8192 } },
+    { tier: 'REASONING', body: { messages: [{ role: 'user', content: 'solve this logic proof' }], max_tokens: 8192 } },
   ]
 
   for (const item of cases) {
@@ -258,9 +273,153 @@ test('router runtime dispatch uses each tier connection baseUrl, key, and model'
     assert.equal(response.headers.get('x-opensparrow-router-model'), `${item.tier.toLowerCase()}-runtime-model`)
   }
 
+  const expectedCallsByTier = cases.reduce((acc, item) => {
+    acc[item.tier] = (acc[item.tier] ?? 0) + 1
+    return acc
+  }, {})
+
   for (const tier of TIERS) {
-    assert.equal(upstreams[tier].calls.length, 1)
-    assert.equal(upstreams[tier].calls[0].authorizationOk, true)
-    assert.equal(upstreams[tier].calls[0].modelOk, true)
+    assert.equal(upstreams[tier].calls.length, expectedCallsByTier[tier])
+    assert.equal(upstreams[tier].calls.every((call) => call.authorizationOk), true)
+    assert.equal(upstreams[tier].calls.every((call) => call.modelOk), true)
+  }
+})
+
+test('router runtime dispatch handles Feishu WeCom and DingTalk channel-shaped prompts', { timeout: 20000 }, async (t) => {
+  const homeDir = makeTempDir()
+  const uiPort = await findFreePort()
+  const routerPort = await findFreePort()
+  const upstreams = {}
+
+  for (const tier of TIERS) {
+    upstreams[tier] = await startUpstreamFixture({
+      tier,
+      expectedModel: `${tier.toLowerCase()}-channel-model`,
+      expectedApiKey: `${tier.toLowerCase()}-channel-key`,
+    })
+    t.after(async () => {
+      await stopServer(upstreams[tier].server)
+    })
+  }
+
+  writeJson(getConfigPath(homeDir), {
+    agents: {
+      defaults: {
+        model: {
+          primary: 'opensparrow-router/auto',
+        },
+      },
+    },
+    plugins: {
+      allow: ['opensparrow-router'],
+      entries: {
+        'opensparrow-router': {
+          enabled: true,
+          config: {
+            tierConnectionMap: Object.fromEntries(TIERS.map((tier) => [
+              tier,
+              {
+                baseUrl: upstreams[tier].baseUrl,
+                apiKey: `${tier.toLowerCase()}-channel-key`,
+                model: `${tier.toLowerCase()}-channel-model`,
+              },
+            ])),
+            tierModelMap: Object.fromEntries(TIERS.map((tier) => [tier, `${tier.toLowerCase()}-channel-model`])),
+            routing: {},
+          },
+        },
+      },
+    },
+  })
+
+  const child = await startUiServer({ homeDir, uiPort, routerPort })
+  t.after(async () => {
+    await stopChild(child)
+  })
+
+  const simplePrompt = '你好，回复 OK。\n\n把这句话翻译成英文：今天下午三点开会。'
+  const mediumPrompt = '请分析这段会议纪要，列出三条行动项、负责人和截止时间。'
+  const complexPrompt = '请 debug 这段 TypeScript 错误，找出根因并给出修复方案。'
+  const reasoningPrompt = '请一步步推理并证明这个逻辑命题是否成立。'
+
+  const channelBodies = [
+    {
+      channel: 'feishu',
+      build: (prompt, tier) => ({
+        model: 'opensparrow-router/auto',
+        max_tokens: 8192,
+        messages: [
+          { role: 'user', content: tier === 'SIMPLE' ? 'solve this logic proof' : '上一轮普通消息' },
+          { role: 'assistant', content: 'ok' },
+          { role: 'user', content: prompt },
+        ],
+      }),
+    },
+    {
+      channel: 'wecom',
+      build: (prompt, tier) => ({
+        model: 'opensparrow-router/auto',
+        max_tokens: 8192,
+        messages: [
+          { role: 'user', content: tier === 'SIMPLE' ? 'solve this logic proof' : '上一轮普通消息' },
+          { role: 'assistant', content: 'ok' },
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: `WeCom\nfrom: user:wx-user\n\n${prompt}` },
+            ],
+          },
+        ],
+      }),
+    },
+    {
+      channel: 'dingtalk',
+      build: (prompt, tier) => ({
+        model: 'default',
+        max_tokens: 8192,
+        messages: [
+          { role: 'user', content: tier === 'SIMPLE' ? 'solve this logic proof' : '上一轮普通消息' },
+          { role: 'assistant', content: 'ok' },
+          { role: 'user', content: `DingTalk\nfrom: user:ding-user\n\n${prompt}` },
+        ],
+      }),
+    },
+  ]
+  const promptsByTier = {
+    SIMPLE: simplePrompt,
+    MEDIUM: mediumPrompt,
+    COMPLEX: complexPrompt,
+    REASONING: reasoningPrompt,
+  }
+
+  const cases = channelBodies.flatMap(({ channel, build }) => (
+    TIERS.map((tier) => ({
+      channel,
+      tier,
+      body: build(promptsByTier[tier], tier),
+    }))
+  ))
+
+  for (const item of cases) {
+    const response = await fetch(`http://127.0.0.1:${routerPort}/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-openclaw-message-channel': item.channel,
+        'x-openclaw-session-key': `${item.channel}:simulated-session`,
+      },
+      body: JSON.stringify(item.body),
+    })
+    assert.equal(response.status, 200, `${item.channel} ${item.tier}`)
+    assert.equal(response.headers.get('x-opensparrow-router-tier'), item.tier, `${item.channel} ${item.tier}`)
+    assert.equal(response.headers.get('x-opensparrow-router-model'), `${item.tier.toLowerCase()}-channel-model`, `${item.channel} ${item.tier}`)
+    const payload = await response.json()
+    assert.equal(payload.model, `${item.tier.toLowerCase()}-channel-model`, `${item.channel} ${item.tier}`)
+  }
+
+  for (const tier of TIERS) {
+    assert.equal(upstreams[tier].calls.length, channelBodies.length)
+    assert.equal(upstreams[tier].calls.every((call) => call.authorizationOk), true)
+    assert.equal(upstreams[tier].calls.every((call) => call.modelOk), true)
   }
 })

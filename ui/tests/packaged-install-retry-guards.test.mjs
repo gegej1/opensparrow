@@ -62,10 +62,18 @@ test('packaged plugin install can require bundled tarballs and keeps openclaw cw
   )
   assert.match(
     serverSource,
-    /if \(REQUIRE_BUNDLED_PLUGINS && !bundledArchive\) \{[\s\S]*bundled plugin archive[\s\S]*避免在新 Mac 上走在线安装/,
+    /const bundledReadiness = inspectBundledPluginReadiness\(BUNDLED_PLUGINS_DIR,[\s\S]*specs: \[packageSpec\],[\s\S]*if \(REQUIRE_BUNDLED_PLUGINS && !bundledReadiness\.ready\) \{/,
   )
   assert.match(
     serverSource,
-    /const proc = spawn\([\s\S]*env: \{ \.\.\.process\.env, CI: process\.env\.CI \?\? '1' \},[\s\S]*stdio: \['ignore', 'pipe', 'pipe'\],[\s\S]*cwd: PACK_ROOT,/,
+    /function buildMissingBundledPluginArchiveError\(packageSpec, readiness\) \{[\s\S]*当前 packRoot 不是交付包根或交付包不完整[\s\S]*当前 packRoot:[\s\S]*已检查 plugins 目录:[\s\S]*缺少归档:[\s\S]*请从交付包根目录的 01-开始部署\.command 启动，或重新生成\/获取包含 plugins\/ 的完整交付包/,
+  )
+  assert.doesNotMatch(
+    serverSource,
+    /REQUIRE_BUNDLED_PLUGINS[\s\S]{0,1200}(在线安装|online install|ClawHub)/i,
+  )
+  assert.match(
+    serverSource,
+    /const proc = spawn\([\s\S]*env: buildOpenClawChildEnv\(\),[\s\S]*stdio: \['ignore', 'pipe', 'pipe'\],[\s\S]*cwd: PACK_ROOT,/,
   )
 })

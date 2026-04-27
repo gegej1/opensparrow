@@ -2,6 +2,8 @@ export const OPENAI_COMPAT_API = 'openai-completions'
 export const CUSTOM_ROUTER_PROVIDER_ID = 'opensparrow-router'
 export const CUSTOM_ROUTER_MODEL_ID = 'auto'
 export const CUSTOM_ROUTER_MODEL_TARGET = `${CUSTOM_ROUTER_PROVIDER_ID}/${CUSTOM_ROUTER_MODEL_ID}`
+export const CUSTOM_ROUTER_AUTH_PROFILE_ID = `${CUSTOM_ROUTER_PROVIDER_ID}:default`
+export const CUSTOM_ROUTER_LOCAL_AUTH_KEY = 'opensparrow-router-local'
 export const DEFAULT_CUSTOM_ROUTER_PORT = 8412
 
 export const DEFAULT_CUSTOM_TIER_MODEL_MAP = Object.freeze({
@@ -102,19 +104,20 @@ export function extractProviderModelFromResponseText(value, fallback = '') {
 
 export function extractPromptFromMessages(messages) {
   if (!Array.isArray(messages)) return ''
-  const parts = []
-  for (const message of messages) {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
     if (String(message?.role ?? '') !== 'user') continue
+    const parts = []
     const content = message?.content
     if (typeof content === 'string') {
       parts.push(content)
-      continue
-    }
-    if (Array.isArray(content)) {
+    } else if (Array.isArray(content)) {
       for (const block of content) {
         if (block?.type === 'text' && typeof block?.text === 'string') parts.push(block.text)
       }
     }
+    const prompt = parts.join('\n').trim()
+    if (prompt) return prompt
   }
-  return parts.join('\n').trim()
+  return ''
 }

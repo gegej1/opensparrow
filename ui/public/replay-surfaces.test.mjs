@@ -770,6 +770,85 @@ test('wizard install redirects to dashboard after a successful install response 
   }
 })
 
+test('wizard redirects after timed-out install request when install status is already completed', async () => {
+  const { context, factory } = loadPageFactory('ui/public/index.html', 'wizard')
+  context.window.location.search = '?launch=timeoutcase'
+  const instance = factory()
+  instance.$nextTick = (fn) => (typeof fn === 'function' ? fn() : undefined)
+
+  instance.selectedChannels = ['dingtalk']
+  instance.credentials.dingtalk = {
+    corpId: 'ding-corp',
+    clientId: 'ding-client',
+    robotCode: 'ding-robot',
+    clientSecret: 'ding-secret',
+  }
+
+  instance.startInstallStatusPolling = () => {}
+  instance.stopInstallStatusPolling = () => {}
+
+  const originalSetTimeout = context.setTimeout
+  const originalWindowSetTimeout = context.window.setTimeout
+  context.setTimeout = (fn) => {
+    if (typeof fn === 'function') fn()
+    return 0
+  }
+  context.window.setTimeout = context.setTimeout
+
+  let waitUntilInstalledCalls = 0
+  instance.waitUntilInstalled = async () => {
+    waitUntilInstalledCalls += 1
+    return false
+  }
+  instance.waitForInstallTerminalState = async () => ({
+    status: 'completed',
+    installState: 'completed',
+    summary: '安装完成，可导出诊断信息',
+    runtimeMode: 'daemon',
+    steps: [
+      { key: 'plugins', status: 'done' },
+      { key: 'config', status: 'done' },
+      { key: 'channels', status: 'done' },
+      { key: 'runtime', status: 'done' },
+      { key: 'probe', status: 'done' },
+    ],
+  })
+
+  instance.fetchWithTimeout = async (url, options = {}) => {
+    if (url === '/api/install/status') {
+      return createResponse({
+        status: 'running',
+        summary: '正在部署中',
+        steps: [
+          { key: 'plugins', status: 'running' },
+        ],
+      })
+    }
+    if (url === '/api/install' && options.method === 'POST') {
+      const abortError = new Error('The operation was aborted.')
+      abortError.name = 'AbortError'
+      throw abortError
+    }
+    throw new Error(`Unexpected request: ${url}`)
+  }
+
+  try {
+    await instance.startInstall()
+    assert.equal(waitUntilInstalledCalls, 0)
+    assert.equal(instance.installDone, true)
+    assert.equal(instance.installError, false)
+    assert.equal(instance.installLoadingMessage, '安装完成，可导出诊断信息')
+    assert.deepEqual(
+      toPlain(instance.installTasks.map((task) => task.status)),
+      ['done', 'done', 'done', 'done', 'done'],
+    )
+    assert.equal(context.window.location.href, '/dashboard?launch=timeoutcase')
+  } finally {
+    context.setTimeout = originalSetTimeout
+    context.window.setTimeout = originalWindowSetTimeout
+  }
+})
+
 test('wizard waitUntilInstalled accepts gateway fallback runtime as install-complete', async () => {
   const { context, factory } = loadPageFactory('ui/public/index.html', 'wizard')
   const instance = factory()

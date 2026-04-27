@@ -135,6 +135,17 @@ gateway fallback 启动路径现在不再把“端口已占用”直接视为成
 
 如果缺少对应 bundled tarball，会直接 fail-fast，而不是悄悄退回在线安装。这样可以避免“本机缓存或联网条件掩盖问题，但新 Mac / 离线环境失败”的行为分叉。
 
+当 `OPENSPARROW_REQUIRE_BUNDLED_PLUGINS=1` 时，`GET /api/status` 的 `bundledPlugins` 字段是 packaged readiness evidence：
+
+- `required=true` 表示当前实例按 packaged hardening contract 要求随包插件归档
+- `ready=true` 且 `missing=[]` 表示所需归档齐备
+- `ready=false` 且 `missing` 非空表示当前 `packRoot` 不是交付包根目录，或交付包不完整
+
+source/worktree 根目录没有 `plugins/` 是预期边界；它不能被当成 fresh `dist` 交付包缺少插件的证据。遇到缺 archive 错误时，优先核对 `/api/status.instance.packRoot` 是否等于交付包根目录，以及包内是否存在：
+
+- `plugins/openclaw-china-channels-2026.4.24.tgz`
+- `plugins/wecom-wecom-openclaw-plugin-2026.4.22.tgz`
+
 ## runtime truth
 
 当前 packaged mac 的 runtime truth 规则：
@@ -142,6 +153,234 @@ gateway fallback 启动路径现在不再把“端口已占用”直接视为成
 - `ui/server.mjs` 优先从 `vendor/mac-openclaw/lib/node_modules/openclaw` 解析 entry / version
 - `bin/node_modules/openclaw` 只作为 fallback
 - build/export 阶段必须有 drift guard，防止 `lib` 与 `bin` 出现版本分叉仍被打包
+
+## 2026-04-27 packaged mac entry contract hardening closeout
+
+本节只记录 `packaged-mac-entry-contract-hardening` 的 closeout truth。它是 packaged mac entry contract hardening packet，不重写 `F-027`、DingTalk、WeCom 或 router 历史身份。
+
+Accepted gates：
+
+- Spec Review APPROVED
+- Batch Review APPROVED
+- Batch Verify PASS
+
+Source checks 全部 PASS：
+
+- wrapper `bash -n`
+- build script `bash -n`
+- server/helper `node --check`
+- 相关 `node --test`
+- `git diff --check`
+
+Fresh package evidence：
+
+- 由 `scripts/build-usb-pack.sh --platform mac` 重建
+- Fresh package root：`/Users/eduardogan/.config/superpowers/worktrees/opensparrow/feature-p0-packaged-mac-diagnostics/dist/usb-pack/opensparrow-0.1.0-alpha`
+- package root stat：`Apr 27 10:45:47 2026`
+- root launcher 与 `mac/01` stat：`Apr 27 10:45:43 2026`
+- root launcher SHA 匹配 source wrapper，`mac/01` 是独立 handoff SHA
+- package root launcher PASS：打印 UI `19001`，Mode `packaged runtime hardening`
+- stale `localhost:19000` 存在，PID `11496`，`packRoot` 是 source/worktree root；验证只使用 launcher 打印的 `19001`
+- `/api/status.instance.packRoot` 精确匹配 fresh package root
+
+Bundled plugin readiness：
+
+- `bundledPlugins.required=true`
+- `bundledPlugins.ready=true`
+- `bundledPlugins.missing=[]`
+- DingTalk archive ready：`plugins/openclaw-china-channels-2026.4.24.tgz`
+- WeCom archive ready：`plugins/wecom-wecom-openclaw-plugin-2026.4.22.tgz`
+
+Entry contract：
+
+- `platforms/mac/wrappers/*.command` 是 source template / developer debug surface，不是用户 packaged install 入口
+- 交付包根目录 `01-开始部署.command` 是唯一官方 packaged first-click path
+- 交付包 `mac/01-开始部署.command` 是 compatibility / handoff path，有 compatibility / handoff wording，转交 root launcher，不直接运行 `ui/server.mjs`
+- 验证 packaged install 时必须使用 launcher 打印的 UI port，不得默认信任 `localhost:19000`
+
+Missing archive negative：
+
+- isolated fixture 删除 DingTalk archive 后 `ready=false`
+- `missing` 包含 `@openclaw-china/channels`
+- `/api/install` 返回 `HTTP 500`
+- 文案指向 wrong `packRoot` / incomplete package、root `01-开始部署.command` 或重新生成 / 获取完整包
+- 文案没有 online install、ClawHub、在线安装 fallback wording
+
+## 2026-04-27 packaged runtime profile config authority hardening closeout
+
+本节只记录 `packaged-runtime-profile-config-authority-hardening` 的 closeout truth。它是 packaged runtime profile/config authority packet，不重写 packaged entry contract、bundled archive、router、DingTalk/WeCom credential contract 或 model-routing 历史身份。
+
+Accepted gates：
+
+- Spec Review APPROVED
+- Worker DONE
+- Batch Review APPROVED
+- Batch Verify PASS
+
+Source verification PASS：
+
+- `node --check ui/server.mjs` PASS
+- `node --test ui/tests/packaged-runtime-profile-config-authority.test.mjs` PASS, `3/3`
+- `node --test ui/tests/packaged-runtime-status-authority.test.mjs` PASS, `6/6`
+- `node --test ui/tests/packaged-runtime-state-stability.test.mjs` PASS, `3/3`
+- `node --test ui/tests/packaged-channel-probe-diagnostics.test.mjs` PASS, `3/3`
+- `node --test ui/tests/packaged-install-retry-guards.test.mjs` PASS, `6/6`
+- `git diff --check` PASS
+
+Fresh package verification PASS：
+
+- build command：`scripts/build-usb-pack.sh --platform mac`
+- fresh package root：`/Users/eduardogan/.config/superpowers/worktrees/opensparrow/feature-p0-packaged-mac-diagnostics/dist/usb-pack/opensparrow-0.1.0-alpha`
+- build removed previous staging dir and printed `USB pack built successfully`
+- packaged `ui/server.mjs` and root launcher matched source via `diff -q`
+- package root stat：`2026-04-27 14:05:26 +0800`
+- root launcher stat：`2026-04-27 14:05:23 +0800`
+- bundled plugin tgz stats：`2026-04-27 14:04:34 / 14:04:35 +0800`
+- build script did not generate zip
+
+Runtime profile/config authority：
+
+- launched via package root `01-开始部署.command`
+- baseline isolated `HOME`：`/private/tmp/packaged-runtime-authority-verify-20260427-140622-baseline/home`
+- baseline isolated `OPENCLAW_HOME`：`/private/tmp/packaged-runtime-authority-verify-20260427-140622-baseline/openclaw`
+- printed UI ports：baseline `54486`, DingTalk controlled replay `54490`, foreign-port negative `55752`
+- gateway/router ports：baseline `54487/54488`, DingTalk replay `54489/54491`, foreign negative `55753/55754`
+- `/api/status.instance.packRoot` matched the fresh package root exactly
+- profile：`gtclaw-portable`
+- profileDir：isolated `.openclaw-gtclaw-portable`
+- configPath：isolated `.openclaw-gtclaw-portable/openclaw.json`
+- `daemon status`, `health`, and `channels status --probe` received the same server-side current-profile config env authority
+- `/api/status.statusAuthority.daemonStatusUsesProfileConfig=true`
+- `/api/status.statusAuthority.healthUsesProfileConfig=true`
+- source test coverage includes `config_path_token_mismatch`
+
+Status authority classifications：
+
+- baseline：`gateway_unhealthy`
+- DingTalk replay：`authoritative_ready`
+- foreign negative：`foreign_gateway_port`
+- gatewayPort readback：baseline `54487`, DingTalk replay `54489`, foreign negative `55753`
+
+DingTalk readiness replay PASS：
+
+- controlled fresh-package install persisted DingTalk config with `enabled=true`
+- credential-present and metadata-present readback was verified without printing credential values
+- wrong config would fail health/probe in controlled runtime
+- server-side env log showed daemon status, health, and channels probe all used current profile config authority
+- `/api/install` returned `HTTP 200`
+- `installState=completed`
+- `requestedChannelReadiness.dingtalk=true`
+- direct `/api/dingtalk/probe` returned `ready=true`
+- classification：`authoritative_ready`
+- no real DingTalk credential used or printed
+
+Stale / foreign gateway negative PASS：
+
+- external HTTP listener occupied gateway port `55753`
+- fresh package launched with isolated state and the same gateway port
+- `/api/status` returned `installed=false`
+- `runtimeMode=port-occupied`
+- `gatewayPortBusy=true`
+- classification：`foreign_gateway_port`
+- daemon was not reported as authoritative running
+- `gatewayHealthy=false`
+
+Secret safety PASS：
+
+- inspected `/api/status`, `/api/install/status`, `/api/diagnostics`, `/api/diagnostics/export`, `diagnostic-bundle.json`, `install-state.json`, `install.log`, and install response summary
+- no synthetic secret values found
+- no token/API key/auth profile secret/channel credential printed
+- server-side current-profile config env authority is recorded as implementation truth only; no user操作步骤 was added
+
+## 2026-04-27 packaged install gate authority consumption hardening closeout
+
+本节只记录 `packaged-install-gate-authority-consumption-hardening` 的 closeout truth。它是 packaged install gate authority consumption packet，不重开上一包 profile config propagation，也不改写 packaged entry contract、bundled archive、router、DingTalk/WeCom credential contract 或 model-routing 历史身份。
+
+Accepted gates：
+
+- Spec Review APPROVED
+- Worker DONE
+- Batch Review APPROVED
+- Batch Verify PASS
+
+Root cause：
+
+- install gate 将 stale/transient probe snapshot 当 terminal requested-channel failure 消费。
+- 同一 live instance 后续已到 `authoritative_ready`，但 install-state 已持久化早期 `daemon=unknown` / `ready=false`。
+- 本 packet 修的是 install gate authority consumption，不是重开上一包 profile config propagation。
+
+Source verification PASS：
+
+- `node --check ui/server.mjs` PASS
+- `node --test ui/tests/packaged-install-gate-authority-consumption.test.mjs` PASS, `5/5`
+- `node --test ui/tests/packaged-install-retry-guards.test.mjs` PASS, `6/6`
+- `node --test ui/tests/packaged-channel-probe-diagnostics.test.mjs` PASS, `3/3`
+- `node --test ui/tests/packaged-runtime-state-stability.test.mjs` PASS, `3/3`
+- `node --test ui/tests/packaged-runtime-profile-config-authority.test.mjs` PASS, `3/3`
+- `git diff --check` PASS
+
+Fresh package verification PASS：
+
+- build command：`scripts/build-usb-pack.sh --platform mac`
+- fresh package root：`/Users/eduardogan/.config/superpowers/worktrees/opensparrow/feature-p0-packaged-mac-diagnostics/dist/usb-pack/opensparrow-0.1.0-alpha`
+- no zip generated by build script
+- package root mtime：`Apr 27 16:24:49 2026`
+- root launcher mtime：`Apr 27 16:24:44 2026`
+- source/package `ui/server.mjs` match SHA256：`13ff72e8425ceb1b9a22d045c6e66fab50fc77a5d49f81778959127c121f6bfd`
+- build output included previous staging dir removal and `USB pack built successfully`
+- package plugins tgz mtime matched this build
+
+Launch evidence：
+
+- launched fresh package root `01-开始部署.command`
+- used printed UI port `19003`, not default `19000`
+- isolated `HOME`：`/var/folders/.../opensparrow-packaged-gate-transient-2ad1Hp/home`
+- isolated `OPENCLAW_HOME`：`/var/folders/.../opensparrow-packaged-gate-transient-2ad1Hp/openclaw`
+- success replay gateway/router ports：`18931/18414`
+- foreign negative gateway/router ports：`18929/18414`
+- cleanup completed: launcher terminated, temp dirs deleted, foreign listener PID `64983` killed, and no LISTEN residue on `19003/18929/18931/18414`
+
+DingTalk install gate replay PASS：
+
+- method: controlled fixture with safe synthetic credentials and controlled fake runtime
+- path: real fresh package launcher + packaged `/api/install`
+- `/api/install` returned `HTTP 200`
+- `installState=completed`
+- `requestedChannelReadiness.dingtalk=true`
+- `channelProbes.dingtalk.status=ok`
+- `channelProbes.dingtalk.ready=true`
+- `channelProbes.dingtalk.daemon=running`
+- `channelProbes.dingtalk.authorityClassification=authoritative_ready`
+- `channelProbes.dingtalk` warnings/errors `0/0`
+- `statusAuthority.classification=authoritative_ready`
+- event log observed transient sequence: daemon `unknown -> running`, health `gateway_unhealthy -> ok`
+- final install state completed with latest probe/authority evidence
+- no real DingTalk credential used or printed
+
+Status authority：
+
+- `/api/status.instance.packRoot` matched the fresh package root
+- profile：`gtclaw-portable`
+- profileDir：isolated packaged profile under transient replay `OPENCLAW_HOME`
+- configPath：isolated packaged profile `openclaw.json`
+- gatewayPort：`18931`
+- `statusAuthority.classification=authoritative_ready`
+- `daemonStatusUsesProfileConfig=true`
+- `healthUsesProfileConfig=true`
+
+Negative verification PASS：
+
+- foreign port: external Node listener occupied gateway port, packaged `/api/install` returned `500`, `installState=failed`, DingTalk readiness `false`, classification `foreign_gateway_port`, runtime `port-occupied`, `gatewayHealthy=false`
+- gateway unhealthy: packaged `/api/install` returned `500`, classification `gateway_unhealthy`
+- config path token mismatch: packaged `/api/install` returned `500`, classification `config_path_token_mismatch`
+- missing DingTalk credential remains source-covered as `400` input validation
+
+Secret safety PASS：
+
+- inspected `/api/status`, `/api/install/status`, `/api/diagnostics`, `/api/diagnostics/export`, `install-state.json`, `diagnostic-bundle.json`, `install.log`, and install response summary
+- secret scan hits `[]`
+- no token/API key/auth profile secret/channel credential printed
+- closeout records only server/internal authority convergence facts; no user-facing config-env action instruction was added
 
 ## 2026-04-23 fresh combined packaged truth
 
@@ -429,6 +668,9 @@ Risks：
 - P0 packaged diagnostics endpoints 已走通，channel probe persistence 已补齐
 - 2026-04-23 fresh rebuild artifact 已完成 combined packaged verification，但这不改写 true `F-027` 的历史身份
 - 2026-04-26 `unified-model-configuration-surface` fresh packaged verification 已完成 unified `模型配置` surface、single/smart save-readback、per-tier runtime dispatch、key masking 与 router invariants；这不重写 `F-031` 或 `F-027`
+- 2026-04-27 `packaged-runtime-profile-config-authority-hardening` 已完成 source PASS + fresh package PASS，server-side current-profile config authority 已覆盖 daemon status、health、channel probe 与 status/readiness classification，同时保留 stale/foreign gateway negative safety；这不是用户操作步骤
+- 2026-04-27 `packaged-install-gate-authority-consumption-hardening` 已完成 source PASS + fresh package PASS，install gate 会在 terminal requested-channel failure 前消费 bounded same-profile authority convergence，避免 transient `daemon=unknown` 被持久化成最终失败，同时保留 `foreign_gateway_port`、`gateway_unhealthy`、`config_path_token_mismatch` 与缺凭据 negative safety
+- 2026-04-27 用户人工复测包根 `01-开始部署.command` 后确认当前包可正常完成 DingTalk 安装路径；当前最新可用 packaged mac 根目录保留为 `dist/usb-pack/opensparrow-0.1.0-alpha`，验证时仍以 launcher 打印的 UI 端口为准，不默认信任 `localhost:19000`
 - 本文同步的是 packaged-mac diagnostics / runtime authority / save-contract truth，不是 Windows support truth
 - DingTalk / WeCom 的 channel-specific closure 仍以 `F-030` 的既有 historical closeout 为准，不在本文重写
 - `packaged-channels-late-stage-authority-closure` 只同步 late-stage authority closure truth，不重写 `F-033` / `F-034` 历史身份

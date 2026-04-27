@@ -6,7 +6,16 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
 
+import {
+  buildCustomRouterBaseUrl,
+  CUSTOM_ROUTER_MODEL_ID,
+  CUSTOM_ROUTER_MODEL_TARGET,
+  CUSTOM_ROUTER_PROVIDER_ID,
+  OPENAI_COMPAT_API,
+} from '../../scripts/model-routing/lib/custom-plugin-routing.mjs'
+
 const REPO_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '..')
+const ROUTER_AUTH_PROFILE_ID = `${CUSTOM_ROUTER_PROVIDER_ID}:default`
 
 function makeTempDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'opensparrow-save-contract-'))
@@ -362,17 +371,33 @@ test('model-routing save returns saved_degraded without drifting internal router
     assert.match(result.payload.warning, /timed out/i)
 
     const config = JSON.parse(fs.readFileSync(getConfigPath(homeDir), 'utf8'))
-    assert.equal(config.agents.defaults.model.primary, 'opensparrow-router/auto')
-    assert.equal(config.plugins.entries['opensparrow-router'].enabled, true)
-    assert.equal(config.plugins.entries['opensparrow-router'].config.tierConnectionMap.SIMPLE.model, 'simple-model')
+    assert.equal(config.agents.defaults.model.primary, CUSTOM_ROUTER_MODEL_TARGET)
+    assert.equal(Object.hasOwn(config.models, 'default'), false)
+    assert.equal(config.plugins.entries[CUSTOM_ROUTER_PROVIDER_ID].enabled, true)
+    assert.equal(config.plugins.entries[CUSTOM_ROUTER_PROVIDER_ID].config.tierConnectionMap.SIMPLE.model, 'simple-model')
+    assert.equal(config.plugins.allow.includes(CUSTOM_ROUTER_PROVIDER_ID), false)
+
+    const routerProvider = config.models.providers[CUSTOM_ROUTER_PROVIDER_ID]
+    assert.equal(routerProvider.baseUrl, buildCustomRouterBaseUrl())
+    assert.equal(routerProvider.api, OPENAI_COMPAT_API)
+    assert.equal(routerProvider.models[0].id, CUSTOM_ROUTER_MODEL_ID)
+    assert.equal(routerProvider.models[0].api, OPENAI_COMPAT_API)
+
+    const auth = JSON.parse(fs.readFileSync(getAuthProfilesPath(homeDir), 'utf8'))
+    const routerAuth = auth.profiles[ROUTER_AUTH_PROFILE_ID]
+    assert.equal(routerAuth.provider, CUSTOM_ROUTER_PROVIDER_ID)
+    assert.equal(routerAuth.type, 'api_key')
+    assert.equal(typeof routerAuth.key, 'string')
+    assert.ok(routerAuth.key.length > 0)
+    assert.deepEqual(auth.order[CUSTOM_ROUTER_PROVIDER_ID], [ROUTER_AUTH_PROFILE_ID])
 
     const readBack = await getJson(`${uiBaseUrl}/api/config/model-routing`)
     assert.equal(readBack.status, 200)
     assert.equal(readBack.payload.ok, true)
     assert.equal(readBack.payload.mode, 'smart')
-    assert.equal(readBack.payload.effectivePrimaryModel, 'opensparrow-router/auto')
-    assert.equal(readBack.payload.router.providerId, 'opensparrow-router')
-    assert.equal(readBack.payload.router.modelTarget, 'opensparrow-router/auto')
+    assert.equal(readBack.payload.effectivePrimaryModel, CUSTOM_ROUTER_MODEL_TARGET)
+    assert.equal(readBack.payload.router.providerId, CUSTOM_ROUTER_PROVIDER_ID)
+    assert.equal(readBack.payload.router.modelTarget, CUSTOM_ROUTER_MODEL_TARGET)
     assert.equal(readBack.payload.tierConnectionMap.SIMPLE.apiKeyConfigured, true)
     assert.equal(Object.hasOwn(readBack.payload.tierConnectionMap.SIMPLE, 'apiKey'), false)
     assert.equal(JSON.stringify(readBack.payload).includes('simple-router'), false)
@@ -397,6 +422,7 @@ test('single model-routing empty key preserves an existing OpenAI key and masks 
     const config = JSON.parse(fs.readFileSync(getConfigPath(homeDir), 'utf8'))
     assert.equal(config.models.providers.openai.baseUrl, 'https://single-preserve.example/v1')
     assert.equal(config.models.providers.openai.models[0].id, 'single-preserve-model')
+    assert.equal(Object.hasOwn(config.models, 'default'), false)
     assert.equal(config.agents.defaults.model.primary, 'openai/single-preserve-model')
 
     const auth = JSON.parse(fs.readFileSync(getAuthProfilesPath(homeDir), 'utf8'))

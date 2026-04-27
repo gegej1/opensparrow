@@ -1061,6 +1061,29 @@
           return search ? `/dashboard${search}` : '/dashboard';
         },
 
+        isCompletedInstallStatus(payload = {}) {
+          const status = String(payload?.status || '').trim().toLowerCase();
+          const installState = String(payload?.installState || '').trim().toLowerCase();
+          const runtimeMode = String(payload?.runtimeMode || '').trim();
+          const statusComplete = status === 'completed' || status === 'done' ||
+                                 installState === 'completed' || installState === 'done';
+          const runtimeComplete = runtimeMode === '' ||
+                                  runtimeMode === 'daemon' ||
+                                  runtimeMode === 'gateway-fallback';
+          return statusComplete && runtimeComplete;
+        },
+
+        finishSuccessfulInstall(statusPayload = null) {
+          if (statusPayload) {
+            this.applyInstallStatus(statusPayload);
+          }
+          this.installTasks.forEach(t => t.status = 'done');
+          this.installDone = true;
+          setTimeout(() => {
+            window.location.href = this.buildDashboardUrl();
+          }, 600);
+        },
+
         async startInstall() {
           const preflightErrors = this.selectedChannels.flatMap((key) => {
             const result = window.OpenSparrowChannels.validateUiFields(key, this.credentials[key]);
@@ -1114,10 +1137,7 @@
             if (res.ok) {
               this.installWarnings = Array.isArray(payload.warnings) ? payload.warnings : [];
               await new Promise(r => setTimeout(r, 400));
-              this.installDone = true;
-              setTimeout(() => {
-                window.location.href = this.buildDashboardUrl();
-              }, 600);
+              this.finishSuccessfulInstall();
             } else {
               const errorText = this.buildInstallErrorText(payload, res.status);
               if (this.isInstallTimeoutLike(errorText)) {
@@ -1135,11 +1155,7 @@
                   this.installErrorMsg = '安装请求超时，且服务未在限定时间内进入已安装状态；请查看 package-local 日志后重试。';
                   return;
                 }
-                this.installTasks.forEach(t => t.status = 'done');
-                this.installDone = true;
-                setTimeout(() => {
-                  window.location.href = this.buildDashboardUrl();
-                }, 600);
+                this.finishSuccessfulInstall();
                 return;
               }
 
@@ -1170,6 +1186,10 @@
                 this.installErrorMsg = '部署请求超时，且未能在限定时间内从 /api/install/status 读取到最终状态；请查看 package-local 日志后重试。';
                 return;
               }
+              if (this.isCompletedInstallStatus(terminal)) {
+                this.finishSuccessfulInstall(terminal);
+                return;
+              }
               const installed = await this.waitUntilInstalled();
               if (!installed) {
                 this.installTasks.forEach(t => {
@@ -1179,11 +1199,7 @@
                 this.installErrorMsg = '部署请求已完成，但服务未在限定时间内进入已安装状态；请查看 package-local 日志后重试。';
                 return;
               }
-              this.installTasks.forEach(t => t.status = 'done');
-              this.installDone = true;
-              setTimeout(() => {
-                window.location.href = this.buildDashboardUrl();
-              }, 600);
+              this.finishSuccessfulInstall(terminal);
               return;
             }
 

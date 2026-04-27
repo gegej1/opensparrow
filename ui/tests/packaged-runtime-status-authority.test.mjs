@@ -59,18 +59,25 @@ function writeFakeOpenClawRuntime(runtimeRoot) {
 
   const fakeCliPath = path.join(openclawDir, 'openclaw.mjs')
   fs.writeFileSync(fakeCliPath, `
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const argv = process.argv.slice(2)
 const profileIndex = argv.indexOf('--profile')
 const args = profileIndex >= 0 ? argv.slice(profileIndex + 2) : argv
 const daemonStatusJson = String(process.env.FAKE_OC_DAEMON_STATUS_JSON || '{"service":{"runtime":{"status":"running"},"rpc":{"healthy":true}}}').trim()
 const healthOk = String(process.env.FAKE_OC_HEALTH_OK || '1').trim() !== '0'
+const healthError = String(process.env.FAKE_OC_HEALTH_ERROR || '').trim()
+const daemonDelayMs = Number.parseInt(String(process.env.FAKE_OC_DAEMON_DELAY_MS || '0'), 10) || 0
+const healthDelayMs = Number.parseInt(String(process.env.FAKE_OC_HEALTH_DELAY_MS || '0'), 10) || 0
 
 if (args[0] === 'daemon' && args[1] === 'status') {
+  if (daemonDelayMs > 0) await delay(daemonDelayMs)
   if (daemonStatusJson) process.stdout.write(daemonStatusJson)
   process.exit(0)
 }
 
 if (args[0] === 'health') {
+  if (healthDelayMs > 0) await delay(healthDelayMs)
+  if (!healthOk && healthError) process.stderr.write(healthError)
   process.stdout.write(JSON.stringify({ ok: healthOk }))
   process.exit(healthOk ? 0 : 1)
 }
@@ -135,7 +142,7 @@ async function stopChild(child) {
   })
 }
 
-async function startUiServer({ homeDir, runtimeRoot, port, gatewayPort, daemonStatusJson, healthOk }) {
+async function startUiServer({ homeDir, runtimeRoot, port, gatewayPort, daemonStatusJson, healthOk, healthError, daemonDelayMs, healthDelayMs }) {
   const child = spawn(process.execPath, ['ui/server.mjs'], {
     cwd: REPO_ROOT,
     env: {
@@ -147,6 +154,9 @@ async function startUiServer({ homeDir, runtimeRoot, port, gatewayPort, daemonSt
       USB_RUNTIME_ROOT: runtimeRoot,
       FAKE_OC_DAEMON_STATUS_JSON: daemonStatusJson,
       FAKE_OC_HEALTH_OK: healthOk ? '1' : '0',
+      FAKE_OC_HEALTH_ERROR: healthError ?? '',
+      FAKE_OC_DAEMON_DELAY_MS: String(daemonDelayMs ?? 0),
+      FAKE_OC_HEALTH_DELAY_MS: String(healthDelayMs ?? 0),
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
@@ -169,6 +179,7 @@ async function withStatusHarness(testContext, options, run) {
   const runtimeRoot = path.join(homeDir, 'fake-runtime')
   const uiPort = await findFreePort()
   const gatewayPort = await findFreePort()
+  let gatewayOccupier = null
 
   writeFakeOpenClawRuntime(runtimeRoot)
   writeJson(getConfigPath(homeDir), {
@@ -182,6 +193,20 @@ async function withStatusHarness(testContext, options, run) {
     },
   })
 
+  if (options.occupyGatewayPort) {
+    gatewayOccupier = http.createServer((req, res) => {
+      res.writeHead(200, { 'Content-Type': 'text/plain' })
+      res.end('foreign gateway')
+    })
+    await new Promise((resolve, reject) => {
+      gatewayOccupier.once('error', reject)
+      gatewayOccupier.listen(gatewayPort, '127.0.0.1', resolve)
+    })
+    testContext.after(async () => {
+      await new Promise((resolve) => gatewayOccupier.close(resolve))
+    })
+  }
+
   const ui = await startUiServer({
     homeDir,
     runtimeRoot,
@@ -189,6 +214,9 @@ async function withStatusHarness(testContext, options, run) {
     gatewayPort,
     daemonStatusJson: options.daemonStatusJson,
     healthOk: options.healthOk,
+    healthError: options.healthError,
+    daemonDelayMs: options.daemonDelayMs,
+    healthDelayMs: options.healthDelayMs,
   })
 
   testContext.after(async () => {
@@ -206,7 +234,7 @@ test('status endpoint marks contradictory same-profile runtime evidence as non-r
   await withStatusHarness(t, {
     daemonStatusJson: '{"service":{"runtime":{"status":"running"},"rpc":{"healthy":false}}}',
     healthOk: false,
-  }, async ({ uiBaseUrl }) => {
+  }, async ({ homeDir, uiBaseUrl, gatewayPort }) => {
     const result = await getJson(`${uiBaseUrl}/api/status`)
 
     assert.equal(result.status, 200)
@@ -223,11 +251,32 @@ test('status endpoint marks contradictory same-profile runtime evidence as non-r
   })
 })
 
+test('status endpoint probes daemon status and health concurrently within the UI timeout budget', { timeout: 15000 }, async (t) => {
+  await withStatusHarness(t, {
+    daemonStatusJson: '{"service":{"runtime":{"status":"running"},"rpc":{"healthy":true}}}',
+    healthOk: true,
+    daemonDelayMs: 700,
+    healthDelayMs: 700,
+  }, async ({ uiBaseUrl }) => {
+    const startedAt = Date.now()
+    const result = await getJson(`${uiBaseUrl}/api/status`)
+    const elapsedMs = Date.now() - startedAt
+
+    assert.equal(result.status, 200)
+    assert.equal(result.payload.installed, true)
+    assert.equal(result.payload.daemon, 'running')
+    assert.ok(
+      elapsedMs < 1200,
+      `expected concurrent runtime probes to finish below UI budget, got ${elapsedMs}ms`,
+    )
+  })
+})
+
 test('status endpoint keeps authoritative daemon truth when live runtime signals are healthy', { timeout: 15000 }, async (t) => {
   await withStatusHarness(t, {
     daemonStatusJson: '{"service":{"runtime":{"status":"running"},"rpc":{"healthy":true}}}',
     healthOk: true,
-  }, async ({ uiBaseUrl }) => {
+  }, async ({ homeDir, uiBaseUrl, gatewayPort }) => {
     const result = await getJson(`${uiBaseUrl}/api/status`)
 
     assert.equal(result.status, 200)
@@ -236,6 +285,56 @@ test('status endpoint keeps authoritative daemon truth when live runtime signals
     assert.equal(result.payload.runtimeMode, 'daemon')
     assert.equal(result.payload.gatewayHealthy, true)
     assert.equal(result.payload.statusAuthority.verdict, 'authoritative')
+    assert.equal(result.payload.statusAuthority.classification, 'authoritative_ready')
     assert.equal(result.payload.statusAuthority.rpcHealthy, true)
+    assert.equal(result.payload.statusAuthority.profile, 'usb-portable')
+    assert.equal(result.payload.statusAuthority.configPath, getConfigPath(homeDir))
+    assert.equal(result.payload.statusAuthority.gatewayPort, gatewayPort)
+  })
+})
+
+test('status endpoint classifies current-profile health failure as gateway unhealthy', { timeout: 15000 }, async (t) => {
+  await withStatusHarness(t, {
+    daemonStatusJson: '{"service":{"runtime":{"status":"running"},"rpc":{"healthy":true}}}',
+    healthOk: false,
+  }, async ({ uiBaseUrl }) => {
+    const result = await getJson(`${uiBaseUrl}/api/status`)
+
+    assert.equal(result.status, 200)
+    assert.equal(result.payload.installed, false)
+    assert.notEqual(result.payload.daemon, 'running')
+    assert.equal(result.payload.gatewayHealthy, false)
+    assert.equal(result.payload.statusAuthority.classification, 'gateway_unhealthy')
+  })
+})
+
+test('status endpoint classifies token/config mismatch separately from generic daemon unknown', { timeout: 15000 }, async (t) => {
+  await withStatusHarness(t, {
+    daemonStatusJson: '{"service":{"runtime":{"status":"running"},"rpc":{"healthy":true}}}',
+    healthOk: false,
+    healthError: 'gateway token mismatch: default config is missing gateway token',
+  }, async ({ uiBaseUrl }) => {
+    const result = await getJson(`${uiBaseUrl}/api/status`)
+
+    assert.equal(result.status, 200)
+    assert.equal(result.payload.installed, false)
+    assert.equal(result.payload.statusAuthority.classification, 'config_path_token_mismatch')
+    assert.match(result.payload.statusAuthority.reasons.join('\n'), /config.*token|token.*config/i)
+  })
+})
+
+test('status endpoint classifies foreign gateway port without accepting it as ready', { timeout: 15000 }, async (t) => {
+  await withStatusHarness(t, {
+    daemonStatusJson: '{"service":{"runtime":{"status":"unknown"},"rpc":{"healthy":false}}}',
+    healthOk: false,
+    occupyGatewayPort: true,
+  }, async ({ uiBaseUrl }) => {
+    const result = await getJson(`${uiBaseUrl}/api/status`)
+
+    assert.equal(result.status, 200)
+    assert.equal(result.payload.installed, false)
+    assert.equal(result.payload.runtimeMode, 'port-occupied')
+    assert.equal(result.payload.gatewayPortBusy, true)
+    assert.equal(result.payload.statusAuthority.classification, 'foreign_gateway_port')
   })
 })

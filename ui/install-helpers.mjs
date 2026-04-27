@@ -34,3 +34,51 @@ export function findBundledPluginArchive(pluginsDir, spec) {
     .sort((left, right) => right.localeCompare(left, undefined, { numeric: true, sensitivity: 'base' }))
   return matches[0] ? path.join(pluginsDir, matches[0]) : null
 }
+
+export const REQUIRED_BUNDLED_PLUGIN_SPECS = Object.freeze([
+  '@openclaw-china/channels',
+  '@wecom/wecom-openclaw-plugin',
+])
+
+function normalizeRequiredSpecs(specs) {
+  const candidates = Array.isArray(specs) && specs.length > 0
+    ? specs
+    : REQUIRED_BUNDLED_PLUGIN_SPECS
+  return [...new Set(
+    candidates
+      .map(spec => String(spec ?? '').trim())
+      .filter(Boolean),
+  )]
+}
+
+function toBundledArchiveDisplayPath(archivePath) {
+  if (!archivePath) return null
+  return path.posix.join('plugins', path.basename(archivePath))
+}
+
+export function inspectBundledPluginReadiness(pluginsDir, options = {}) {
+  const checkedPluginsDir = pluginsDir ? path.resolve(String(pluginsDir)) : ''
+  const required = Boolean(options?.required)
+  const specs = normalizeRequiredSpecs(options?.specs)
+  const archives = {}
+  const missing = []
+
+  for (const spec of specs) {
+    const archivePath = findBundledPluginArchive(checkedPluginsDir, spec)
+    const ready = Boolean(archivePath)
+    archives[spec] = {
+      required,
+      ready,
+      archive: toBundledArchiveDisplayPath(archivePath),
+    }
+    if (required && !ready) missing.push(spec)
+  }
+
+  return {
+    required,
+    ready: !required || missing.length === 0,
+    pluginsDir: checkedPluginsDir,
+    archives,
+    missing,
+  }
+}

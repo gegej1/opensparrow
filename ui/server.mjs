@@ -18,11 +18,14 @@ import {
 } from './lib/model-routing-config.mjs'
 import {
   findBundledPluginArchive,
+  inspectBundledPluginReadiness,
 } from './install-helpers.mjs'
 import {
   maybeFreshRebindMainSession,
 } from './lib/session-rebind.mjs'
 import {
+  CUSTOM_ROUTER_AUTH_PROFILE_ID,
+  CUSTOM_ROUTER_LOCAL_AUTH_KEY,
   buildCustomRouterProviderConfig,
   buildCustomRouterUpstreamPayload,
   CUSTOM_ROUTER_PROVIDER_ID,
@@ -195,6 +198,14 @@ const PLUGIN_INSTALL_AUTHORITY_POLL_MS = resolveDurationFromEnv(
   'OPENSPARROW_PLUGIN_AUTHORITY_POLL_MS',
   500,
 )
+const INSTALL_GATE_AUTHORITY_CONVERGENCE_MS = resolveDurationFromEnv(
+  'OPENSPARROW_INSTALL_GATE_AUTHORITY_CONVERGENCE_MS',
+  15000,
+)
+const INSTALL_GATE_AUTHORITY_CONVERGENCE_POLL_MS = resolveDurationFromEnv(
+  'OPENSPARROW_INSTALL_GATE_AUTHORITY_CONVERGENCE_POLL_MS',
+  500,
+)
 
 function buildInstallBypassState(verdict = 'none', {
   used = false,
@@ -222,6 +233,30 @@ function buildInstanceFingerprint() {
     configPath: toUserPath(CONFIG_FILE),
     serverStartedAt: SERVER_STARTED_AT,
   }
+}
+
+function buildBundledPluginReadinessStatus(options = {}) {
+  const readiness = inspectBundledPluginReadiness(BUNDLED_PLUGINS_DIR, {
+    required: REQUIRE_BUNDLED_PLUGINS,
+    ...options,
+  })
+  return {
+    ...readiness,
+    pluginsDir: toUserPath(readiness.pluginsDir),
+  }
+}
+
+function buildMissingBundledPluginArchiveError(packageSpec, readiness) {
+  const missingSpec = Array.isArray(readiness?.missing) && readiness.missing.length > 0
+    ? readiness.missing[0]
+    : packageSpec
+  return [
+    '打包安装要求使用随包插件归档，但当前 packRoot 不是交付包根或交付包不完整。',
+    `当前 packRoot: ${toUserPath(PACK_ROOT)}`,
+    `已检查 plugins 目录: ${toUserPath(BUNDLED_PLUGINS_DIR)}`,
+    `缺少归档: ${missingSpec}`,
+    '请从交付包根目录的 01-开始部署.command 启动，或重新生成/获取包含 plugins/ 的完整交付包。',
+  ].join('\n')
 }
 
 function resolveBundledNodeBinary() {
@@ -252,6 +287,18 @@ const NODE_BIN = resolveBundledNodeBinary()
 // Utility: run an oc command via the bundled Node binary
 // ---------------------------------------------------------------------------
 
+function buildOpenClawChildEnv(extraEnv = {}) {
+  return {
+    ...process.env,
+    ...extraEnv,
+    OPENCLAW_HOME: OPENCLAW_HOME,
+    OPENCLAW_PROFILE: PROFILE,
+    OPENCLAW_CONFIG_PATH: CONFIG_FILE,
+    OPENCLAW_GATEWAY_PORT: String(GATEWAY_PORT),
+    CI: process.env.CI ?? '1',
+  }
+}
+
 /**
  * Execute an openclaw command.
  * @param {string[]} args  Arguments passed after `openclaw.mjs --profile $PROFILE`
@@ -280,7 +327,7 @@ async function runOc(args, options = {}) {
       NODE_BIN,
       [OC_ENTRY, '--profile', PROFILE, ...args],
       {
-        env: { ...process.env, CI: process.env.CI ?? '1' },
+        env: buildOpenClawChildEnv(),
         stdio: ['ignore', 'pipe', 'pipe'],
         cwd: PACK_ROOT,
       }
@@ -1074,14 +1121,83 @@ function parseDaemonStateFromResult(result) {
  * @returns {Promise<boolean>}
  */
 async function isGatewayHealthy() {
+  const signal = await readGatewayHealthSignal()
+  return signal.gatewayHealthy
+}
+
+function hasConfigTokenMismatchSignal(text) {
+  const normalized = String(text ?? '').toLowerCase()
+  return (
+    normalized.includes('gateway token mismatch') ||
+    normalized.includes('missing gateway token') ||
+    normalized.includes('gateway token missing') ||
+    normalized.includes('invalid gateway token') ||
+    normalized.includes('default config') ||
+    normalized.includes('status code 401') ||
+    normalized.includes('unauthorized')
+  )
+}
+
+async function readGatewayHealthSignal() {
   try {
     const result = await runOc(['health', '--json', '--timeout', '5000'], {
       timeoutMs: OC_TIMEOUT.STATUS,
       opName: 'health',
     })
-    return result.code === 0
+    if (result.code === 0) {
+      return {
+        gatewayHealthy: true,
+        configTokenMismatch: false,
+        healthIssue: null,
+      }
+    }
+
+    const healthOutput = stripAnsi(`${result.stdout}\n${result.stderr}`)
+    const configTokenMismatch = hasConfigTokenMismatchSignal(healthOutput)
+    return {
+      gatewayHealthy: false,
+      configTokenMismatch,
+      healthIssue: configTokenMismatch
+        ? 'current profile config or gateway token mismatch detected by health check'
+        : 'current profile gateway health check failed',
+    }
   } catch {
-    return false
+    return {
+      gatewayHealthy: false,
+      configTokenMismatch: false,
+      healthIssue: 'current profile gateway health check failed',
+    }
+  }
+}
+
+async function readDaemonRuntimeSignal() {
+  let daemonReported = 'unknown'
+  let daemonStatusPayload = null
+  let rpcHealthy = null
+
+  try {
+    const result = await runOc(['daemon', 'status', '--json'], {
+      timeoutMs: OC_TIMEOUT.STATUS,
+      opName: 'daemon status',
+    })
+    const cleanOut = stripAnsi(result.stdout).trim()
+    if (cleanOut) {
+      try {
+        daemonStatusPayload = JSON.parse(cleanOut)
+        rpcHealthy = parseDaemonRpcHealth(daemonStatusPayload)
+      } catch {
+        daemonStatusPayload = null
+      }
+    }
+    daemonReported = parseDaemonStateFromResult(result)
+  } catch {
+    daemonReported = 'unknown'
+  }
+
+  return {
+    daemonReported,
+    daemonStatusPayload,
+    rpcHealthy,
   }
 }
 
@@ -1103,34 +1219,18 @@ async function isGatewayHealthy() {
  * }>}
  */
 async function resolveRuntimeState() {
-  let daemonReported = 'unknown'
-  let daemonStatusPayload = null
-  let rpcHealthy = null
-  try {
-    const result = await runOc(['daemon', 'status', '--json'], {
-      timeoutMs: OC_TIMEOUT.STATUS,
-      opName: 'daemon status',
-    })
-    const cleanOut = stripAnsi(result.stdout).trim()
-    if (cleanOut) {
-      try {
-        daemonStatusPayload = JSON.parse(cleanOut)
-        rpcHealthy = parseDaemonRpcHealth(daemonStatusPayload)
-      } catch {
-        daemonStatusPayload = null
-      }
-    }
-    daemonReported = parseDaemonStateFromResult(result)
-  } catch {
-    daemonReported = 'unknown'
-  }
+  const [daemonSignal, gatewayHealthSignal] = await Promise.all([
+    readDaemonRuntimeSignal(),
+    readGatewayHealthSignal().catch(() => ({
+      gatewayHealthy: false,
+      configTokenMismatch: false,
+      healthIssue: 'current profile gateway health check failed',
+    })),
+  ])
 
-  let gatewayHealthy = false
-  try {
-    gatewayHealthy = await isGatewayHealthy()
-  } catch {
-    gatewayHealthy = false
-  }
+  const { daemonReported, rpcHealthy } = daemonSignal
+  const gatewayHealthy = gatewayHealthSignal.gatewayHealthy === true
+  const configTokenMismatch = gatewayHealthSignal.configTokenMismatch === true
 
   let gatewayPortBusy = false
   try {
@@ -1143,15 +1243,13 @@ async function resolveRuntimeState() {
   let runtimeMode = 'unknown'
   const reasons = []
   let verdict = 'unknown'
+  let classification = 'gateway_unhealthy'
 
-  const hasPositiveDaemonLiveness = gatewayHealthy === true || rpcHealthy === true
   if (daemonReported === 'running') {
-    if (hasPositiveDaemonLiveness) {
+    if (gatewayHealthy === true) {
       runtimeMode = 'daemon'
       verdict = 'authoritative'
-      if (gatewayHealthy !== true && rpcHealthy === true) {
-        reasons.push('daemon reports running and rpc is healthy, but gateway health check is not yet healthy')
-      }
+      classification = 'authoritative_ready'
       if (gatewayHealthy === true && rpcHealthy === false) {
         reasons.push('live gateway health succeeded even though daemon status reported rpc unhealthy')
       }
@@ -1159,11 +1257,18 @@ async function resolveRuntimeState() {
       verdict = 'contradictory'
       if (gatewayHealthy === false) reasons.push('daemon reports running but gateway health check failed')
       if (rpcHealthy === false) reasons.push('daemon reports running but rpc probe failed')
-      if (gatewayPortBusy) {
+      if (configTokenMismatch) {
+        classification = 'config_path_token_mismatch'
+        reasons.push('current profile config/gateway token mismatch prevented authoritative health')
+        daemon = 'unknown'
+        runtimeMode = gatewayPortBusy ? 'port-occupied' : 'stopped'
+      } else if (gatewayPortBusy) {
+        classification = 'foreign_gateway_port'
         reasons.push(`daemon reports running but gateway port ${GATEWAY_PORT} is occupied without a healthy same-profile runtime`)
         daemon = 'unknown'
         runtimeMode = 'port-occupied'
       } else {
+        classification = 'gateway_unhealthy'
         reasons.push(`daemon reports running but gateway port ${GATEWAY_PORT} is free`)
         daemon = 'stopped'
         runtimeMode = 'stopped'
@@ -1172,20 +1277,34 @@ async function resolveRuntimeState() {
   } else if (gatewayHealthy) {
     runtimeMode = 'gateway-fallback'
     verdict = daemonReported === 'unknown' ? 'unknown' : 'authoritative'
+    classification = 'authoritative_ready'
     if (daemonReported === 'unknown') {
       reasons.push('gateway health succeeded before daemon status became authoritative')
     }
   } else if (gatewayPortBusy) {
     runtimeMode = 'port-occupied'
     verdict = daemonReported === 'unknown' ? 'unknown' : 'authoritative'
+    classification = configTokenMismatch ? 'config_path_token_mismatch' : 'foreign_gateway_port'
     reasons.push(`gateway port ${GATEWAY_PORT} is occupied while current profile health check is unhealthy`)
+    if (configTokenMismatch) {
+      reasons.push('current profile config/gateway token mismatch prevented authoritative health')
+    }
   } else if (daemonReported === 'stopped' || daemonReported === 'not_installed') {
     runtimeMode = 'stopped'
     verdict = 'authoritative'
+    classification = 'gateway_unhealthy'
   } else {
     runtimeMode = 'unknown'
     verdict = 'unknown'
+    classification = configTokenMismatch ? 'config_path_token_mismatch' : 'gateway_unhealthy'
     reasons.push('no authoritative same-profile runtime signal is currently available')
+    if (configTokenMismatch) {
+      reasons.push('current profile config/gateway token mismatch prevented authoritative health')
+    }
+  }
+
+  if (gatewayHealthSignal.healthIssue && !gatewayHealthy) {
+    reasons.push(gatewayHealthSignal.healthIssue)
   }
 
   return {
@@ -1197,9 +1316,16 @@ async function resolveRuntimeState() {
     gatewayPortBusy,
     statusAuthority: {
       verdict,
+      classification,
       reasons,
       rpcHealthy,
       daemonReported,
+      profile: PROFILE,
+      profileDir: toUserPath(PROFILE_DIR),
+      configPath: toUserPath(CONFIG_FILE),
+      gatewayPort: GATEWAY_PORT,
+      daemonStatusUsesProfileConfig: true,
+      healthUsesProfileConfig: true,
     },
   }
 }
@@ -1212,6 +1338,24 @@ async function resolveStableRuntimeState({ attempts = 6, delayMs = 500 } = {}) {
     runtimeState = await resolveRuntimeState()
   }
   return runtimeState
+}
+
+function buildRuntimeAuthorityEvidence(statusAuthority = {}) {
+  return {
+    verdict: statusAuthority.verdict ?? 'unknown',
+    classification: statusAuthority.classification ?? 'gateway_unhealthy',
+    reasons: Array.isArray(statusAuthority.reasons)
+      ? statusAuthority.reasons.filter((reason) => typeof reason === 'string' && reason.trim())
+      : [],
+    rpcHealthy: statusAuthority.rpcHealthy ?? null,
+    daemonReported: statusAuthority.daemonReported ?? 'unknown',
+    profile: statusAuthority.profile ?? PROFILE,
+    profileDir: statusAuthority.profileDir ?? toUserPath(PROFILE_DIR),
+    configPath: statusAuthority.configPath ?? toUserPath(CONFIG_FILE),
+    gatewayPort: statusAuthority.gatewayPort ?? GATEWAY_PORT,
+    daemonStatusUsesProfileConfig: statusAuthority.daemonStatusUsesProfileConfig === true,
+    healthUsesProfileConfig: statusAuthority.healthUsesProfileConfig === true,
+  }
 }
 
 const INSTALL_STEP_DEFS = Object.freeze([
@@ -1460,8 +1604,7 @@ function readConfigSafe() {
 }
 
 const ROUTING_TIERS = Object.freeze(['SIMPLE', 'MEDIUM', 'COMPLEX', 'REASONING'])
-const CUSTOM_ROUTER_AUTH_PROFILE_ID = `${CUSTOM_ROUTER_PROVIDER_ID}:default`
-const CUSTOM_ROUTER_LOCAL_AUTH_KEY = 'opensparrow-router-local'
+const EMBEDDED_AGENT_MAX_TOKENS_CEILING = 8192
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
@@ -1522,10 +1665,10 @@ function selectCustomRouterTier(body = {}, routerConfig = {}) {
   const prompt = extractPromptFromMessages(body?.messages)
   const lowered = prompt.toLowerCase()
   const maxTokens = resolveRequestedMaxTokens(body, 220)
+  const tokenBudgetIsRoutingSignal = maxTokens !== EMBEDDED_AGENT_MAX_TOKENS_CEILING
 
   if (
-    maxTokens >= 1600
-    || /推理|证明|数学|逻辑|reason|reasoning|step by step|think harder|chain of thought/.test(lowered)
+    /推理|证明|数学|逻辑|reason|reasoning|step by step|think harder|chain of thought|\blogic\b|\bproof\b|\bmath\b|\btheorem\b/.test(lowered)
   ) {
     return 'REASONING'
   }
@@ -1539,11 +1682,13 @@ function selectCustomRouterTier(body = {}, routerConfig = {}) {
 
   if (
     prompt.length >= 280
-    || maxTokens >= 700
     || /总结|分析|review|compare|explain|plan|draft|方案|对比/.test(lowered)
   ) {
     return 'MEDIUM'
   }
+
+  if (tokenBudgetIsRoutingSignal && maxTokens >= 1600) return 'REASONING'
+  if (tokenBudgetIsRoutingSignal && maxTokens >= 700) return 'MEDIUM'
 
   return 'SIMPLE'
 }
@@ -2379,11 +2524,15 @@ async function installPluginPackage(spec, pluginId, options = {}) {
   }
 
   const bundledArchive = findBundledPluginArchive(BUNDLED_PLUGINS_DIR, packageSpec)
-  if (REQUIRE_BUNDLED_PLUGINS && !bundledArchive) {
+  const bundledReadiness = inspectBundledPluginReadiness(BUNDLED_PLUGINS_DIR, {
+    required: REQUIRE_BUNDLED_PLUGINS,
+    specs: [packageSpec],
+  })
+  if (REQUIRE_BUNDLED_PLUGINS && !bundledReadiness.ready) {
     return {
       ok: false,
       errors: [
-        `打包安装要求使用 bundled plugin archive，但未在 plugins/ 中找到 ${packageSpec}。请重新构建交付包，避免在新 Mac 上走在线安装。`,
+        buildMissingBundledPluginArchiveError(packageSpec, bundledReadiness),
       ],
       warnings: [],
       bypass: buildInstallBypassState('failed', {
@@ -2483,6 +2632,7 @@ async function installPluginPackage(spec, pluginId, options = {}) {
  *   checks: string[],
  *   warnings: string[],
  *   errors: string[],
+ *   authority: object,
  *   probe: {code: number | null, summary: string}
  * }>}
  */
@@ -2523,14 +2673,20 @@ async function buildDingtalkProbeReport() {
     checks.push('钉钉 CorpId 已填写')
   }
 
-  const { daemon, runtimeMode, gatewayHealthy, gatewayPortBusy } = await resolveStableRuntimeState()
+  const runtimeState = await resolveStableRuntimeState()
+  const { daemon, runtimeMode, gatewayHealthy, gatewayPortBusy, statusAuthority } = runtimeState
+  const authority = buildRuntimeAuthorityEvidence(statusAuthority)
 
   if (daemon === 'running') {
     checks.push('daemon 服务运行中')
   } else if (runtimeMode === 'gateway-fallback') {
     checks.push('gateway 健康检查通过')
-    warnings.push('当前为 gateway fallback runtime（daemon 未运行）')
-    warnings.push(`daemon 当前状态：${daemon}`)
+    if (authority.classification === 'authoritative_ready') {
+      checks.push('当前 profile gateway authority 已就绪')
+    } else {
+      warnings.push('当前为 gateway fallback runtime（daemon 未运行）')
+      warnings.push(`daemon 当前状态：${daemon}`)
+    }
   } else {
     warnings.push(`daemon 当前状态：${daemon}`)
     if (runtimeMode === 'port-occupied' && gatewayPortBusy && !gatewayHealthy) {
@@ -2588,6 +2744,7 @@ async function buildDingtalkProbeReport() {
     status,
     ready: status === 'ok',
     daemon,
+    authority,
     checks,
     warnings,
     errors,
@@ -2607,6 +2764,7 @@ async function buildDingtalkProbeReport() {
  *   checks: string[],
  *   warnings: string[],
  *   errors: string[],
+ *   authority: object,
  *   probe: {code: number | null, summary: string}
  * }>}
  */
@@ -2693,14 +2851,20 @@ async function buildWecomProbeReport() {
     }
   }
 
-  const { daemon, runtimeMode, gatewayHealthy, gatewayPortBusy } = await resolveStableRuntimeState()
+  const runtimeState = await resolveStableRuntimeState()
+  const { daemon, runtimeMode, gatewayHealthy, gatewayPortBusy, statusAuthority } = runtimeState
+  const authority = buildRuntimeAuthorityEvidence(statusAuthority)
 
   if (daemon === 'running') {
     checks.push('daemon 服务运行中')
   } else if (runtimeMode === 'gateway-fallback') {
     checks.push('gateway 健康检查通过')
-    warnings.push('当前为 gateway fallback runtime（daemon 未运行）')
-    warnings.push(`daemon 当前状态：${daemon}`)
+    if (authority.classification === 'authoritative_ready') {
+      checks.push('当前 profile gateway authority 已就绪')
+    } else {
+      warnings.push('当前为 gateway fallback runtime（daemon 未运行）')
+      warnings.push(`daemon 当前状态：${daemon}`)
+    }
   } else {
     warnings.push(`daemon 当前状态：${daemon}`)
     if (runtimeMode === 'port-occupied' && gatewayPortBusy && !gatewayHealthy) {
@@ -2768,6 +2932,7 @@ async function buildWecomProbeReport() {
     status,
     ready: status === 'ok',
     daemon,
+    authority,
     checks,
     warnings,
     errors,
@@ -2855,7 +3020,7 @@ async function startGatewayFallbackRuntime() {
     NODE_BIN,
     [OC_ENTRY, '--profile', PROFILE, 'gateway', 'run', '--port', String(GATEWAY_PORT), '--bind', 'loopback'],
     {
-      env: { ...process.env, CI: process.env.CI ?? '1' },
+      env: buildOpenClawChildEnv(),
       detached: true,
       windowsHide: true,
       stdio: 'ignore',
@@ -3103,6 +3268,7 @@ async function handleStatus(res) {
     version: getBundledOpenClawVersion() || null,
     packagedRuntimeMode: PACKAGED_RUNTIME_MODE,
     requireBundledPlugins: REQUIRE_BUNDLED_PLUGINS,
+    bundledPlugins: buildBundledPluginReadinessStatus(),
     instance: buildInstanceFingerprint(),
     configExists,
     profileDirExists,
@@ -3177,6 +3343,150 @@ function buildRequestedChannelReadiness({
   return {
     dingtalk: !requestedHasDingtalk || channelProbes?.dingtalk?.ready === true,
     wecom: !requestedHasWecom || channelProbes?.wecom?.ready === true,
+  }
+}
+
+function hasDingtalkChannelConfigFailure(probe) {
+  if (!probe || typeof probe !== 'object') return true
+  const errors = Array.isArray(probe.errors) ? probe.errors : []
+  if (errors.length > 0) return true
+  const text = [
+    ...(Array.isArray(probe.warnings) ? probe.warnings : []),
+    probe?.probe?.summary ?? '',
+  ].join('\n').toLowerCase()
+  return (
+    text.includes('status code 401') ||
+    text.includes('invalid client') ||
+    text.includes('invalid appkey') ||
+    text.includes('invalid appsecret')
+  )
+}
+
+function shouldConvergeDingtalkInstallGate({
+  requestedHasDingtalk,
+  dingtalkProbe,
+}) {
+  return (
+    requestedHasDingtalk === true &&
+    dingtalkProbe?.ready !== true &&
+    !hasDingtalkChannelConfigFailure(dingtalkProbe)
+  )
+}
+
+function appendChannelProbeOutcomeMessages({
+  dingtalkProbe,
+  wecomProbe,
+  warnings,
+  errors,
+}) {
+  if (dingtalkProbe?.status === 'warning') {
+    warnings.push(...dingtalkProbe.warnings.map(msg => `钉钉检测告警：${msg}`))
+  } else if (dingtalkProbe?.status === 'error') {
+    errors.push(...dingtalkProbe.errors.map(msg => `钉钉检测错误：${msg}`))
+  }
+
+  if (wecomProbe?.status === 'warning') {
+    warnings.push(...wecomProbe.warnings.map(msg => `企微检测告警：${msg}`))
+  } else if (wecomProbe?.status === 'error') {
+    errors.push(...wecomProbe.errors.map(msg => `企微检测错误：${msg}`))
+  }
+}
+
+async function convergeInstallGateAuthority({
+  requestedHasDingtalk,
+  requestedHasWecom,
+  dingtalkProbe,
+  wecomProbe,
+  probeSecrets,
+  installTracker,
+}) {
+  let currentDingtalkProbe = dingtalkProbe
+  let currentWecomProbe = wecomProbe
+  let channelProbes = buildChannelProbes({
+    dingtalk: currentDingtalkProbe,
+    wecom: currentWecomProbe,
+  }, probeSecrets)
+  coerceCombinedProbeTruth({
+    requestedHasDingtalk,
+    requestedHasWecom,
+    channelProbes,
+  })
+  let requestedChannelReadiness = buildRequestedChannelReadiness({
+    requestedHasDingtalk,
+    requestedHasWecom,
+    channelProbes,
+  })
+
+  installTracker.setChannelProbes(channelProbes)
+
+  if (
+    requestedChannelReadiness.dingtalk &&
+    requestedChannelReadiness.wecom
+  ) {
+    return {
+      dingtalkProbe: currentDingtalkProbe,
+      wecomProbe: currentWecomProbe,
+      channelProbes,
+      requestedChannelReadiness,
+    }
+  }
+
+  if (!shouldConvergeDingtalkInstallGate({
+    requestedHasDingtalk,
+    dingtalkProbe: channelProbes.dingtalk,
+  })) {
+    return {
+      dingtalkProbe: currentDingtalkProbe,
+      wecomProbe: currentWecomProbe,
+      channelProbes,
+      requestedChannelReadiness,
+    }
+  }
+
+  const deadline = Date.now() + INSTALL_GATE_AUTHORITY_CONVERGENCE_MS
+  const pollMs = Math.max(100, INSTALL_GATE_AUTHORITY_CONVERGENCE_POLL_MS)
+
+  while (!requestedChannelReadiness.dingtalk && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, Math.min(pollMs, Math.max(0, deadline - Date.now()))))
+    try {
+      currentDingtalkProbe = await buildDingtalkProbeReport()
+    } catch (e) {
+      const message = `钉钉检测执行失败：${e?.message ?? String(e)}`
+      currentDingtalkProbe = buildProbeExecutionFailure(message, probeSecrets)
+    }
+
+    channelProbes = buildChannelProbes({
+      dingtalk: currentDingtalkProbe,
+      wecom: currentWecomProbe,
+    }, probeSecrets)
+    coerceCombinedProbeTruth({
+      requestedHasDingtalk,
+      requestedHasWecom,
+      channelProbes,
+    })
+    requestedChannelReadiness = buildRequestedChannelReadiness({
+      requestedHasDingtalk,
+      requestedHasWecom,
+      channelProbes,
+    })
+    installTracker.setChannelProbes(channelProbes)
+
+    if (
+      requestedChannelReadiness.dingtalk ||
+      !shouldConvergeDingtalkInstallGate({
+        requestedHasDingtalk,
+        dingtalkProbe: channelProbes.dingtalk,
+      })
+    ) {
+      break
+    }
+  }
+
+  return {
+    dingtalkProbe: currentDingtalkProbe,
+    wecomProbe: currentWecomProbe,
+    channelProbes,
+    requestedChannelReadiness,
   }
 }
 
@@ -3844,45 +4154,37 @@ async function handleInstall(res, body) {
   if (hasDingtalk) {
     try {
       dingtalkProbe = await buildDingtalkProbeReport()
-      if (dingtalkProbe.status === 'warning') {
-        warnings.push(...dingtalkProbe.warnings.map(msg => `钉钉检测告警：${msg}`))
-      } else if (dingtalkProbe.status === 'error') {
-        warnings.push(...dingtalkProbe.errors.map(msg => `钉钉检测错误：${msg}`))
-      }
     } catch (e) {
       const message = `钉钉检测执行失败：${e?.message ?? String(e)}`
-      warnings.push(message)
       dingtalkProbe = buildProbeExecutionFailure(message, probeSecrets)
     }
   }
   if (hasWecom) {
     try {
       wecomProbe = await buildWecomProbeReport()
-      if (wecomProbe.status === 'warning') {
-        warnings.push(...wecomProbe.warnings.map(msg => `企微检测告警：${msg}`))
-      } else if (wecomProbe.status === 'error') {
-        warnings.push(...wecomProbe.errors.map(msg => `企微检测错误：${msg}`))
-      }
     } catch (e) {
       const message = `企微检测执行失败：${e?.message ?? String(e)}`
-      warnings.push(message)
       wecomProbe = buildProbeExecutionFailure(message, probeSecrets)
     }
   }
-  const channelProbes = buildChannelProbes({
-    dingtalk: dingtalkProbe,
-    wecom: wecomProbe,
-  }, probeSecrets)
-  coerceCombinedProbeTruth({
+
+  const converged = await convergeInstallGateAuthority({
     requestedHasDingtalk,
     requestedHasWecom,
-    channelProbes,
+    dingtalkProbe,
+    wecomProbe,
+    probeSecrets,
+    installTracker,
   })
-  installTracker.setChannelProbes(channelProbes)
-  const requestedChannelReadiness = buildRequestedChannelReadiness({
-    requestedHasDingtalk,
-    requestedHasWecom,
-    channelProbes,
+  dingtalkProbe = converged.dingtalkProbe
+  wecomProbe = converged.wecomProbe
+  const channelProbes = converged.channelProbes
+  const requestedChannelReadiness = converged.requestedChannelReadiness
+  appendChannelProbeOutcomeMessages({
+    dingtalkProbe: channelProbes.dingtalk,
+    wecomProbe: channelProbes.wecom,
+    warnings,
+    errors,
   })
   const requestedReady = requestedChannelReadiness.dingtalk && requestedChannelReadiness.wecom
   const bypassState = pluginOutcomes[WECOM_PLUGIN_ID].bypass.used
