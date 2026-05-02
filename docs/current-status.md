@@ -1,6 +1,6 @@
 # OpenSparrow Current Status
 
-更新时间：`2026-04-26`
+更新时间：`2026-05-02`
 
 ## 严重事故记录
 
@@ -75,6 +75,7 @@
 - **latest packaged mac artifact 已完成 combined packaged verification fresh evidence**
 - **unified model configuration surface 已完成 source PASS + fresh packaged PASS**
 - **latest mac release candidate 已恢复到可重新 cut RC 的状态，但对外发放前仍建议做独立新机复核**
+- **packaged channel smart-routing authority hardening 已完成 facts-only closeout；Feishu live external inbound PASS，DingTalk / WeCom final live continuation 未重跑**
 - **Windows-specific evidence 仍是独立后续线，不被当前 mac packaged PASS 自动覆盖**
 
 ## 已确认完成的面
@@ -207,6 +208,60 @@ Residual risks：
 
 - `saveState=saved_degraded` 是 isolated verifier profile 下的 expected truth，因为没有跑 full daemon install matrix；不得写成完整 daemon install matrix PASS
 - dashboard initially redirects to setup until config exists; after packaged single-mode save creates config, `/dashboard` loads normally
+
+### 2.2 packaged channel smart routing authority hardening
+
+本轮 closeout 只基于 `packaged-channel-smart-routing-authority-hardening` 的 accepted gates，不改写旧 packet 身份，也不把 Feishu evidence 借给 DingTalk / WeCom。
+
+Accepted gates：
+
+- Spec Review APPROVED
+- Worker Rounds 8-16 DONE
+- Batch Review APPROVED
+- Batch Verify PASS
+
+Active packaged truth：
+
+- fresh package root：`dist/usb-pack/opensparrow-0.1.0-alpha`
+- profile：`gtclaw-portable`
+- configPath：packaged `.gtclaw-state/.openclaw-gtclaw-portable/openclaw.json`
+- UI / router / gateway：`19000 / 18412 / 18929`
+- runtimeOwnership：`gatewayOwner=current`, `daemonOwner=current`, `routerOwner=current`, `liveChannelOwner=current_only`
+
+Smart authority：
+
+- `effectivePrimaryModel=opensparrow-router/auto`
+- `singleModelMode=false`
+- `SIMPLE -> gpt-4o`
+- `MEDIUM -> gpt-5.4-nano`
+- `COMPLEX -> gpt-5.4`
+- `REASONING -> gpt-5.5`
+
+Feishu live external inbound：
+
+- PASS with Feishu-side actual reply observed
+- evidence is redacted only
+- `routerInvocation.invokedSinceStart=true`
+- `inputSource=sanitized-current-user-text`
+- input length/hash recorded without raw text
+- `selectedTier=SIMPLE`
+- `outboundTier=SIMPLE`
+- `outboundModel=gpt-4o`
+
+Carry-forward Batch Verify evidence：
+
+- `MEDIUM -> gpt-5.4-nano`
+- `COMPLEX -> gpt-5.4`
+- `REASONING -> gpt-5.5`
+- post-history `SIMPLE -> gpt-4o`
+- single-model regression PASS
+- secret safety PASS
+- Round 13 vendor marker cleanup PASS
+
+Residual risk：
+
+- DingTalk / WeCom live external inbound was not rerun in the final live continuation.
+- 当前状态不得写成 DingTalk / WeCom live PASS；只能记录 diagnostics/readiness/current-owner coverage 与 supplemental package-path routing evidence.
 
 ### 3. macOS packaged diagnostics / runtime truth / first-click
 
@@ -573,6 +628,7 @@ Risks：
 - `unified-model-configuration-surface` 已完成 source PASS + fresh packaged PASS；它是新 dashboard/model-routing configuration surface packet，不重写 `F-031` / `F-027`
 - `F-034` 已完成 source truth PASS + fresh packaged replay PASS，且 closeout 只锚到 `2026-04-24` artifact/replay
 - `packaged-channels-late-stage-authority-closure` 已完成 source truth PASS + fresh packaged replay PASS，且 closeout 只锚到 `2026-04-25` late-stage authority evidence
+- `packaged-channel-smart-routing-authority-hardening` 已完成 facts-only closeout：Feishu live external inbound PASS；DingTalk / WeCom final live continuation 未重跑，不能声明 live PASS
 - F-035 packaged isolation + install stall hotfix 已有 fresh evidence
 - packaged runtime truth / first-click / diagnostics export 已有 fresh evidence
 - latest packaged mac artifact 已完成 DingTalk / WeCom channel-specific closure，且同日后续 combined packaged verification 已 fresh PASS
@@ -583,3 +639,4 @@ Risks：
 
 - GitHub tree 之外是否还有未整理的旧 release / Notion 口径
 - Windows-specific surfaces 的真实验证闭环何时完成
+- DingTalk / WeCom live external inbound final continuation 何时重跑

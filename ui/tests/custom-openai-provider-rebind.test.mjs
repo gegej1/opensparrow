@@ -12,6 +12,11 @@ import {
   maybeFreshRebindMainSession,
   shouldRebindMainSession,
 } from '../lib/session-rebind.mjs'
+import {
+  CUSTOM_ROUTER_AUTH_PROFILE_ID,
+  CUSTOM_ROUTER_MODEL_TARGET,
+  CUSTOM_ROUTER_PROVIDER_ID,
+} from '../../scripts/model-routing/lib/custom-plugin-routing.mjs'
 
 const REPO_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '..')
 
@@ -79,6 +84,42 @@ function createInitialMainSession(rootDir, sessionId, model = 'gpt-4o-mini') {
   }
 }
 
+function createSmartRoutingPayload(baseUrl) {
+  return {
+    mode: 'smart',
+    tierConnectionMap: {
+      SIMPLE: {
+        baseUrl,
+        apiKey: 'sk-test-simple-routing',
+        model: 'gpt-4o',
+      },
+      MEDIUM: {
+        baseUrl,
+        apiKey: 'sk-test-medium-routing',
+        model: 'gpt-5.4-nano',
+      },
+      COMPLEX: {
+        baseUrl,
+        apiKey: 'sk-test-complex-routing',
+        model: 'gpt-5.4',
+      },
+      REASONING: {
+        baseUrl,
+        apiKey: 'sk-test-reasoning-routing',
+        model: 'gpt-5.5',
+      },
+    },
+    routing: {},
+  }
+}
+
+function assertAuthorityFieldsCleared(entry, label) {
+  assert.ok(entry, `${label} session entry should be preserved`)
+  assert.equal(entry.modelProvider, undefined, `${label} modelProvider should be cleared`)
+  assert.equal(entry.model, undefined, `${label} model should be cleared`)
+  assert.equal(entry.authProfileOverride, undefined, `${label} authProfileOverride should be cleared`)
+}
+
 function writeFakeOpenClawRuntime(runtimeRoot) {
   const binDir = path.join(runtimeRoot, 'bin')
   const openclawDir = path.join(runtimeRoot, 'openclaw')
@@ -110,6 +151,8 @@ const daemonStatusStderr = String(process.env.FAKE_OC_DAEMON_STATUS_STDERR || ''
 const daemonStatusExit = Number.parseInt(String(process.env.FAKE_OC_DAEMON_STATUS_EXIT || '0').trim(), 10)
 const healthOk = String(process.env.FAKE_OC_HEALTH_OK || '1').trim() !== '0'
 const restartError = String(process.env.FAKE_OC_RESTART_ERROR || '').trim() || 'daemon-restart failed'
+const failIfSessionAuthorityOnRestart = String(process.env.FAKE_OC_FAIL_IF_SESSION_AUTHORITY_ON_RESTART || '').trim() === '1'
+const sessionStorePath = path.join(profileDir, 'agents', 'main', 'sessions', 'sessions.json')
 
 function readConfig() {
   try {
@@ -134,6 +177,28 @@ function exitFail(message) {
   process.exit(1)
 }
 
+function countAgentMainAuthorityBindings() {
+  try {
+    const store = JSON.parse(fs.readFileSync(sessionStorePath, 'utf8'))
+    if (!store || typeof store !== 'object' || Array.isArray(store)) return 0
+    let count = 0
+    for (const [key, entry] of Object.entries(store)) {
+      if (!String(key).startsWith('agent:main:')) continue
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue
+      if (
+        entry.modelProvider !== undefined
+        || entry.model !== undefined
+        || entry.authProfileOverride !== undefined
+      ) {
+        count += 1
+      }
+    }
+    return count
+  } catch {
+    return 0
+  }
+}
+
 if (args[0] === 'config' && args[1] === 'set' && args[2] === 'models.providers.openai') {
   if (failMode === 'config-set') exitFail('config-set failed')
   const config = readConfig()
@@ -155,6 +220,12 @@ if (args[0] === 'models' && args[1] === 'set') {
 
 if (args[0] === 'daemon' && args[1] === 'restart') {
   if (failMode === 'daemon-restart') exitFail(restartError)
+  if (failIfSessionAuthorityOnRestart) {
+    const staleAuthorityCount = countAgentMainAuthorityBindings()
+    if (staleAuthorityCount > 0) {
+      exitFail(\`daemon-restart saw stale smart session authority before restart: count=\${staleAuthorityCount}\`)
+    }
+  }
   exitOk('daemon-restart ok')
 }
 
@@ -189,6 +260,17 @@ async function startFakeProvider() {
     if (req.method === 'POST' && req.url === '/v1/responses') {
       res.writeHead(200, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify({ id: 'resp_1', object: 'response', output: [] }))
+      return
+    }
+
+    if (req.method === 'POST' && req.url === '/v1/chat/completions') {
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({
+        id: 'chatcmpl_1',
+        object: 'chat.completion',
+        model: JSON.parse(requests.at(-1)?.body || '{}')?.model || 'unknown',
+        choices: [{ index: 0, message: { role: 'assistant', content: 'OK' }, finish_reason: 'stop' }],
+      }))
       return
     }
 
@@ -269,11 +351,13 @@ async function startUiServer({
   homeDir,
   runtimeRoot,
   port,
+  routerPort,
   gatewayPort,
   failMode = '',
   daemonStatusJson = '',
   healthOk = true,
   restartError = '',
+  failIfSessionAuthorityOnRestart = false,
 }) {
   const child = spawn(process.execPath, ['ui/server.mjs'], {
     cwd: REPO_ROOT,
@@ -282,12 +366,15 @@ async function startUiServer({
       OPENCLAW_HOME: homeDir,
       OPENSPARROW_AUTO_OPEN: '0',
       OPENSPARROW_UI_PORT: String(port),
+      OPENSPARROW_ROUTER_PORT: String(routerPort),
+      OPENSPARROW_SMART_SESSION_AUTHORITY_REFRESH_MS: '100',
       OPENCLAW_GATEWAY_PORT: String(gatewayPort),
       USB_RUNTIME_ROOT: runtimeRoot,
       FAKE_OC_FAIL: failMode,
       FAKE_OC_DAEMON_STATUS_JSON: daemonStatusJson,
       FAKE_OC_HEALTH_OK: healthOk ? '1' : '0',
       FAKE_OC_RESTART_ERROR: restartError,
+      FAKE_OC_FAIL_IF_SESSION_AUTHORITY_ON_RESTART: failIfSessionAuthorityOnRestart ? '1' : '0',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
@@ -314,6 +401,7 @@ async function withRouteHarness(testContext, options, run) {
   const homeDir = makeTempDir()
   const runtimeRoot = path.join(homeDir, 'fake-runtime')
   const uiPort = await findFreePort()
+  const routerPort = await findFreePort()
   const gatewayPort = await findFreePort()
   const provider = await startFakeProvider()
   writeFakeOpenClawRuntime(runtimeRoot)
@@ -332,11 +420,13 @@ async function withRouteHarness(testContext, options, run) {
     homeDir,
     runtimeRoot,
     port: uiPort,
+    routerPort,
     gatewayPort,
     failMode: options?.failMode ?? '',
     daemonStatusJson: options?.daemonStatusJson ?? '',
     healthOk: options?.healthOk ?? true,
     restartError: options?.restartError ?? '',
+    failIfSessionAuthorityOnRestart: options?.failIfSessionAuthorityOnRestart ?? false,
   })
 
   testContext.after(async () => {
@@ -349,6 +439,8 @@ async function withRouteHarness(testContext, options, run) {
     providerBaseUrl: provider.baseUrl,
     providerRequests: provider.requests,
     uiBaseUrl: ui.baseUrl,
+    uiPort,
+    routerBaseUrl: `http://127.0.0.1:${routerPort}`,
     currentStorePath,
     otherStorePath,
   })
@@ -377,6 +469,25 @@ function simulateFreshTurnBind({
 
   writeStore(storePath, store)
   return store[sessionKey]
+}
+
+async function waitForAuthorityFieldsCleared(storePath, sessionKey, timeoutMs = 5000) {
+  const startedAt = Date.now()
+  let lastEntry = null
+  while (Date.now() - startedAt < timeoutMs) {
+    const store = readStore(storePath)
+    lastEntry = store[sessionKey]
+    if (
+      lastEntry
+      && lastEntry.modelProvider === undefined
+      && lastEntry.model === undefined
+      && lastEntry.authProfileOverride === undefined
+    ) {
+      return lastEntry
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+  throw new Error(`authority fields were not cleared for ${sessionKey}: ${JSON.stringify(lastEntry)}`)
 }
 
 test('targeted fresh rebind removes only agent:main:main after save and restart succeed', () => {
@@ -541,6 +652,265 @@ test('route-level save path rebinds only after provider/auth success and restart
 
     const authProfiles = JSON.parse(fs.readFileSync(getAuthProfilesPath(homeDir), 'utf8'))
     assert.equal(authProfiles.profiles['openai:default'].key, 'sk-test-route')
+  })
+})
+
+test('model-routing smart save clears stale agent main channel authority bindings', { timeout: 15000 }, async (t) => {
+  await withRouteHarness(t, {}, async ({
+    homeDir,
+    providerBaseUrl,
+    uiBaseUrl,
+    currentStorePath,
+    otherStorePath,
+  }) => {
+    writeJson(getConfigPath(homeDir), {
+      models: {
+        providers: {
+          openai: {
+            baseUrl: providerBaseUrl,
+            models: [{ id: 'gpt-4o-mini', name: 'gpt-4o-mini', api: 'openai-completions' }],
+          },
+        },
+        default: 'openai/gpt-4o-mini',
+      },
+      agents: {
+        defaults: {
+          model: {
+            primary: 'openai/gpt-4o-mini',
+          },
+        },
+      },
+    })
+    writeJson(getAuthProfilesPath(homeDir), {
+      version: 1,
+      profiles: {
+        'openai:default': { type: 'api_key', provider: 'openai', key: 'sk-test-openai-default' },
+      },
+      order: { openai: ['openai:default'] },
+    })
+    writeStore(currentStorePath, {
+      [MAIN_AGENT_SESSION_KEY]: createInitialMainSession(path.dirname(currentStorePath), 'sid-current-main'),
+      'agent:main:feishu:dm:user-42': createInitialMainSession(path.dirname(currentStorePath), 'sid-feishu-dm'),
+      'agent:main:wecom:dm:user-77': createInitialMainSession(path.dirname(currentStorePath), 'sid-wecom-dm'),
+      'agent:main:dingtalk:group:room-9': createInitialMainSession(path.dirname(currentStorePath), 'sid-dingtalk-group'),
+      'agent:other:feishu:dm:user-42': createInitialMainSession(path.dirname(currentStorePath), 'sid-other-agent'),
+    })
+
+    const result = await postJson(`${uiBaseUrl}/api/config/model-routing`, createSmartRoutingPayload(providerBaseUrl))
+
+    assert.equal(result.status, 200)
+    assert.equal(result.payload.ok, true)
+    assert.equal(result.payload.saveState, 'saved')
+    assert.equal(result.payload.mode, 'smart')
+    assert.equal(result.payload.effectivePrimaryModel, CUSTOM_ROUTER_MODEL_TARGET)
+    assert.deepEqual(result.payload.sessionAuthorityRefresh, {
+      changed: true,
+      reason: 'smart-mode-channel-authority',
+      affectedCount: 4,
+      affectedProviderModelAggregate: [
+        { provider: 'openai', model: 'gpt-4o-mini', count: 4 },
+      ],
+      channelFamilies: {
+        main: 1,
+        feishu: 1,
+        wecom: 1,
+        dingtalk: 1,
+      },
+      phase: 'save-time',
+    })
+    assert.equal(JSON.stringify(result.payload.sessionAuthorityRefresh).includes('user-42'), false)
+    assert.equal(JSON.stringify(result.payload.sessionAuthorityRefresh).includes('sid-feishu-dm'), false)
+
+    const storeAfter = readStore(currentStorePath)
+    assertAuthorityFieldsCleared(storeAfter[MAIN_AGENT_SESSION_KEY], 'main')
+    assertAuthorityFieldsCleared(storeAfter['agent:main:feishu:dm:user-42'], 'feishu')
+    assertAuthorityFieldsCleared(storeAfter['agent:main:wecom:dm:user-77'], 'wecom')
+    assertAuthorityFieldsCleared(storeAfter['agent:main:dingtalk:group:room-9'], 'dingtalk')
+    assert.equal(storeAfter['agent:main:feishu:dm:user-42'].sessionId, 'sid-feishu-dm')
+    assert.equal(storeAfter['agent:main:feishu:dm:user-42'].sessionFile.endsWith('sid-feishu-dm.jsonl'), true)
+    assert.equal(storeAfter['agent:other:feishu:dm:user-42'].model, 'gpt-4o-mini')
+
+    const otherStoreAfter = readStore(otherStorePath)
+    assert.equal(otherStoreAfter[MAIN_AGENT_SESSION_KEY].sessionId, 'sid-other-main')
+
+    const config = JSON.parse(fs.readFileSync(getConfigPath(homeDir), 'utf8'))
+    assert.equal(config.agents.defaults.model.primary, CUSTOM_ROUTER_MODEL_TARGET)
+    assert.ok(config.models.providers[CUSTOM_ROUTER_PROVIDER_ID])
+    assert.equal(config.models.providers[CUSTOM_ROUTER_PROVIDER_ID].models[0].id, 'auto')
+    assert.equal(config.plugins.entries[CUSTOM_ROUTER_PROVIDER_ID].config.tierConnectionMap.SIMPLE.model, 'gpt-4o')
+    assert.equal(config.plugins.entries[CUSTOM_ROUTER_PROVIDER_ID].config.tierConnectionMap.MEDIUM.model, 'gpt-5.4-nano')
+    assert.equal(config.plugins.entries[CUSTOM_ROUTER_PROVIDER_ID].config.tierConnectionMap.COMPLEX.model, 'gpt-5.4')
+    assert.equal(config.plugins.entries[CUSTOM_ROUTER_PROVIDER_ID].config.tierConnectionMap.REASONING.model, 'gpt-5.5')
+
+    const authProfiles = JSON.parse(fs.readFileSync(getAuthProfilesPath(homeDir), 'utf8'))
+    assert.equal(authProfiles.profiles[CUSTOM_ROUTER_AUTH_PROFILE_ID].provider, CUSTOM_ROUTER_PROVIDER_ID)
+    assert.equal(authProfiles.order[CUSTOM_ROUTER_PROVIDER_ID][0], CUSTOM_ROUTER_AUTH_PROFILE_ID)
+
+    const singleResult = await postJson(`${uiBaseUrl}/api/config/model-routing`, {
+      mode: 'single',
+      baseUrl: providerBaseUrl,
+      apiKey: 'sk-test-single-routing',
+      model: 'gpt-5.4',
+    })
+    assert.equal(singleResult.status, 200)
+    assert.equal(singleResult.payload.ok, true)
+    assert.equal(singleResult.payload.mode, 'single')
+    assert.equal(singleResult.payload.effectivePrimaryModel, 'openai/gpt-5.4')
+    const singleConfig = JSON.parse(fs.readFileSync(getConfigPath(homeDir), 'utf8'))
+    assert.equal(singleConfig.agents.defaults.model.primary, 'openai/gpt-5.4')
+  })
+})
+
+test('model-routing smart save clears channel authority before daemon restart observes sessions', { timeout: 15000 }, async (t) => {
+  await withRouteHarness(t, { failIfSessionAuthorityOnRestart: true }, async ({
+    homeDir,
+    providerBaseUrl,
+    uiBaseUrl,
+    uiPort,
+    currentStorePath,
+  }) => {
+    writeJson(getConfigPath(homeDir), {
+      models: {
+        providers: {
+          openai: {
+            baseUrl: providerBaseUrl,
+            models: [{ id: 'gpt-4o-mini', name: 'gpt-4o-mini', api: 'openai-completions' }],
+          },
+        },
+        default: 'openai/gpt-4o-mini',
+      },
+      agents: {
+        defaults: {
+          model: {
+            primary: 'openai/gpt-4o-mini',
+          },
+        },
+      },
+    })
+    writeJson(getAuthProfilesPath(homeDir), {
+      version: 1,
+      profiles: {
+        'openai:default': { type: 'api_key', provider: 'openai', key: 'sk-test-openai-default' },
+      },
+      order: { openai: ['openai:default'] },
+    })
+    writeStore(currentStorePath, {
+      [MAIN_AGENT_SESSION_KEY]: createInitialMainSession(path.dirname(currentStorePath), 'sid-current-main'),
+      'agent:main:feishu:dm:user-42': createInitialMainSession(path.dirname(currentStorePath), 'sid-feishu-dm'),
+    })
+
+    const result = await postJson(`${uiBaseUrl}/api/config/model-routing`, createSmartRoutingPayload(providerBaseUrl))
+
+    assert.equal(result.status, 200)
+    assert.equal(result.payload.ok, true)
+    assert.equal(result.payload.saveState, 'saved')
+    assert.equal(result.payload.restart.ok, true)
+    assert.equal(result.payload.sessionAuthorityRefresh.reason, 'smart-mode-channel-authority')
+    assert.equal(result.payload.sessionAuthorityRefresh.phase, 'save-time')
+    assert.equal(result.payload.sessionAuthorityRefresh.affectedCount, 2)
+    assert.equal(result.payload.diagnostics.mode, 'smart')
+    assert.equal(result.payload.diagnostics.effectivePrimaryModel, CUSTOM_ROUTER_MODEL_TARGET)
+    assert.equal(result.payload.diagnostics.uiPort, uiPort)
+    assert.equal(result.payload.diagnostics.routerProviderPresent, true)
+    assert.equal(result.payload.diagnostics.tierModelMap.SIMPLE, 'gpt-4o')
+    assert.equal(result.payload.diagnostics.tierModelMap.MEDIUM, 'gpt-5.4-nano')
+    assert.equal(result.payload.diagnostics.tierModelMap.COMPLEX, 'gpt-5.4')
+    assert.equal(result.payload.diagnostics.tierModelMap.REASONING, 'gpt-5.5')
+    assert.equal(JSON.stringify(result.payload.diagnostics).includes('sk-test'), false)
+    assert.equal(JSON.stringify(result.payload.diagnostics).includes('user-42'), false)
+
+    const storeAfter = readStore(currentStorePath)
+    assertAuthorityFieldsCleared(storeAfter[MAIN_AGENT_SESSION_KEY], 'main before restart')
+    assertAuthorityFieldsCleared(storeAfter['agent:main:feishu:dm:user-42'], 'feishu before restart')
+  })
+})
+
+test('smart channel authority refresh clears Feishu stale authority re-persisted after first turn before second turn dispatch', { timeout: 20000 }, async (t) => {
+  await withRouteHarness(t, {}, async ({
+    homeDir,
+    providerBaseUrl,
+    providerRequests,
+    uiBaseUrl,
+    routerBaseUrl,
+    currentStorePath,
+  }) => {
+    writeJson(getConfigPath(homeDir), {
+      models: {
+        providers: {
+          openai: {
+            baseUrl: providerBaseUrl,
+            models: [{ id: 'gpt-4o-mini', name: 'gpt-4o-mini', api: 'openai-completions' }],
+          },
+        },
+        default: 'openai/gpt-4o-mini',
+      },
+      agents: {
+        defaults: {
+          model: {
+            primary: 'openai/gpt-4o-mini',
+          },
+        },
+      },
+    })
+    writeJson(getAuthProfilesPath(homeDir), {
+      version: 1,
+      profiles: {
+        'openai:default': { type: 'api_key', provider: 'openai', key: 'sk-test-openai-default' },
+      },
+      order: { openai: ['openai:default'] },
+    })
+    writeStore(currentStorePath, {
+      [MAIN_AGENT_SESSION_KEY]: createInitialMainSession(path.dirname(currentStorePath), 'sid-current-main'),
+      'agent:main:feishu:dm:user-42': createInitialMainSession(path.dirname(currentStorePath), 'sid-feishu-before-save'),
+    })
+
+    const saveResult = await postJson(`${uiBaseUrl}/api/config/model-routing`, createSmartRoutingPayload(providerBaseUrl))
+    assert.equal(saveResult.status, 200)
+    assert.equal(saveResult.payload.ok, true)
+    assert.equal(saveResult.payload.mode, 'smart')
+    assert.equal(saveResult.payload.effectivePrimaryModel, CUSTOM_ROUTER_MODEL_TARGET)
+    assertAuthorityFieldsCleared(readStore(currentStorePath)['agent:main:feishu:dm:user-42'], 'save-time feishu')
+
+    const storeAfterFirstTurn = readStore(currentStorePath)
+    storeAfterFirstTurn['agent:main:feishu:dm:user-42'] = {
+      ...storeAfterFirstTurn['agent:main:feishu:dm:user-42'],
+      updatedAt: 1776323000000,
+      modelProvider: 'openai',
+      model: 'gpt-4o-mini',
+      authProfileOverride: 'openai:default',
+    }
+    writeStore(currentStorePath, storeAfterFirstTurn)
+
+    const refreshedEntry = await waitForAuthorityFieldsCleared(
+      currentStorePath,
+      'agent:main:feishu:dm:user-42',
+    )
+    assert.equal(refreshedEntry.sessionId, 'sid-feishu-before-save')
+
+    const secondTurn = await fetch(`${routerBaseUrl}/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-openclaw-message-channel': 'feishu',
+        'x-openclaw-session-key': 'agent:main:feishu:dm:user-42',
+      },
+      body: JSON.stringify({
+        model: CUSTOM_ROUTER_MODEL_TARGET,
+        max_tokens: 8192,
+        messages: [{ role: 'user', content: '你好' }],
+      }),
+    })
+
+    assert.equal(secondTurn.status, 200)
+    assert.equal(secondTurn.headers.get('x-opensparrow-router-tier'), 'SIMPLE')
+    assert.equal(secondTurn.headers.get('x-opensparrow-router-model'), 'gpt-4o')
+    await secondTurn.json()
+
+    const chatRequests = providerRequests.filter((request) => request.url === '/v1/chat/completions')
+    assert.equal(chatRequests.length, 1)
+    const outbound = JSON.parse(chatRequests[0].body)
+    assert.equal(outbound.model, 'gpt-4o')
+    assert.notEqual(outbound.model, 'gpt-4o-mini')
   })
 })
 

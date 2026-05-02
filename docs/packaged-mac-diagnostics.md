@@ -382,6 +382,73 @@ Secret safety PASS：
 - no token/API key/auth profile secret/channel credential printed
 - closeout records only server/internal authority convergence facts; no user-facing config-env action instruction was added
 
+## 2026-05-02 packaged channel smart routing authority hardening closeout
+
+本节只记录 `packaged-channel-smart-routing-authority-hardening` 的 facts-only closeout truth。它是 packaged channel smart-routing authority hardening packet，不重写 `unified-model-configuration-surface`、`packaged-router-latest-turn-routing-hotfix`、DingTalk/WeCom live closure、vendor marker cleanup 或旧 packet 历史身份。
+
+Accepted gates：
+
+- Spec Review APPROVED
+- Worker Rounds 8-16 DONE
+- Batch Review APPROVED
+- Batch Verify PASS
+
+Fresh package root：
+
+- `dist/usb-pack/opensparrow-0.1.0-alpha`
+
+Active instance：
+
+- profile：`gtclaw-portable`
+- configPath：packaged `.gtclaw-state/.openclaw-gtclaw-portable/openclaw.json`
+- UI / router / gateway：`19000 / 18412 / 18929`
+- runtimeOwnership：
+  - `gatewayOwner=current`
+  - `daemonOwner=current`
+  - `routerOwner=current`
+  - `liveChannelOwner=current_only`
+
+Smart authority：
+
+- `effectivePrimaryModel=opensparrow-router/auto`
+- `singleModelMode=false`
+- tier map：
+  - `SIMPLE -> gpt-4o`
+  - `MEDIUM -> gpt-5.4-nano`
+  - `COMPLEX -> gpt-5.4`
+  - `REASONING -> gpt-5.5`
+
+Feishu live external inbound PASS：
+
+- Feishu side actual reply was observed.
+- Only redacted live evidence is recorded here.
+- `routerInvocation.invokedSinceStart=true`
+- `inputSource=sanitized-current-user-text`
+- input length and hash were recorded in verifier evidence; raw text is not copied.
+- `selectedTier=SIMPLE`
+- `outboundTier=SIMPLE`
+- `outboundModel=gpt-4o`
+
+Carry-forward Batch Verify evidence：
+
+- `MEDIUM -> gpt-5.4-nano`
+- `COMPLEX -> gpt-5.4`
+- `REASONING -> gpt-5.5`
+- post-history `SIMPLE -> gpt-4o`
+- single-model regression PASS
+- secret safety PASS
+- Round 13 vendor marker cleanup PASS
+
+Residual risk：
+
+- DingTalk / WeCom live external inbound was not rerun in the final live continuation.
+- This closeout does not claim DingTalk / WeCom live PASS.
+- DingTalk / WeCom are recorded only with diagnostics/readiness/current-owner coverage plus supplemental package-path routing evidence.
+
+Security：
+
+- No raw Feishu event envelope, raw user text, sender/chat/message IDs, tokens, secrets, bearer tokens, API keys, or raw JSON metadata are written in this closeout.
+
 ## 2026-04-23 fresh combined packaged truth
 
 fresh verifier 本轮实际验证的 rebuild artifact：

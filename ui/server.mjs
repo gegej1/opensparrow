@@ -8,6 +8,7 @@ import http from 'node:http'
 import fs from 'node:fs'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { Readable } from 'node:stream'
 import { fileURLToPath } from 'node:url'
 import os from 'node:os'
@@ -22,7 +23,12 @@ import {
 } from './install-helpers.mjs'
 import {
   maybeFreshRebindMainSession,
+  refreshSmartModeChannelSessionAuthority,
 } from './lib/session-rebind.mjs'
+import {
+  classifyRuntimeOwnership,
+  scanRuntimeOwnershipSnapshot,
+} from './lib/runtime-ownership.mjs'
 import {
   CUSTOM_ROUTER_AUTH_PROFILE_ID,
   CUSTOM_ROUTER_LOCAL_AUTH_KEY,
@@ -32,7 +38,9 @@ import {
   CUSTOM_ROUTER_MODEL_ID,
   CUSTOM_ROUTER_MODEL_TARGET,
   DEFAULT_CUSTOM_ROUTER_PORT,
+  extractCurrentUserTextFromMessages,
   extractPromptFromMessages,
+  normalizeRouterDiagnosticChannel,
   resolveRequestedMaxTokens,
   sanitizeDebugHeaderValue,
 } from '../scripts/model-routing/lib/custom-plugin-routing.mjs'
@@ -64,6 +72,14 @@ function resolvePortFromEnv(name, fallback) {
 function resolveDurationFromEnv(name, fallback) {
   const raw = Number.parseInt(String(process.env[name] ?? '').trim(), 10)
   if (!Number.isFinite(raw) || raw <= 0) return fallback
+  return raw
+}
+
+function resolveOptionalDurationFromEnv(name, fallback) {
+  const rawInput = String(process.env[name] ?? '').trim()
+  if (!rawInput) return fallback
+  const raw = Number.parseInt(rawInput, 10)
+  if (!Number.isFinite(raw) || raw < 0) return fallback
   return raw
 }
 
@@ -162,6 +178,7 @@ const GATEWAY_PORT = resolvePortFromEnv('OPENCLAW_GATEWAY_PORT', 18889)
 const SAVE_ROUTE_RESTART_TIMEOUT_MS = resolveDurationFromEnv('OPENSPARROW_SAVE_ROUTE_RESTART_TIMEOUT_MS', 30000)
 const SERVER_STARTED_AT = new Date().toISOString()
 const ACTIVE_UI_PORT = { value: null }
+const LAST_ROUTER_INVOCATION = { value: null }
 const PACKAGED_RUNTIME_MODE = resolveBooleanEnv('OPENSPARROW_PACKAGED_RUNTIME', false)
 const REQUIRE_BUNDLED_PLUGINS = resolveBooleanEnv('OPENSPARROW_REQUIRE_BUNDLED_PLUGINS', false)
 const AUTO_OPEN_BROWSER = !['0', 'false', 'no', 'off'].includes(
@@ -206,6 +223,10 @@ const INSTALL_GATE_AUTHORITY_CONVERGENCE_POLL_MS = resolveDurationFromEnv(
   'OPENSPARROW_INSTALL_GATE_AUTHORITY_CONVERGENCE_POLL_MS',
   500,
 )
+const SMART_SESSION_AUTHORITY_REFRESH_MS = resolveOptionalDurationFromEnv(
+  'OPENSPARROW_SMART_SESSION_AUTHORITY_REFRESH_MS',
+  1000,
+)
 
 function buildInstallBypassState(verdict = 'none', {
   used = false,
@@ -232,6 +253,62 @@ function buildInstanceFingerprint() {
     profileDir: toUserPath(PROFILE_DIR),
     configPath: toUserPath(CONFIG_FILE),
     serverStartedAt: SERVER_STARTED_AT,
+  }
+}
+
+function buildRuntimeOwnershipCurrent() {
+  return {
+    uiPid: process.pid,
+    uiPort: ACTIVE_UI_PORT.value,
+    gatewayPort: GATEWAY_PORT,
+    routerPort: CUSTOM_ROUTER_PORT,
+    profile: PROFILE,
+    packRoot: PACK_ROOT,
+    runtimeRoot: RUNTIME_ROOT,
+    openclawHome: OPENCLAW_HOME,
+    profileDir: PROFILE_DIR,
+    configPath: CONFIG_FILE,
+  }
+}
+
+function redactOwnershipPathFields(value) {
+  if (Array.isArray(value)) return value.map((entry) => redactOwnershipPathFields(entry))
+  if (!value || typeof value !== 'object') return value
+  const output = {}
+  for (const [key, entry] of Object.entries(value)) {
+    if (
+      typeof entry === 'string' &&
+      ['packRoot', 'runtimeRoot', 'openclawHome', 'profileDir', 'configPath', 'executablePath'].includes(key)
+    ) {
+      output[key] = toUserPath(entry)
+    } else {
+      output[key] = redactOwnershipPathFields(entry)
+    }
+  }
+  return output
+}
+
+async function buildRuntimeOwnershipDiagnostics() {
+  try {
+    const processes = await scanRuntimeOwnershipSnapshot()
+    return redactOwnershipPathFields(classifyRuntimeOwnership({
+      current: buildRuntimeOwnershipCurrent(),
+      processes,
+    }))
+  } catch (error) {
+    return {
+      available: false,
+      error: 'runtime ownership scan failed',
+      reason: String(error?.message ?? error).slice(0, 160),
+      currentUi: buildInstanceFingerprint(),
+      summary: {
+        gatewayOwner: 'unknown',
+        daemonOwner: 'unknown',
+        routerOwner: 'unknown',
+        liveChannelOwner: 'unknown',
+        foreignProcessCount: 0,
+      },
+    }
   }
 }
 
@@ -1603,6 +1680,44 @@ function readConfigSafe() {
   }
 }
 
+function logSessionAuthorityRefresh(summary = {}) {
+  if (summary?.changed !== true) return
+  const diagnostic = {
+    reason: summary.reason,
+    phase: summary.phase,
+    affectedCount: summary.affectedCount,
+    affectedProviderModelAggregate: Array.isArray(summary.affectedProviderModelAggregate)
+      ? summary.affectedProviderModelAggregate
+      : [],
+    channelFamilies: isPlainObject(summary.channelFamilies) ? summary.channelFamilies : {},
+  }
+  console.log(`[session-authority] ${JSON.stringify(diagnostic)}`)
+}
+
+function refreshSmartModeSessionAuthority(phase, options = {}) {
+  const result = refreshSmartModeChannelSessionAuthority({
+    storePath: MAIN_SESSION_STORE_FILE,
+    config: options.config ?? readConfigSafe() ?? {},
+    routerModelTarget: CUSTOM_ROUTER_MODEL_TARGET,
+    phase,
+  })
+  if (options.log !== false) logSessionAuthorityRefresh(result)
+  return result
+}
+
+function startSmartModeSessionAuthorityRefreshLoop() {
+  if (!SMART_SESSION_AUTHORITY_REFRESH_MS) return null
+  const timer = setInterval(() => {
+    try {
+      refreshSmartModeSessionAuthority('repeated-cleanup')
+    } catch (error) {
+      console.log(`[session-authority] repeated cleanup failed: ${error?.message ?? String(error)}`)
+    }
+  }, SMART_SESSION_AUTHORITY_REFRESH_MS)
+  timer.unref?.()
+  return timer
+}
+
 const ROUTING_TIERS = Object.freeze(['SIMPLE', 'MEDIUM', 'COMPLEX', 'REASONING'])
 const EMBEDDED_AGENT_MAX_TOKENS_CEILING = 8192
 
@@ -1682,7 +1797,7 @@ function selectCustomRouterTier(body = {}, routerConfig = {}) {
 
   if (
     prompt.length >= 280
-    || /总结|分析|review|compare|explain|plan|draft|方案|对比/.test(lowered)
+    || /总结|分析|review|compare|explain|plan|draft|方案|对比|会议(?:记录|纪要)|纪要整理|行动项|待办(?:事项|清单)?|(?:负责人|责任人).{0,20}(?:截止|风险)|(?:截止|风险).{0,20}(?:负责人|责任人)|action\s+items?|meeting\s+(?:notes?|minutes)|next\s+steps?|follow-?ups?/.test(lowered)
   ) {
     return 'MEDIUM'
   }
@@ -1693,11 +1808,140 @@ function selectCustomRouterTier(body = {}, routerConfig = {}) {
   return 'SIMPLE'
 }
 
+function buildRouterInputHash(value = '') {
+  return createHash('sha256').update(String(value ?? ''), 'utf8').digest('hex').slice(0, 16)
+}
+
+function toUrlOriginOnly(value = '') {
+  try {
+    return new URL(String(value ?? '').trim()).origin
+  } catch {
+    return 'invalid'
+  }
+}
+
+function buildRouterInvocationStatus() {
+  return {
+    invokedSinceStart: LAST_ROUTER_INVOCATION.value !== null,
+    last: LAST_ROUTER_INVOCATION.value,
+    routerUrlOrigin: toUrlOriginOnly(`http://127.0.0.1:${CUSTOM_ROUTER_PORT}/v1`),
+  }
+}
+
+function splitProviderModel(value = '') {
+  const text = String(value ?? '').trim()
+  const slashIndex = text.indexOf('/')
+  if (slashIndex <= 0) {
+    return {
+      providerId: text ? 'unknown' : 'none',
+      modelId: text || 'none',
+    }
+  }
+  return {
+    providerId: text.slice(0, slashIndex),
+    modelId: text.slice(slashIndex + 1) || 'none',
+  }
+}
+
+function buildModelAuthorityStatus(config = readConfigSafe() ?? {}) {
+  const effectivePrimaryModel = String(config?.agents?.defaults?.model?.primary ?? DEFAULT_MODEL ?? '').trim()
+  const { providerId, modelId } = splitProviderModel(effectivePrimaryModel)
+  const providerConfig = isPlainObject(config?.models?.providers?.[providerId])
+    ? config.models.providers[providerId]
+    : {}
+  const routerBaseUrl = providerId === CUSTOM_ROUTER_PROVIDER_ID
+    ? (providerConfig.baseUrl || `http://127.0.0.1:${CUSTOM_ROUTER_PORT}/v1`)
+    : ''
+
+  return {
+    effectivePrimaryModel: sanitizeDebugHeaderValue(effectivePrimaryModel || 'unknown', 128),
+    providerId: sanitizeDebugHeaderValue(providerId, 96),
+    modelId: sanitizeDebugHeaderValue(modelId, 128),
+    smartRouterTarget: CUSTOM_ROUTER_MODEL_TARGET,
+    singleModelMode: effectivePrimaryModel !== CUSTOM_ROUTER_MODEL_TARGET,
+    routerUrlOrigin: routerBaseUrl ? toUrlOriginOnly(routerBaseUrl) : 'not-router',
+  }
+}
+
+function resolveRouterDiagnosticChannel(req, body = {}) {
+  const raw = req?.headers?.['x-openclaw-message-channel']
+    || req?.headers?.['x-opensparrow-channel']
+    || req?.headers?.['x-openclaw-channel']
+    || body?.channel
+    || body?.metadata?.channel
+    || ''
+  return normalizeRouterDiagnosticChannel(raw)
+}
+
+function resolveRouterDiagnosticSessionHash(req) {
+  const raw = req?.headers?.['x-openclaw-session-key']
+    || req?.headers?.['x-opensparrow-session-key']
+    || req?.headers?.['x-openclaw-session']
+    || ''
+  const normalized = String(raw ?? '').trim()
+  return normalized ? buildRouterInputHash(normalized) : 'none'
+}
+
+function buildCustomRouterDiagnosticHeaders(req, body = {}, config = {}) {
+  const evidence = extractCurrentUserTextFromMessages(body?.messages)
+  const text = String(evidence?.text ?? '')
+  const excludedInputCategories = Array.isArray(evidence?.excludedInputCategories)
+    ? evidence.excludedInputCategories
+    : []
+  const primaryModel = String(config?.agents?.defaults?.model?.primary ?? '').trim()
+  const authority = primaryModel === CUSTOM_ROUTER_MODEL_TARGET
+    ? CUSTOM_ROUTER_MODEL_TARGET
+    : (primaryModel || 'unknown')
+
+  return {
+    'x-opensparrow-router-channel': resolveRouterDiagnosticChannel(req, body),
+    'x-opensparrow-router-input-source': sanitizeDebugHeaderValue(evidence?.source || 'raw-current-user-text', 96),
+    'x-opensparrow-router-input-length': String(text.length),
+    'x-opensparrow-router-input-hash': buildRouterInputHash(text),
+    'x-opensparrow-router-session-hash': resolveRouterDiagnosticSessionHash(req),
+    'x-opensparrow-router-authority': sanitizeDebugHeaderValue(authority, 128),
+    'x-opensparrow-router-excluded': sanitizeDebugHeaderValue(
+      excludedInputCategories.length > 0 ? excludedInputCategories.join(',') : 'none',
+      256,
+    ),
+  }
+}
+
+function buildCustomRouterDecisionHeaders(selectedTier, actualTier, attemptErrors = []) {
+  const normalizedSelectedTier = normalizeRoutingTier(selectedTier) || 'UNKNOWN'
+  const normalizedActualTier = normalizeRoutingTier(actualTier) || 'UNKNOWN'
+  const fallbackReason = normalizedSelectedTier === normalizedActualTier
+    ? 'none'
+    : (attemptErrors.length > 0 ? attemptErrors.join(',') : `${normalizedSelectedTier}:fallback`)
+  return {
+    'x-opensparrow-router-selected-tier': sanitizeDebugHeaderValue(normalizedSelectedTier, 64),
+    'x-opensparrow-router-fallback-reason': sanitizeDebugHeaderValue(fallbackReason, 512),
+  }
+}
+
 function buildCustomRouterTierAttemptOrder(selectedTier) {
   const normalizedTier = normalizeRoutingTier(selectedTier)
   const startIndex = ROUTING_TIERS.indexOf(normalizedTier)
   if (startIndex === -1) return [...ROUTING_TIERS]
   return ROUTING_TIERS.slice(startIndex)
+}
+
+function logCustomRouterInvocation({ diagnosticHeaders, selectedTier, tier, tierConnection }) {
+  const event = {
+    phase: 'router-invoked',
+    channel: diagnosticHeaders['x-opensparrow-router-channel'] || 'unknown',
+    sessionKeyHash: diagnosticHeaders['x-opensparrow-router-session-hash'] || 'none',
+    inputSource: diagnosticHeaders['x-opensparrow-router-input-source'] || 'raw-current-user-text',
+    inputLength: Number.parseInt(diagnosticHeaders['x-opensparrow-router-input-length'] || '0', 10) || 0,
+    inputHash: diagnosticHeaders['x-opensparrow-router-input-hash'] || 'none',
+    authority: diagnosticHeaders['x-opensparrow-router-authority'] || 'unknown',
+    selectedTier: normalizeRoutingTier(selectedTier) || 'UNKNOWN',
+    outboundTier: normalizeRoutingTier(tier) || 'UNKNOWN',
+    outboundModel: sanitizeDebugHeaderValue(tierConnection?.model || 'unknown', 128),
+    upstreamBaseUrlOrigin: toUrlOriginOnly(tierConnection?.baseUrl || ''),
+  }
+  LAST_ROUTER_INVOCATION.value = event
+  console.log(`[router-invoked] ${JSON.stringify(event)}`)
 }
 
 function ensureCustomRouterProviderConfig() {
@@ -1829,9 +2073,11 @@ async function handleCustomRouterChatCompletions(req, res) {
   }
 
   const config = readConfigSafe()
+  refreshSmartModeSessionAuthority('pre-dispatch', { config: config ?? {} })
   const routerConfig = readCustomRouterEntryConfig(config ?? {})
   const selectedTier = selectCustomRouterTier(body, routerConfig)
   const attemptOrder = buildCustomRouterTierAttemptOrder(selectedTier)
+  const diagnosticHeaders = buildCustomRouterDiagnosticHeaders(req, body, config ?? {})
   const attemptErrors = []
 
   for (const tier of attemptOrder) {
@@ -1861,10 +2107,18 @@ async function handleCustomRouterChatCompletions(req, res) {
       attemptErrors.push(`${tier}:status-${upstreamResponse.status}`)
       if (tier !== attemptOrder.at(-1)) continue
 
+      logCustomRouterInvocation({
+        diagnosticHeaders,
+        selectedTier,
+        tier,
+        tierConnection,
+      })
       res.writeHead(upstreamResponse.status, {
         'content-type': upstreamResponse.headers.get('content-type') || 'application/json',
         'x-opensparrow-router-tier': sanitizeDebugHeaderValue(tier),
         'x-opensparrow-router-model': sanitizeDebugHeaderValue(tierConnection.model),
+        ...diagnosticHeaders,
+        ...buildCustomRouterDecisionHeaders(selectedTier, tier, attemptErrors),
       })
       res.end(failureText)
       return
@@ -1874,10 +2128,18 @@ async function handleCustomRouterChatCompletions(req, res) {
       'content-type': upstreamResponse.headers.get('content-type') || 'application/json',
       'x-opensparrow-router-tier': sanitizeDebugHeaderValue(tier),
       'x-opensparrow-router-model': sanitizeDebugHeaderValue(tierConnection.model),
+      ...diagnosticHeaders,
+      ...buildCustomRouterDecisionHeaders(selectedTier, tier, attemptErrors),
     }
     const cacheControl = upstreamResponse.headers.get('cache-control')
     if (cacheControl) passthroughHeaders['cache-control'] = cacheControl
 
+    logCustomRouterInvocation({
+      diagnosticHeaders,
+      selectedTier,
+      tier,
+      tierConnection,
+    })
     res.writeHead(upstreamResponse.status, passthroughHeaders)
     if (!upstreamResponse.body) {
       res.end()
@@ -3246,6 +3508,7 @@ function sendFile(res, filePath) {
 async function handleStatus(res) {
   const configExists = fs.existsSync(CONFIG_FILE)
   const profileDirExists = fs.existsSync(PROFILE_DIR)
+  const runtimeOwnership = await buildRuntimeOwnershipDiagnostics()
   const {
     daemon,
     daemonReported,
@@ -3279,6 +3542,9 @@ async function handleStatus(res) {
     profile: PROFILE,
     configPath: toUserPath(CONFIG_FILE),
     gatewayPort: GATEWAY_PORT,
+    runtimeOwnership,
+    modelAuthority: buildModelAuthorityStatus(),
+    routerInvocation: buildRouterInvocationStatus(),
   })
 }
 
@@ -3291,6 +3557,7 @@ async function buildDiagnosticsBundle() {
   const runtime = await resolveRuntimeState()
   const install = readInstallState()
   const channelProbes = redactSecretLikeObject(normalizeChannelProbes(install.channelProbes))
+  const runtimeOwnership = await buildRuntimeOwnershipDiagnostics()
 
   return {
     generatedAt: new Date().toISOString(),
@@ -3307,6 +3574,9 @@ async function buildDiagnosticsBundle() {
     gatewayPort: GATEWAY_PORT,
     routerPort: CUSTOM_ROUTER_PORT,
     runtime,
+    runtimeOwnership,
+    modelAuthority: buildModelAuthorityStatus(),
+    routerInvocation: buildRouterInvocationStatus(),
     install,
     installLogTail: readInstallLogTail(),
     channelProbes,
@@ -4438,6 +4708,49 @@ function createModelRoutingHelperOptions() {
   }
 }
 
+function buildModelRoutingSaveDiagnostics({
+  result,
+  restart,
+  sessionAuthorityRefresh,
+  postRestartSessionAuthorityRefresh,
+}) {
+  const config = readConfigSafe()
+  const routerProvider = isPlainObject(config?.models?.providers?.[CUSTOM_ROUTER_PROVIDER_ID])
+    ? config.models.providers[CUSTOM_ROUTER_PROVIDER_ID]
+    : null
+  const routerConfig = readCustomRouterEntryConfig(config ?? {})
+  const tierModelMap = Object.fromEntries(ROUTING_TIERS.map((tier) => {
+    const connection = readRuntimeTierConnection(routerConfig, tier)
+    return [tier, connection.model || '']
+  }))
+  const restartSummary = {
+    ok: restart?.ok === true,
+    mode: restart?.mode ?? null,
+  }
+  if (restart?.issue) {
+    restartSummary.issue = sanitizeDebugHeaderValue(restart.issue, 512)
+  }
+
+  return {
+    phase: 'save-time',
+    mode: result?.mode ?? 'unknown',
+    effectivePrimaryModel: result?.effectivePrimaryModel ?? '',
+    configPath: toUserPath(CONFIG_FILE),
+    profile: PROFILE,
+    packRoot: toUserPath(PACK_ROOT),
+    pid: process.pid,
+    uiPort: ACTIVE_UI_PORT.value,
+    routerPort: CUSTOM_ROUTER_PORT,
+    gatewayPort: GATEWAY_PORT,
+    routerProviderPresent: routerProvider !== null,
+    routerBaseUrlOrigin: routerProvider?.baseUrl ? toUrlOriginOnly(routerProvider.baseUrl) : 'missing',
+    tierModelMap,
+    restart: restartSummary,
+    sessionAuthorityRefresh,
+    postRestartSessionAuthorityRefresh,
+  }
+}
+
 /** GET /api/config/model-routing */
 function handleGetModelRouting(res) {
   try {
@@ -4606,10 +4919,21 @@ async function handleUpdateModelRouting(res, body) {
     return
   }
 
+  const sessionAuthorityRefresh = refreshSmartModeSessionAuthority('save-time', { log: false })
   const restartResult = await restartGatewayRuntimeWithFallback({
     timeoutMs: SAVE_ROUTE_RESTART_TIMEOUT_MS,
   })
   const restart = await buildRestartSummary(restartResult)
+  const postRestartSessionAuthorityRefresh = restart.ok
+    ? refreshSmartModeSessionAuthority('runtime-start', { log: false })
+    : {
+      changed: false,
+      reason: 'runtime-restart-not-confirmed',
+      phase: 'runtime-start',
+      affectedCount: 0,
+      affectedProviderModelAggregate: [],
+      channelFamilies: {},
+    }
 
   const payload = {
     ok: true,
@@ -4620,7 +4944,15 @@ async function handleUpdateModelRouting(res, body) {
     message: result.message,
     restart,
     followUp: buildSaveFollowUp('/api/config/model-routing'),
+    sessionAuthorityRefresh,
+    postRestartSessionAuthorityRefresh,
   }
+  payload.diagnostics = buildModelRoutingSaveDiagnostics({
+    result,
+    restart,
+    sessionAuthorityRefresh,
+    postRestartSessionAuthorityRefresh,
+  })
   if (restart.mode && restart.mode !== 'daemon') {
     payload.runtimeMode = restart.mode
   }
@@ -5600,6 +5932,12 @@ async function startServer() {
   }
 
   try {
+    refreshSmartModeSessionAuthority('runtime-start')
+  } catch (e) {
+    console.log(`[session-authority] runtime-start refresh failed: ${e?.message ?? String(e)}`)
+  }
+
+  try {
     const patch = patchDingtalkPluginDist()
     if (patch.ok && patch.changed) {
       console.log(`[dingtalk] ${patch.message}`)
@@ -5619,12 +5957,16 @@ async function startServer() {
   ACTIVE_UI_PORT.value = port
 
   const server = http.createServer(requestHandler)
+  const sessionAuthorityRefreshTimer = startSmartModeSessionAuthorityRefreshLoop()
   if (routerBootstrap.ok && routerBootstrap.server) {
     server.on('close', () => {
       try {
         routerBootstrap.server.close()
       } catch {}
     })
+  }
+  if (sessionAuthorityRefreshTimer) {
+    server.on('close', () => clearInterval(sessionAuthorityRefreshTimer))
   }
 
   server.listen(port, '127.0.0.1', () => {

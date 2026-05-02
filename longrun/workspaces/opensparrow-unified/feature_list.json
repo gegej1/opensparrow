@@ -1010,5 +1010,38 @@
     "evidence_hint": "Spec Review APPROVED + Worker DONE + Batch Review APPROVED + Batch Verify PASS. Fresh package root `/Users/eduardogan/.config/superpowers/worktrees/opensparrow/feature-p0-packaged-mac-diagnostics/dist/usb-pack/opensparrow-0.1.0-alpha`; UI port `19003`; success gateway/router `18931/18414`; foreign negative `18929/18414`; SHA256 `13ff72e8425ceb1b9a22d045c6e66fab50fc77a5d49f81778959127c121f6bfd`; DingTalk transient authority replay completed after daemon `unknown -> running` and health `gateway_unhealthy -> ok`; negative classifications `foreign_gateway_port`, `gateway_unhealthy`, and `config_path_token_mismatch` remained failures; secret scan hits `[]`; user manual package-root rerun confirmed the current package is normal and latest usable.",
     "risk": "medium",
     "passes": true
+  },
+  {
+    "id": "packaged-channel-smart-routing-authority-hardening",
+    "priority": 1,
+    "category": "reliability",
+    "component": "packaged-channel-smart-routing-authority",
+    "description": "Close packaged channel smart-routing authority hardening so active packaged Feishu live inbound routes from sanitized current-user text through `opensparrow-router/auto`, while stale instance evidence and DingTalk/WeCom final live gaps are recorded without claiming unsupported live PASS.",
+    "depends_on": [
+      "unified-model-configuration-surface",
+      "packaged-router-latest-turn-routing-hotfix",
+      "packaged-install-gate-authority-consumption-hardening"
+    ],
+    "acceptance_criteria": [
+      "Accepted gates are Spec Review APPROVED, Worker Rounds 8-16 DONE, Batch Review APPROVED, and Batch Verify PASS.",
+      "Fresh package root is `dist/usb-pack/opensparrow-0.1.0-alpha`; active profile is `gtclaw-portable`; configPath is under packaged `.gtclaw-state/.openclaw-gtclaw-portable/openclaw.json`; active UI/router/gateway ports are `19000 / 18412 / 18929`.",
+      "Runtime ownership is current-owned: `gatewayOwner=current`, `daemonOwner=current`, `routerOwner=current`, and `liveChannelOwner=current_only`.",
+      "Smart authority remains `effectivePrimaryModel=opensparrow-router/auto` with `singleModelMode=false` and tier map `SIMPLE -> gpt-4o`, `MEDIUM -> gpt-5.4-nano`, `COMPLEX -> gpt-5.4`, `REASONING -> gpt-5.5`.",
+      "Feishu live external inbound PASS is recorded with Feishu-side actual reply observed, redacted live evidence only, `routerInvocation.invokedSinceStart=true`, `inputSource=sanitized-current-user-text`, recorded input length/hash without raw text, `selectedTier=SIMPLE`, `outboundTier=SIMPLE`, and `outboundModel=gpt-4o`.",
+      "Carry-forward Batch Verify evidence records `MEDIUM -> gpt-5.4-nano`, `COMPLEX -> gpt-5.4`, `REASONING -> gpt-5.5`, post-history `SIMPLE -> gpt-4o`, single-model regression PASS, secret safety PASS, and Round 13 vendor marker cleanup PASS.",
+      "Residual risk is explicit: DingTalk/WeCom live external inbound was not rerun in the final live continuation, so this feature does not claim DingTalk/WeCom live PASS and records only diagnostics/readiness/current-owner coverage plus supplemental package-path routing evidence.",
+      "Security closeout writes no raw Feishu event envelope, raw user text, sender/chat/message IDs, tokens, secrets, bearer tokens, API keys, or raw JSON metadata."
+    ],
+    "steps": [
+      "Read project rules, governance, packet spec/plan/tasks, packaged diagnostics, current status, feature list, progress log, worktree identity, and existing dirty state.",
+      "Record the accepted gate state and final active packaged smart-routing authority facts in packaged mac diagnostics and current status without changing implementation behavior.",
+      "Update longrun feature tracking and progress with only facts supported by Spec Review, Worker rounds, Batch Review, Batch Verify, and final Feishu live continuation evidence.",
+      "Record DingTalk/WeCom final live continuation as residual risk rather than live PASS.",
+      "Run JSON, progress report, diff hygiene, and scoped diff validation for the closeout write-set.",
+      "Store one short durable Mem0 closeout fact with `metadata.project=opensparrow` and no raw channel/user/secret material."
+    ],
+    "evidence_hint": "Spec Review APPROVED + Worker Rounds 8-16 DONE + Batch Review APPROVED + Batch Verify PASS. Fresh package root `dist/usb-pack/opensparrow-0.1.0-alpha`; active profile `gtclaw-portable`; config path under packaged `.gtclaw-state/.openclaw-gtclaw-portable/openclaw.json`; UI/router/gateway `19000/18412/18929`; runtime ownership current/current/current/current_only; smart authority `opensparrow-router/auto`, singleModelMode false, tiers SIMPLE gpt-4o, MEDIUM gpt-5.4-nano, COMPLEX gpt-5.4, REASONING gpt-5.5; Feishu live external inbound PASS with redacted evidence and SIMPLE/gpt-4o; Batch Verify carry-forward covers MEDIUM/COMPLEX/REASONING, post-history SIMPLE, single-model regression, secret safety, and Round 13 vendor marker cleanup; DingTalk/WeCom live external inbound was not rerun in final live continuation.",
+    "risk": "medium",
+    "passes": true
   }
 ]

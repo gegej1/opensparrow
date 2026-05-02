@@ -1773,6 +1773,65 @@
   - Pre-existing dirty/untracked docs, longrun, implementation, tests, vendor, `dist`-adjacent, and spec surfaces existed before this closeout.
   - This packet attributes only the closeout write-set above.
 
+2026-05-02 15:44 +08:00 — packaged channel smart routing authority hardening facts-only closeout
+
+- Packet:
+  - `packaged-channel-smart-routing-authority-hardening`
+  - Closer Gate only; facts-only docs / longrun / memory update.
+  - This closeout does not modify implementation, tests, `ui/**`, `scripts/**`, `platforms/**`, `vendor/**`, `dist/**`, credential/auth files, or unrelated docs/specs/longrun.
+- Accepted gates:
+  - Spec Review: APPROVED
+  - Worker Rounds 8-16: DONE
+  - Batch Review: APPROVED
+  - Batch Verify: PASS
+- Fresh package root:
+  - `dist/usb-pack/opensparrow-0.1.0-alpha`
+- Active instance:
+  - profile: `gtclaw-portable`
+  - configPath: packaged `.gtclaw-state/.openclaw-gtclaw-portable/openclaw.json`
+  - UI / router / gateway: `19000 / 18412 / 18929`
+  - runtimeOwnership: `gatewayOwner=current`, `daemonOwner=current`, `routerOwner=current`, `liveChannelOwner=current_only`
+- Smart authority:
+  - `effectivePrimaryModel=opensparrow-router/auto`
+  - `singleModelMode=false`
+  - `SIMPLE -> gpt-4o`
+  - `MEDIUM -> gpt-5.4-nano`
+  - `COMPLEX -> gpt-5.4`
+  - `REASONING -> gpt-5.5`
+- Feishu live external inbound PASS:
+  - Feishu side actual reply observed.
+  - Evidence recorded here is redacted only.
+  - `routerInvocation.invokedSinceStart=true`
+  - `inputSource=sanitized-current-user-text`
+  - input length and hash were recorded in verifier evidence; raw text is not copied.
+  - `selectedTier=SIMPLE`
+  - `outboundTier=SIMPLE`
+  - `outboundModel=gpt-4o`
+- Carry-forward Batch Verify evidence:
+  - `MEDIUM -> gpt-5.4-nano`
+  - `COMPLEX -> gpt-5.4`
+  - `REASONING -> gpt-5.5`
+  - post-history `SIMPLE -> gpt-4o`
+  - single-model regression PASS
+  - secret safety PASS
+  - Round 13 vendor marker cleanup PASS
+- Residual risk:
+  - DingTalk / WeCom live external inbound was not rerun in the final live continuation.
+  - This closeout does not claim DingTalk / WeCom live PASS.
+  - DingTalk / WeCom coverage is limited to diagnostics/readiness/current-owner coverage plus supplemental package-path routing evidence.
+- Security:
+  - No raw Feishu event envelope, raw user text, sender/chat/message IDs, tokens, secrets, bearer tokens, API keys, or raw JSON metadata were written.
+- Closeout write-set:
+  - `docs/packaged-mac-diagnostics.md`
+  - `docs/current-status.md`
+  - `longrun/workspaces/opensparrow-unified/feature_list.json`
+  - `longrun/workspaces/opensparrow-unified/claude-progress.txt`
+  - `specs/packaged-channel-smart-routing-authority-hardening/spec.md`
+  - `specs/packaged-channel-smart-routing-authority-hardening/tasks.md`
+- Noisy workspace attribution:
+  - Pre-existing Worker-owned dirty/untracked `ui/**`, `scripts/**`, and packet spec files were present before this closeout.
+  - This packet attributes only the closeout write-set above.
+
 2026-04-27 17:45 +08:00 — latest usable packaged mac snapshot
 
 - User manual validation:

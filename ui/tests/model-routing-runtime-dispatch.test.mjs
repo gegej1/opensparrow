@@ -150,7 +150,7 @@ async function startUpstreamFixture({ tier, expectedModel, expectedApiKey }) {
     const body = await readRequestJson(req)
     const authorizationOk = req.headers.authorization === `Bearer ${expectedApiKey}`
     const modelOk = body?.model === expectedModel
-    calls.push({ authorizationOk, modelOk })
+    calls.push({ authorizationOk, modelOk, body })
 
     if (!authorizationOk || !modelOk) {
       res.writeHead(409, { 'content-type': 'application/json' })
@@ -178,6 +178,270 @@ async function startUpstreamFixture({ tier, expectedModel, expectedApiKey }) {
     baseUrl: `http://127.0.0.1:${port}/v1`,
   }
 }
+
+function liveCompatibleChannelPrompt(currentText) {
+  return [
+    'OpenSparrow live channel ingress control preamble',
+    'Conversation info snapshot for packaged external channel ingress',
+    '',
+    '```json',
+    JSON.stringify({
+      wrapper: {
+        kind: 'live-channel-ingress',
+        source: 'external-message-plugin',
+      },
+      transport: {
+        plugin: 'feishu-openclaw-plugin',
+        session: 'agent:main:main',
+      },
+      request: {
+        format: 'json',
+        trace: 'metadata-only',
+      },
+      history: [
+        { role: 'user', content: 'debug this stack trace and fix the code' },
+        { role: 'assistant', content: 'old answer' },
+      ],
+    }, null, 2),
+    '```',
+    '',
+    currentText,
+  ].join('\n')
+}
+
+test('router outbound provider body model follows selected tier config instead of OpenAI provider default', { timeout: 20000 }, async (t) => {
+  const homeDir = makeTempDir()
+  const uiPort = await findFreePort()
+  const routerPort = await findFreePort()
+  const tierModels = {
+    SIMPLE: 'gpt-4o',
+    MEDIUM: 'gpt-5.4-nano',
+    COMPLEX: 'gpt-5.4',
+    REASONING: 'gpt-5.5',
+  }
+  const upstreams = {}
+
+  for (const tier of TIERS) {
+    upstreams[tier] = await startUpstreamFixture({
+      tier,
+      expectedModel: tierModels[tier],
+      expectedApiKey: `${tier.toLowerCase()}-authority-key`,
+    })
+    t.after(async () => {
+      await stopServer(upstreams[tier].server)
+    })
+  }
+
+  writeJson(getConfigPath(homeDir), {
+    models: {
+      providers: {
+        openai: {
+          baseUrl: 'https://provider-default.example/v1',
+          models: [{ id: 'gpt-4o-mini', name: 'gpt-4o-mini', api: 'openai-completions' }],
+        },
+        'opensparrow-router': {
+          baseUrl: `http://127.0.0.1:${routerPort}/v1`,
+          api: 'openai-completions',
+          models: [{ id: 'auto', name: 'auto', api: 'openai-completions' }],
+        },
+      },
+      default: 'openai/gpt-4o-mini',
+    },
+    agents: {
+      defaults: {
+        model: {
+          primary: 'opensparrow-router/auto',
+        },
+      },
+    },
+    plugins: {
+      entries: {
+        'opensparrow-router': {
+          enabled: true,
+          config: {
+            tierConnectionMap: Object.fromEntries(TIERS.map((tier) => [
+              tier,
+              {
+                baseUrl: upstreams[tier].baseUrl,
+                apiKey: `${tier.toLowerCase()}-authority-key`,
+                model: tierModels[tier],
+              },
+            ])),
+            tierModelMap: tierModels,
+            routing: {},
+          },
+        },
+      },
+    },
+  })
+
+  const child = await startUiServer({ homeDir, uiPort, routerPort })
+  t.after(async () => {
+    await stopChild(child)
+  })
+
+  const cases = [
+    {
+      tier: 'SIMPLE',
+      body: {
+        model: 'opensparrow-router/auto',
+        max_tokens: 8192,
+        messages: [{ role: 'user', content: liveCompatibleChannelPrompt('reply OK only') }],
+      },
+    },
+    {
+      tier: 'MEDIUM',
+      body: {
+        model: 'opensparrow-router/auto',
+        max_tokens: 8192,
+        messages: [{ role: 'user', content: '请把下面的会议记录整理成行动项清单，按负责人、截止 时间、风险点分类，并补充一段给团队群的简短同步消 息：今天讨论了客服工单积压问题，张三负责梳理高频问 题，周五前给出分类；李四负责检查自动回复规则，明天 下午前提交修改建议；王五负责统计过去两周超时工单， 后天中午前给出报表。风险是节假日前咨询量会上升，当前值班人手不足。' }],
+      },
+    },
+    {
+      tier: 'COMPLEX',
+      body: {
+        model: 'opensparrow-router/auto',
+        max_tokens: 8192,
+        messages: [{ role: 'user', content: 'debug this stack trace and fix the code' }],
+      },
+    },
+    {
+      tier: 'REASONING',
+      body: {
+        model: 'opensparrow-router/auto',
+        max_tokens: 8192,
+        messages: [{ role: 'user', content: 'solve this logic proof step by step' }],
+      },
+    },
+  ]
+
+  for (const item of cases) {
+    const response = await fetch(`http://127.0.0.1:${routerPort}/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-openclaw-message-channel': 'feishu',
+        'x-openclaw-session-key': 'agent:main:main',
+      },
+      body: JSON.stringify(item.body),
+    })
+    assert.equal(response.status, 200, item.tier)
+    assert.equal(response.headers.get('x-opensparrow-router-tier'), item.tier, item.tier)
+    assert.equal(response.headers.get('x-opensparrow-router-model'), tierModels[item.tier], item.tier)
+    await response.json()
+  }
+
+  for (const tier of TIERS) {
+    assert.equal(upstreams[tier].calls.length, 1, tier)
+    assert.equal(upstreams[tier].calls[0].body.model, tierModels[tier], tier)
+    assert.notEqual(upstreams[tier].calls[0].body.model, 'gpt-4o-mini', tier)
+  }
+})
+
+test('router fallback uses later tier config with a redacted reason and never provider default', { timeout: 20000 }, async (t) => {
+  const homeDir = makeTempDir()
+  const uiPort = await findFreePort()
+  const routerPort = await findFreePort()
+  const tierModels = {
+    SIMPLE: 'gpt-4o',
+    MEDIUM: 'gpt-5.4-nano',
+    COMPLEX: 'gpt-5.4',
+    REASONING: 'gpt-5.5',
+  }
+  const upstreams = {}
+
+  for (const tier of TIERS) {
+    upstreams[tier] = await startUpstreamFixture({
+      tier,
+      expectedModel: tierModels[tier],
+      expectedApiKey: `${tier.toLowerCase()}-fallback-key`,
+    })
+    t.after(async () => {
+      await stopServer(upstreams[tier].server)
+    })
+  }
+
+  writeJson(getConfigPath(homeDir), {
+    models: {
+      providers: {
+        openai: {
+          baseUrl: 'https://provider-default.example/v1',
+          models: [{ id: 'gpt-4o-mini', name: 'gpt-4o-mini', api: 'openai-completions' }],
+        },
+        'opensparrow-router': {
+          baseUrl: `http://127.0.0.1:${routerPort}/v1`,
+          api: 'openai-completions',
+          models: [{ id: 'auto', name: 'auto', api: 'openai-completions' }],
+        },
+      },
+      default: 'openai/gpt-4o-mini',
+    },
+    agents: {
+      defaults: {
+        model: {
+          primary: 'opensparrow-router/auto',
+        },
+      },
+    },
+    plugins: {
+      entries: {
+        'opensparrow-router': {
+          enabled: true,
+          config: {
+            tierConnectionMap: {
+              SIMPLE: {
+                baseUrl: upstreams.SIMPLE.baseUrl,
+                apiKey: '',
+                model: tierModels.SIMPLE,
+              },
+              ...Object.fromEntries(['MEDIUM', 'COMPLEX', 'REASONING'].map((tier) => [
+                tier,
+                {
+                  baseUrl: upstreams[tier].baseUrl,
+                  apiKey: `${tier.toLowerCase()}-fallback-key`,
+                  model: tierModels[tier],
+                },
+              ])),
+            },
+            tierModelMap: tierModels,
+            routing: {},
+          },
+        },
+      },
+    },
+  })
+
+  const child = await startUiServer({ homeDir, uiPort, routerPort })
+  t.after(async () => {
+    await stopChild(child)
+  })
+
+  const response = await fetch(`http://127.0.0.1:${routerPort}/v1/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-openclaw-message-channel': 'feishu',
+      'x-openclaw-session-key': 'agent:main:main',
+    },
+    body: JSON.stringify({
+      model: 'opensparrow-router/auto',
+      max_tokens: 8192,
+      messages: [{ role: 'user', content: liveCompatibleChannelPrompt('reply OK only') }],
+    }),
+  })
+
+  assert.equal(response.status, 200)
+  assert.equal(response.headers.get('x-opensparrow-router-selected-tier'), 'SIMPLE')
+  assert.equal(response.headers.get('x-opensparrow-router-tier'), 'MEDIUM')
+  assert.equal(response.headers.get('x-opensparrow-router-model'), 'gpt-5.4-nano')
+  assert.match(response.headers.get('x-opensparrow-router-fallback-reason') ?? '', /SIMPLE:not-configured/u)
+  await response.json()
+
+  assert.equal(upstreams.SIMPLE.calls.length, 0)
+  assert.equal(upstreams.MEDIUM.calls.length, 1)
+  assert.equal(upstreams.MEDIUM.calls[0].body.model, 'gpt-5.4-nano')
+  assert.notEqual(upstreams.MEDIUM.calls[0].body.model, 'gpt-4o-mini')
+})
 
 test('router runtime dispatch uses each tier connection baseUrl, key, and model', { timeout: 20000 }, async (t) => {
   const homeDir = makeTempDir()
