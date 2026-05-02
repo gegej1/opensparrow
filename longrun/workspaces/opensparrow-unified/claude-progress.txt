@@ -1832,6 +1832,54 @@
   - Pre-existing Worker-owned dirty/untracked `ui/**`, `scripts/**`, and packet spec files were present before this closeout.
   - This packet attributes only the closeout write-set above.
 
+2026-05-02 17:55 +08:00 — docs relative path authority hardening facts-only closeout
+
+- Packet:
+  - `docs-relative-path-authority-hardening`
+  - Closer Gate only; facts-only longrun / packet status / memory update.
+  - This closeout does not modify runtime, channel, model-routing, `vendor/**`, or `dist/**`.
+- Accepted gates:
+  - Spec Review: APPROVED
+  - Worker: DONE
+  - Batch Review: APPROVED
+  - Batch Verify: PASS
+  - Closer: ALLOWED
+- Source docs absolute-path scan PASS:
+  - `README.md`
+  - `docs/usb-pack/INSTALL.md`
+  - `docs/usb-pack/SOP.md`
+- README source pull/build/run authority:
+  - `git pull --ff-only`
+  - `bash scripts/build-usb-pack.sh --platform mac`
+  - `PACK_ROOT="dist/usb-pack/opensparrow-$(cat VERSION)"`
+  - `open "$PACK_ROOT"`
+  - `bash "$PACK_ROOT/01-开始部署.command"`
+  - README states `dist/` is generated output, not committed to git, and must be rebuilt after source pull.
+  - README states `vendor/` runtime is not currently in GitHub source checkout; a new machine with only source cannot fully build/run packaged mac without restored vendor runtime or a complete delivery package.
+- Release-facing package docs:
+  - `docs/usb-pack/INSTALL.md` uses package-relative `./01-开始部署.command`.
+  - `docs/usb-pack/SOP.md` uses package-relative `./01-开始部署.command`.
+- Fresh build / generated docs evidence:
+  - `bash scripts/build-usb-pack.sh --platform mac` PASS.
+  - Generated package root: `dist/usb-pack/opensparrow-0.1.0-alpha`.
+  - Generated `README.md`, `README.txt`, `docs/INSTALL.md`, and `docs/SOP.md` contain no forbidden local absolute paths.
+  - No `dist/**` hand edit was used; package docs were generated from source docs/templates.
+- Secret/raw-payload safety:
+  - PASS.
+  - No API key, auth profile key, gateway token, bearer token, channel secret, raw channel envelope, raw JSON metadata payload, or raw user text was written.
+- Residual risks:
+  - This packet verifies only docs-relative-path authority and generated package docs.
+  - It does not claim new runtime startup, packaged channel, or model-routing PASS.
+  - GitHub source still does not include vendor runtime; a new machine still needs restored vendor runtime or a complete delivery package.
+- Closeout write-set:
+  - `longrun/workspaces/opensparrow-unified/feature_list.json`
+  - `longrun/workspaces/opensparrow-unified/claude-progress.txt`
+  - `specs/docs-relative-path-authority-hardening/spec.md`
+  - `specs/docs-relative-path-authority-hardening/tasks.md`
+- Noisy workspace attribution:
+  - Pre-existing Worker-owned `docs/usb-pack/INSTALL.md`, `docs/usb-pack/SOP.md`, and `scripts/build-usb-pack.sh` changes were present before this closeout.
+  - This Closer attributes only the closeout write-set above.
+
 2026-04-27 17:45 +08:00 — latest usable packaged mac snapshot
 
 - User manual validation:

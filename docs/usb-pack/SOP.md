@@ -86,6 +86,12 @@ opensparrow-<version>-mac-ui-<arch>/
 5. 完成安装后进入 Dashboard。
 6. 如需重置或再次安装，在 Dashboard 中完成，不回退到 legacy CLI 流程。
 
+终端等价启动方式仅使用 package-relative 路径：
+
+```bash
+./01-开始部署.command
+```
+
 ## 高级兼容入口的处理方式
 
 如果用户误点：

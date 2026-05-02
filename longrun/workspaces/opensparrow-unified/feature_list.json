@@ -1043,5 +1043,37 @@
     "evidence_hint": "Spec Review APPROVED + Worker Rounds 8-16 DONE + Batch Review APPROVED + Batch Verify PASS. Fresh package root `dist/usb-pack/opensparrow-0.1.0-alpha`; active profile `gtclaw-portable`; config path under packaged `.gtclaw-state/.openclaw-gtclaw-portable/openclaw.json`; UI/router/gateway `19000/18412/18929`; runtime ownership current/current/current/current_only; smart authority `opensparrow-router/auto`, singleModelMode false, tiers SIMPLE gpt-4o, MEDIUM gpt-5.4-nano, COMPLEX gpt-5.4, REASONING gpt-5.5; Feishu live external inbound PASS with redacted evidence and SIMPLE/gpt-4o; Batch Verify carry-forward covers MEDIUM/COMPLEX/REASONING, post-history SIMPLE, single-model regression, secret safety, and Round 13 vendor marker cleanup; DingTalk/WeCom live external inbound was not rerun in final live continuation.",
     "risk": "medium",
     "passes": true
+  },
+  {
+    "id": "docs-relative-path-authority-hardening",
+    "priority": 1,
+    "category": "documentation",
+    "component": "packaged-mac-docs-path-authority",
+    "description": "Close packaged mac documentation path authority so source pull/build/run instructions use repo-relative paths, package install/SOP instructions use package-relative paths, generated package docs stay free of maintainer-local absolute paths, and GitHub source checkout boundaries for generated `dist/` and uncommitted `vendor/` runtime are explicit.",
+    "depends_on": [
+      "packaged-mac-entry-contract-hardening"
+    ],
+    "acceptance_criteria": [
+      "Accepted gates are Spec Review APPROVED, Worker DONE, Batch Review APPROVED, Batch Verify PASS, and Closer ALLOWED.",
+      "Source docs absolute-path scan passed for `README.md`, `docs/usb-pack/INSTALL.md`, and `docs/usb-pack/SOP.md`.",
+      "README pull/build/run instructions use repo-relative commands: `git pull --ff-only`, `bash scripts/build-usb-pack.sh --platform mac`, `PACK_ROOT=\"dist/usb-pack/opensparrow-$(cat VERSION)\"`, `open \"$PACK_ROOT\"`, and `bash \"$PACK_ROOT/01-开始部署.command\"`.",
+      "README states `dist/` is generated output, not committed to git, and must be rebuilt after pulling source.",
+      "README states `vendor/` runtime is not currently in GitHub source checkout, so a new machine with only source cannot fully build/run packaged mac without restored vendor runtime or a complete delivery package.",
+      "Install and SOP docs use package-relative launcher examples such as `./01-开始部署.command`.",
+      "Fresh build passed with `bash scripts/build-usb-pack.sh --platform mac`, generated package root `dist/usb-pack/opensparrow-0.1.0-alpha`, and generated `README.md`, `README.txt`, `docs/INSTALL.md`, and `docs/SOP.md` containing no forbidden local absolute paths.",
+      "No `dist/**` hand edit was used; package docs were generated from source docs/templates.",
+      "Secret/raw-payload safety passed with no API key, auth profile key, gateway token, bearer token, channel secret, raw channel envelope, raw JSON metadata payload, or raw user text introduced.",
+      "Residual risk is explicit: this packet verifies docs-relative-path authority and generated package docs only, not runtime startup, packaged channel behavior, or model routing."
+    ],
+    "steps": [
+      "Read project rules, governance, packet spec/plan/tasks, feature tracking, progress log, and existing dirty state.",
+      "Record closeout facts in longrun and packet closeout surfaces without modifying runtime/channel/model-routing code or generated `dist/**`.",
+      "Record GitHub source checkout boundaries for generated `dist/` and uncommitted `vendor/` runtime.",
+      "Run JSON validation, progress report, diff hygiene, git status, and changed closeout diff safety review.",
+      "Store one short durable Mem0 closeout fact with `metadata.project=opensparrow` and no raw secret or payload material."
+    ],
+    "evidence_hint": "Spec Review APPROVED + Worker DONE + Batch Review APPROVED + Batch Verify PASS. Source docs scan PASS for README.md, docs/usb-pack/INSTALL.md, docs/usb-pack/SOP.md; README uses repo-relative pull/build/run commands and documents `dist/` generated-output plus `vendor/` runtime source-checkout boundaries; INSTALL/SOP use `./01-开始部署.command`; fresh build generated `dist/usb-pack/opensparrow-0.1.0-alpha` and generated README.md, README.txt, docs/INSTALL.md, docs/SOP.md with no forbidden local absolute paths; no `dist/**` hand edit; secret/raw-payload safety PASS; packet does not claim new runtime/channel/model-routing PASS.",
+    "risk": "medium",
+    "passes": true
   }
 ]

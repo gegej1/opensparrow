@@ -673,6 +673,9 @@ QUICK START — macOS
   4. Follow the UI installer in your browser.
   5. Finish setup in Dashboard.
 
+COMMAND-LINE LAUNCH — FROM PACKAGE ROOT ONLY
+  ./01-开始部署.command
+
 ADVANCED COMPATIBILITY / HANDOFF
   • mac/run-openclaw-usb.command
   • mac/harden-openclaw-usb.command
@@ -784,6 +787,12 @@ Version: `__VERSION__`
 2. Double-click `01-开始部署.command`.
 3. Complete installation in the browser wizard.
 4. Finish operations in Dashboard.
+
+Command-line launch from the package root:
+
+```bash
+./01-开始部署.command
+```
 
 ## Important boundary notes
 
