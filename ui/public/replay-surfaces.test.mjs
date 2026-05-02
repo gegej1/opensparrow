@@ -80,7 +80,7 @@ test('wizard header uses a stable visible GTClaw brand mark without depending on
   assert.doesNotMatch(html, /<img\s+[^>]*src="logo\.png"/)
 })
 
-test('wizard init keeps API fields blank/default even when authoritative config exists', async () => {
+test('wizard init keeps credential and API fields blank/default even when authoritative config exists', async () => {
   const { context, factory } = loadPageFactory('ui/public/index.html', 'wizard')
   context.window.location.search = '?force=1'
   context.window.location.pathname = '/setup'
@@ -125,14 +125,37 @@ test('wizard init keeps API fields blank/default even when authoritative config 
   await instance.init()
 
   assert.deepEqual(Array.from(instance.selectedChannels), ['dingtalk', 'wecom'])
-  assert.equal(instance.credentials.dingtalk.corpId, 'ding-corp')
-  assert.equal(instance.credentials.dingtalk.clientId, 'ding-client')
-  assert.equal(instance.credentials.dingtalk.robotCode, 'ding-client')
-  assert.equal(instance.credentials.wecom.botId, 'aib_demo')
+  assert.deepEqual(toPlain(instance.credentials.dingtalk), {
+    corpId: '',
+    clientId: '',
+    robotCode: '',
+    clientSecret: '',
+  })
+  assert.deepEqual(toPlain(instance.credentials.wecom), {
+    botId: '',
+    secret: '',
+    corpId: '',
+    corpSecret: '',
+    agentId: '',
+    replyFormat: '',
+    callbackToken: '',
+    encodingAESKey: '',
+    callbackPath: '',
+  })
   assert.equal(instance.apiConfig.baseUrl, '')
   assert.equal(instance.apiConfig.model, 'gpt-4o-mini')
   assert.equal(context.window.location.href, '')
   assert.deepEqual(calls, ['/api/status', '/api/config'])
+})
+
+test('wizard credential inputs disable browser autofill for channel and API secrets', () => {
+  const html = fs.readFileSync(path.resolve('ui/public/index.html'), 'utf8')
+
+  assert.match(html, /x-model="credentials\.feishu\.appId"[\s\S]*?autocomplete="off"/)
+  assert.match(html, /x-model="credentials\.feishu\.appSecret"[\s\S]*?autocomplete="new-password"/)
+  assert.match(html, /x-model="credentials\.dingtalk\.clientSecret"[\s\S]*?autocomplete="new-password"/)
+  assert.match(html, /x-model="credentials\.wecom\.secret"[\s\S]*?autocomplete="new-password"/)
+  assert.match(html, /x-model="apiConfig\.apiKey"[\s\S]*?autocomplete="new-password"/)
 })
 
 test('wizard init redirects to dashboard when gateway fallback runtime is already healthy', async () => {

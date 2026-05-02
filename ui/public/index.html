@@ -370,6 +370,7 @@
                 <label class="block text-sm font-medium mb-1" style="color:#6B7A99">App ID</label>
                 <p class="text-xs mb-1" style="color:#6B7A99">应用凭证 → 应用ID</p>
                 <input type="text" x-model="credentials.feishu.appId"
+                       autocomplete="off"
                        placeholder="cli_xxxxxxxxxxxxxxxx"
                        class="step-input" />
               </div>
@@ -377,6 +378,7 @@
                 <label class="block text-sm font-medium mb-1" style="color:#6B7A99">App Secret</label>
                 <p class="text-xs mb-1" style="color:#6B7A99">应用凭证 → 应用Secret</p>
                 <input type="password" x-model="credentials.feishu.appSecret"
+                       autocomplete="new-password"
                        placeholder="••••••••••••••••"
                        class="step-input" />
               </div>
@@ -408,6 +410,7 @@
               <div>
                 <label class="block text-sm font-medium mb-1" style="color:#6B7A99">CorpId</label>
                 <input type="text" x-model="credentials.dingtalk.corpId"
+                       autocomplete="off"
                        placeholder="dingxxxxxxxxxxxxxxxxxxxxxxxx"
                        class="step-input" />
               </div>
@@ -415,6 +418,7 @@
                 <label class="block text-sm font-medium mb-1" style="color:#6B7A99">Client ID（兼容 AppKey / Robot Code）</label>
                 <p class="text-xs mb-1" style="color:#6B7A99">一次填写即可，系统会按同值处理 Robot Code</p>
                 <input type="text" x-model="credentials.dingtalk.clientId"
+                       autocomplete="off"
                        placeholder="dingxxxxxxxxxxxxxxxx"
                        class="step-input" />
               </div>
@@ -422,12 +426,14 @@
                 <label class="block text-sm font-medium mb-1" style="color:#6B7A99">Robot Code（可单独填）</label>
                 <p class="text-xs mb-1" style="color:#6B7A99">若不填，默认复用 Client ID；若填写则优先使用该值</p>
                 <input type="text" x-model="credentials.dingtalk.robotCode"
+                       autocomplete="off"
                        placeholder="dingxxxxxxxxxxxxxxxx"
                        class="step-input" />
               </div>
               <div>
                 <label class="block text-sm font-medium mb-1" style="color:#6B7A99">Client Secret（兼容 AppSecret）</label>
                 <input type="password" x-model="credentials.dingtalk.clientSecret"
+                       autocomplete="new-password"
                        placeholder="••••••••••••••••"
                        class="step-input" />
               </div>
@@ -464,12 +470,14 @@
                 <div>
                   <label class="block text-sm font-medium mb-1" style="color:#6B7A99">Bot ID（必填）</label>
                   <input type="text" x-model="credentials.wecom.botId"
+                         autocomplete="off"
                          placeholder="aibxxxxxxxxxxxxxxxx"
                          class="step-input" />
                 </div>
                 <div>
                   <label class="block text-sm font-medium mb-1" style="color:#6B7A99">Bot Secret（必填）</label>
                   <input type="password" x-model="credentials.wecom.secret"
+                         autocomplete="new-password"
                          placeholder="••••••••••••••••"
                          class="step-input" />
                 </div>
@@ -482,18 +490,21 @@
                   <div>
                     <label class="block text-sm font-medium mb-1" style="color:#6B7A99">CorpId</label>
                     <input type="text" x-model="credentials.wecom.corpId"
+                           autocomplete="off"
                            placeholder="wwxxxxxxxxxxxxxxxx"
                            class="step-input" />
                   </div>
                   <div>
                     <label class="block text-sm font-medium mb-1" style="color:#6B7A99">CorpSecret</label>
                     <input type="password" x-model="credentials.wecom.corpSecret"
+                           autocomplete="new-password"
                            placeholder="••••••••••••••••"
                            class="step-input" />
                   </div>
                   <div>
                     <label class="block text-sm font-medium mb-1" style="color:#6B7A99">AgentId</label>
                     <input type="text" x-model="credentials.wecom.agentId"
+                           autocomplete="off"
                            placeholder="1000002"
                            class="step-input" />
                   </div>
@@ -514,18 +525,21 @@
                   <div>
                     <label class="block text-sm font-medium mb-1" style="color:#6B7A99">Callback Token</label>
                     <input type="text" x-model="credentials.wecom.callbackToken"
+                           autocomplete="off"
                            placeholder="callback-token"
                            class="step-input" />
                   </div>
                   <div>
                     <label class="block text-sm font-medium mb-1" style="color:#6B7A99">EncodingAESKey</label>
                     <input type="password" x-model="credentials.wecom.encodingAESKey"
+                           autocomplete="new-password"
                            placeholder="43 位 AES Key"
                            class="step-input" />
                   </div>
                   <div>
                     <label class="block text-sm font-medium mb-1" style="color:#6B7A99">Callback Path</label>
                     <input type="text" x-model="credentials.wecom.callbackPath"
+                           autocomplete="off"
                            placeholder="/webhooks/app"
                            class="step-input" />
                   </div>
@@ -548,18 +562,21 @@
             <div>
               <label class="block text-sm font-medium mb-1" style="color:#6B7A99">Base URL</label>
               <input type="text" x-model="apiConfig.baseUrl"
+                     autocomplete="off"
                      placeholder="https://api.openai.com/v1 或你的中转地址"
                      class="step-input" />
             </div>
             <div>
               <label class="block text-sm font-medium mb-1" style="color:#6B7A99">API Key</label>
               <input type="password" x-model="apiConfig.apiKey"
+                     autocomplete="new-password"
                      placeholder="sk-••••••••••••••••••••••••"
                      class="step-input" />
             </div>
             <div>
               <label class="block text-sm font-medium mb-1" style="color:#6B7A99">模型名称</label>
               <input type="text" x-model="apiConfig.model"
+                     autocomplete="off"
                      placeholder="gpt-4o-mini"
                      class="step-input" />
               <p class="text-xs mt-1" style="color:#6B7A99">默认：gpt-4o-mini</p>
@@ -858,10 +875,7 @@
 
             this.channelOptions.forEach((channel) => {
               const normalized = window.OpenSparrowChannels.normalizeUiFields(channel.key, channels[channel.key] || {});
-              this.credentials[channel.key] = {
-                ...window.OpenSparrowChannels.createEmptyUiFields(channel.key),
-                ...normalized,
-              };
+              this.credentials[channel.key] = window.OpenSparrowChannels.createEmptyUiFields(channel.key);
 
               if (
                 (channels[channel.key] && channels[channel.key].enabled !== false) ||
