@@ -53,9 +53,33 @@
 
 ## 面向用户的交付入口
 
-- macOS：双击 `01-开始部署.command`
+- macOS：先生成交付包，再在交付包根目录双击 `01-开始部署.command`
 - Windows：双击 `one-click-deploy.cmd`
 - 浏览器安装向导：默认自动打开 `http://localhost:19000`
+
+## 从源码拉取到运行 Mac 交付包
+
+下面命令都假设当前目录是仓库根目录；不要写入本机绝对路径。
+
+```bash
+git pull --ff-only
+bash scripts/build-usb-pack.sh --platform mac
+PACK_ROOT="dist/usb-pack/opensparrow-$(cat VERSION)"
+open "$PACK_ROOT"
+```
+
+打开 Finder 后，双击交付包根目录中的 `01-开始部署.command`。
+如需从命令行启动，也应运行生成包内的 launcher：
+
+```bash
+bash "$PACK_ROOT/01-开始部署.command"
+```
+
+注意：
+
+- `dist/` 是生成物，不进 git；每次从 GitHub 拉取源码后，应在本机重新 build。
+- `vendor/` 运行时二进制当前不进 git；要在一台新机器上完整 build，需要先补齐本地 vendor runtime，或使用已经导出的完整交付包。
+- `platforms/mac/wrappers/*.command` 是 source template / developer debug surface，不是正式用户安装入口。
 
 ## 开发入口
 
@@ -90,19 +114,17 @@
 - `scripts/openclaw-usb/`
   - 共享安装 / hardening 真源
 - `platforms/mac/wrappers/01-开始部署.command`
-  - macOS packaged first-click 入口
+  - macOS packaged launcher 的 source template / developer debug surface
+- `dist/usb-pack/opensparrow-<version>/01-开始部署.command`
+  - 生成后的 macOS packaged first-click 入口
 - `longrun/workspaces/opensparrow-unified/`
   - 当前项目 authority 之下的长期事实与会话进度
 
-## 当前主要问题
+## 当前注意事项
 
-- mac bundled runtime 仍存在 `bin/lib` 双版本分叉：
-  - `bin/node_modules/openclaw` = `2026.3.12`
-  - `lib/node_modules/openclaw` = `2026.3.23`
-  - 当前 packaged mac WeCom 安装会命中旧版本
-- 当前工作树是 noisy workspace，存在多条 packet 的已跟踪/未跟踪改动；提交前必须做 packet attribution
-- GitHub 仓库默认不包含 `vendor/` 二进制 runtime，因此仅靠 GitHub 不能完整复现 packaged/runtime 问题，需要结合本地补充审查包
-- packaged WeCom 不能写 PASS；当前仍处于 runtime upgrade / packaged closure 前的 blocker 状态
+- GitHub 仓库默认不包含 `vendor/` 二进制 runtime，因此仅靠源码 checkout 不能在新机器上完整复现 packaged/runtime 问题，需要先补齐本地 vendor runtime 或直接使用完整交付包。
+- `dist/` 为生成物输出目录，不作为人工维护面；源码更新后应重新运行 `scripts/build-usb-pack.sh` 生成交付包。
+- DingTalk / WeCom live external inbound 仍按各 packet closeout 中记录的验证覆盖范围声明，不要把 diagnostics/readiness 误写成 live PASS。
 
 ## 当前边界
 
